@@ -5,28 +5,26 @@ Syfte: Välja datum för full-day
 Layout (wireframe):
 
 [Header]
-- Logotyp + portalnamn
-- Inloggningsindikator: "Lägenhets ID"
+- Tillbaka
+- Inloggningsindikator: "Lägenhet"
 - Hjälp / Logga ut
 
-[Stegindikator]
-- Steg 2 av 3: Datum (dagpass)
-
 [Main]
-
+- Ingen rubrik / text mellan Header och huvudyta
 - Huvudyta: Datumval (månadsvy)
   - Månadsnavigering: "< Januari" och "Mars >"
   - Månader får bara stegas enligt bokningsregler
   - Rubrik med månadens namn
-  - Rubrik äver dagkorten med veckodagarnas namn
+  - Tydlig centrerad rubrik äver dagkorten med veckodagarnas namn. Söndag i rött
   - Dagkort (Mån-Sön)
     - Datum 1/3
     - CTA: Hela rutan är klickbar
     - Status/visualisering:
-      - Utgråad/disabled: passerad tid
-      - Upptagen: bokad av annan
-      - Bokad: bokad av användaren
-      - Ledig: valbar
+      - Utgråad/disabled: passerad tid (grå)
+        Visualiseras endast med färg
+      - Upptagen: bokad av annan (röd)
+      - Bokad: Bokad av användaren (gul)
+      - Ledig: valbar (grön)
   - Legend för status (färg/ikon)
 [Footer]
 - Tillbaka om möjligt

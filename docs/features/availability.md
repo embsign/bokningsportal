@@ -13,6 +13,10 @@ Den här sidan beskriver hur tillgänglighet för resurser exponeras och använd
 - `GET /api/availability-range?resource_id=&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
 - `POST /api/access-token-login` (web‑login via token)
 
+## Klientbeteende
+- Håll antalet backend‑anrop lågt: använd `availability-range` för att hämta en hel vecka eller månad i ett enda anrop.
+- Undvik att kalla API:t per dag när det går att hämta ett sammanhängande intervall.
+
 ## Regler (källnära)
 - Resurser måste vara aktiva (`is_active = 1`) för vanliga användare.
 - Åtkomst filtreras via `allow_houses` och `deny_apartment_ids` för icke‑admin.

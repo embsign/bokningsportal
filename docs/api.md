@@ -290,7 +290,8 @@ Valid tenant + session cookie.
 GET /api/availability-range
 
 Description
-Full-day availability for a resource within a date range.
+Full-day availability for a resource within a date range. Intended to be used for weekly or monthly
+lookups to reduce backend call volume (avoid one request per day).
 
 Request body
 None.

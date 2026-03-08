@@ -1,4 +1,5 @@
 - The complete system works with UTC with no handling of local timezones. Timezones have no effect on bookings since the user and the booked resource is always in the same time zone.
+- Availability lookups should be batched in range queries (week or month) to keep backend call volume low, instead of one call per day.
 - UUID access tokens are long-lived and remain valid until a new token is generated for the same apartment, which revokes the previous token.
 - Tenant contact email is stored for operational contact only and is not used for authentication.
 - BRF selection is not done via subdomains. Web access uses UUID access tokens that resolve the tenant automatically. Kiosk mode resolves tenant after RFID UID lookup.

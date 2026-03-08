@@ -6,11 +6,8 @@ Layout (wireframe):
 
 [Header]
 - Logotyp + portalnamn
-- Inloggningsindikator: "Lägenhets ID"
+- Inloggningsindikator: "Lägenhet"
 - Hjälp / Logga ut
-
-[Stegindikator]
-- Steg 1 av 3: Service
 
 [Main]
 - Rubrik: "Välj service"
@@ -23,9 +20,6 @@ Servicekort (komponenter):
 - Nästa lediga tid (t.ex. "Nästa: tis 14:30")
 - Debitering (t.ex. "Debiteras: 200-300 kr" Visas ej om ingen debitering är aktuell)
 - Hela kortet är klickbart
-
-[Footer]
-- Tillbaka (om möjligt)
 
 Regler:
 - Om användaren endast har tillgång till en service, autovälj och hoppa över steget.

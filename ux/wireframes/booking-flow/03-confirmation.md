@@ -6,21 +6,17 @@ Layout (wireframe):
 
 [Header]
 - Logotyp + portalnamn
-- Inloggningsindikator: "Lägenhets ID"
+- Inloggningsindikator: "Lägenhet"
 - Hjälp / Logga ut
 
-[Stegindikator]
-- Steg 3 av 3: Bekräfta
-
 [Main]
+- Detta är en pop-up modal
 - Rubrik: "Bekräfta bokning"
 - Sammanfattningskort
-  - Service
-  - Datum
-  - Tid
+  - Servicenamn
+  - Datum & Tid
   - Varaktighet
-  - Debitering
-  - Plats/Resurs (om relevant)
+  - Eventuell Debitering
 
 [Footer]
 - Tillbaka
