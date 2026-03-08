@@ -3,7 +3,7 @@
 ## Conventions
 - Base path: `/api`
 - Auth: HttpOnly `session` cookie for authenticated endpoints.
-- Tenant resolution (API): UUID access‑token for web access, `X-BRF-ID` header for kiosk mode.
+- Tenant resolution (API): UUID access‑token for web access, RFID UID lookup for kiosk login.
 - Query‑parametrar `brf_id`/`brf` används inte längre för tenant‑resolution.
 - Error format: `{ "detail": "error_code" }`
 
@@ -174,7 +174,7 @@ Errors
 - `500 internal_error`
 
 Auth requirements
-Valid tenant resolved via `X-BRF-ID`, `brf_id`/`brf` query, or subdomain.
+None. Tenant is resolved via UID lookup in RFID tags.
 
 ## Endpoint
 

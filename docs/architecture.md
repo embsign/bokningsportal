@@ -12,8 +12,9 @@ Alpine‑store i `frontend/src/app.js`, med hjälpfiler för API‑anrop (`front
 datumlogik. Web‑inloggning sker via UUID‑access‑token och behöver inte välja tenant manuellt.
 
 ### Kiosk App
-Kiosk‑läget körs som en minimal Android‑app (Kotlin) i samma repo. Appen läser NFC‑taggar och öppnar
-bokningsportalen i en WebView. BRF‑id är konfigurerat i appen och skickas via `X-BRF-ID` header.
+Kiosk‑läget körs som en minimal Android‑app (Kotlin) i samma repo. Appen läser NFC‑taggar, skickar UID
+för `/api/rfid-login` och öppnar bokningsportalen i en WebView efter att session skapats. Appen har
+ingen statisk BRF‑konfiguration utan tenant löses via UID‑uppslag.
 
 ### Backend
 Backend är en ensam Cloudflare Worker med en egen router i `cloudflare/worker/src/index.js`. Den
@@ -31,7 +32,8 @@ Cloudflare D1 (SQLite) lagrar all data. Centrala tabeller är `tenants`, `apartm
 
 ### Data Flow
 1. Browser loads the Alpine.js app from Cloudflare Pages.
-2. Web‑klient använder access‑token för auto‑login. Kiosk‑läge skickar `X-BRF-ID` header från appen.
+2. Web‑klient använder access‑token för auto‑login. Kiosk‑läge använder RFID UID för `/api/rfid-login`
+   som sätter session och tenant.
 3. API‑anrop går till `/api/*`:
    - Lokal dev: Vite proxy till Workern (`http://127.0.0.1:8787`).
    - Production/preview: Pages Function (`frontend/functions/api/[[path]].js`) proxyar till Worker‑URL.
@@ -39,7 +41,8 @@ Cloudflare D1 (SQLite) lagrar all data. Centrala tabeller är `tenants`, `apartm
 
 ### Security Model
 - Session-based authentication with HttpOnly, SameSite=Lax cookies stored in D1 (`sessions` table).
-- Tenant‑isolering enforced via `tenant_id` i varje query, härledd från access‑token eller `X-BRF-ID`.
+- Tenant‑isolering enforced via `tenant_id` i varje query, härledd från access‑token eller session som
+  skapats via RFID‑login (UID‑uppslag).
 - Server-side captcha verification (Turnstile) for tenant registration.
 - CORS responses allow credentials and echo the request origin.
 
@@ -52,4 +55,4 @@ Cloudflare D1 (SQLite) lagrar all data. Centrala tabeller är `tenants`, `apartm
 
 ## Tenant Resolution (API vs Frontend)
 - **Web**: UUID access‑token avgör tenant och lägenhet.
-- **Kiosk**: `X-BRF-ID` (eller motsvarande header) anger tenant.
+- **Kiosk**: RFID UID avgör tenant genom `/api/rfid-login`.

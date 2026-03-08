@@ -39,7 +39,7 @@ LLM‑agent ska kunna återskapa applikationen (funktion, regler, API, data och 
 
 ## Nyckelfakta
 - Web‑access använder UUID‑access‑token som avgör tenant automatiskt.
-- Kiosk‑läge körs som Android‑app som sätter `X-BRF-ID` (eller motsvarande header) för tenant.
+- Kiosk‑läge körs som Android‑app som resolve:ar tenant via RFID UID‑uppslag.
 - API ligger under `/api` och proxas via Pages Function i produktion.
 - Autentisering är sessionsbaserad (HttpOnly cookie).
 - Systemet använder UTC utan hantering av lokala tidszoner.

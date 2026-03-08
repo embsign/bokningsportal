@@ -1,5 +1,5 @@
 - The complete system works with UTC with no handling of local timezones. Timezones have no effect on bookings since the user and the booked resource is always in the same time zone.
 - UUID access tokens are long-lived and remain valid until a new token is generated for the same apartment, which revokes the previous token.
 - Tenant contact email is stored for operational contact only and is not used for authentication.
-- BRF selection is not done via subdomains. Kiosk mode supplies `X-BRF-ID` (or similar header) and web access uses UUID access tokens that resolve the tenant automatically.
-- Kiosk mode is a minimal Android (Kotlin) app that reads NFC and opens a WebView with `X-BRF-ID` set for the configured BRF.
+- BRF selection is not done via subdomains. Web access uses UUID access tokens that resolve the tenant automatically. Kiosk mode resolves tenant after RFID UID lookup.
+- Kiosk mode is a minimal Android (Kotlin) app that reads NFC, sends UID to `/api/rfid-login`, and opens a WebView after session is established (no preconfigured BRF-ID).
