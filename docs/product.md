@@ -32,6 +32,11 @@ Detaljerad logik finns i `docs/booking-logic.md`, API‑ytor i `docs/api.md`.
 3. **POS RFID login:** skanna tagg i Android‑appen, resolve tenant via UID‑uppslag, öppna WebView efter login, generera QR‑länk vid behov.
 4. **Admin operations:** log in as admin, review calendar, block slots, manage resources, import RFID tags, review user list.
 
+## Routes (UX)
+- `/` landningssida (se `docs/ux/landing.md`)
+- `/user/{UUID-token}` boende‑inloggning via personlig QR‑kod
+- `/admin/{UUID-token}` account‑owner/admin‑inloggning
+
 ## Non Goals
 
 - Payment processing or invoicing.

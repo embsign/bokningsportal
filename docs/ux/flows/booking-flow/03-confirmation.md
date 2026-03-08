@@ -2,25 +2,30 @@
 
 Syfte: Bekräfta bokningsdetaljer innan slutlig bokning.
 
+Återanvända komponenter:
+- Header
+- Modal (Confirmation)
+- BookingSummary
+- FooterNavigation
+
+Standardlayout:
+- Baslayout och gemensamma komponenter beskrivs i `docs/design/components.md`.
+
 Layout (wireframe):
 
-[Header]
-- Logotyp + portalnamn
-- Inloggningsindikator: "Lägenhet"
-- Hjälp / Logga ut
+[Header component]
 
 [Main]
 - Detta är en pop-up modal
-- Rubrik: "Bekräfta bokning"
-- Sammanfattningskort
+- [Modal component] "Bekräfta bokning"
+- [BookingSummary component]
   - Servicenamn
   - Datum & Tid
   - Varaktighet
   - Eventuell Debitering
 
 [Footer]
-- Tillbaka
-- "Boka" (primär CTA)
+- [FooterNavigation component] (Tillbaka / Boka)
 
 Efter bekräftelse (state):
 - Bekräftelsemeddelande: "Bokning klar"

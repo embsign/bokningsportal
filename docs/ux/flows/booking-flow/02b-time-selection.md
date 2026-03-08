@@ -2,16 +2,22 @@
 
 Syfte: Välja dag & tid för tidslslot
 
+Återanvända komponenter:
+- Header
+- TimeslotGrid (Week View)
+- TimeslotButton
+- FooterNavigation
+
+Standardlayout:
+- Baslayout och gemensamma komponenter beskrivs i `docs/design/components.md`.
+
 Layout (wireframe):
 
-[Header]
-- Tillbaka
-- Inloggningsindikator: "Lägenhet"
-- Hjälp / Logga ut
+[Header component]
 
 [Main]
 - Ingen rubrik / text mellan Header och huvudyta
-- Huvudyta: Tidspass (veckovy)
+- Huvudyta: [TimeslotGrid (Week View) component]
   - Veckonavigering: "< Föregående vecka" och "Nästa vecka >"
     - På mobil / smal skärm kan inte en hel vecka visas - då får navigering ändras till det antal dagar som får plats i bredd
   - Veckor får bara stegas enligt bokningsregler
@@ -30,9 +36,10 @@ Layout (wireframe):
       - Bokad: Bokad av användaren (gul)
       - Ledig: valbar (grön)
   - Legend för status (färg/ikon)
+  - [TimeslotButton component] används i varje tidspass
 
 [Footer]
-- Tillbaka
+- [FooterNavigation component] (Tillbaka om möjligt, om renderad)
 
 Regler:
 - Dagar utanför bokningsregler är disabled.
