@@ -9,14 +9,15 @@ Inloggning sker på två sätt:
 Steg:
 1. Service selection  
    - Visas bara om användaren har fler än en tillgänglig service.
-2. Date selection or Date/Time selection
+2a. Date selection or 
+2b. Date/Time selection
 3. Booking confirmation
 
 Filer:
 - `ux/wireframes/booking-flow/01-service-selection.md`
-- `ux/wireframes/booking-flow/02-date-selection.md`
-- `ux/wireframes/booking-flow/03-time-selection.md`
-- `ux/wireframes/booking-flow/04-confirmation.md`
+- `ux/wireframes/booking-flow/02a-date-selection.md`
+- `ux/wireframes/booking-flow/02b-time-selection.md`
+- `ux/wireframes/booking-flow/03-confirmation.md`
 
 ## Admin (översikt)
 - `ux/wireframes/admin/01-dashboard.md`
