@@ -9,9 +9,8 @@ Inloggning sker på två sätt:
 Steg:
 1. Service selection  
    - Visas bara om användaren har fler än en tillgänglig service.
-2. Date selection
-3. Time selection
-4. Booking confirmation
+2. Date selection or Date/Time selection
+3. Booking confirmation
 
 Filer:
 - `ux/wireframes/booking-flow/01-service-selection.md`
