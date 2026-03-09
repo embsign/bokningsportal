@@ -59,17 +59,51 @@ if (env === "preview" && (!prNumber || !/^\d+$/.test(prNumber))) {
 const dbName = env === "production" ? "booking-prod" : `booking-pr-${prNumber}`;
 const workerName = env === "production" ? "booking-api" : `booking-api-pr-${prNumber}`;
 
-const list = JSON.parse(
-  execSync("npx wrangler d1 list --format json", { stdio: ["pipe", "pipe", "inherit"] }).toString()
-);
+const runWrangler = (command) => {
+  try {
+    return execSync(command, { stdio: ["pipe", "pipe", "pipe"] }).toString();
+  } catch (error) {
+    const stdout = error.stdout ? error.stdout.toString() : "";
+    const stderr = error.stderr ? error.stderr.toString() : "";
+    const message = stdout + stderr;
+    throw new Error(message || `Command failed: ${command}`);
+  }
+};
+
+const parseUuidFromOutput = (text) => {
+  const match = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return match ? match[0] : null;
+};
+
+const listD1Databases = () => {
+  try {
+    const json = runWrangler("npx wrangler d1 list --json");
+    return JSON.parse(json);
+  } catch {
+    const output = runWrangler("npx wrangler d1 list");
+    const lines = output.split("\n").filter(Boolean);
+    return lines
+      .map((line) => {
+        const uuid = parseUuidFromOutput(line);
+        if (!uuid) return null;
+        return { name: line.split(/\s+/)[0], uuid };
+      })
+      .filter(Boolean);
+  }
+};
+
+const list = listD1Databases();
 const existing = list.find((db) => db.name === dbName);
 
 let databaseId = existing?.uuid;
 if (!databaseId) {
-  const created = JSON.parse(
-    execSync(`npx wrangler d1 create ${dbName} --format json`, { stdio: ["pipe", "pipe", "inherit"] }).toString()
-  );
-  databaseId = created?.uuid;
+  try {
+    const created = JSON.parse(runWrangler(`npx wrangler d1 create ${dbName} --json`));
+    databaseId = created?.uuid;
+  } catch {
+    const output = runWrangler(`npx wrangler d1 create ${dbName}`);
+    databaseId = parseUuidFromOutput(output);
+  }
 }
 
 if (!databaseId) {
