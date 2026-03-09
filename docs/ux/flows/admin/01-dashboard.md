@@ -17,6 +17,7 @@ Layout (wireframe):
      - Kort beskrivning
      - Knappar: **Redigera**, **Lägg till**
      - Tabellöversikt visar status (aktiv/inaktiv)
+     - Modal för redigera/kopiera: se `docs/ux/components/booking-object-modal.md`
   3) **Debiteringsunderlag / Rapporter**
      - Kort beskrivning
      - Knappar: **Öppna rapporter**, **Exportera**

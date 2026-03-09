@@ -29,11 +29,13 @@ Se komponentbeskrivning: `docs/ux/components/import-users-csv.md`.
    - Tydlig sammanfattning:
      - Nya rader
      - Oförändrade rader
+     - Rader med ändringar (behörigheter ex.)
      - Rader som tas bort
    - Val:
-     - Lägg till nya
-     - Radera borttagna
-     - **Importera**
+     - Lägg till nya (checkbox)
+     - Radera borttagna (checkbox)
+     - Uppdatera ändrade (checkbox)
+     - **Importera** (VIsa tydligt hur många som läggs till / uppdateras / raderas)
 
 6. **Import**
    - Statusbar visar progress under importen.

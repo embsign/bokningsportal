@@ -2,6 +2,8 @@
 
 Syfte: Ge kontoägare/admin en översikt och åtkomst till administration.
 
+Wireframe: `docs/ux/flows/admin/01-dashboard.md`
+
 1. **Inloggning**
    - Kontoägaren loggar in via `/admin/{UUID-token}`.
 2. **Admin Dashboard**

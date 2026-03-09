@@ -18,9 +18,9 @@ Syfte: Samla administrativa genvägar och ge överblick.
 ### Bokningsobjekt
 - Rubrik: **Bokningsobjekt**
 - Knappar:
-  - **Redigera**
   - **Lägg till**
-  - **Inaktivera/Aktivera**
+  - Radåtgärder: **Redigera**, **Kopiera**
+- Tabellöversikt visar status (aktiv/inaktiv) och konfiguration.
 
 ### Debiteringsunderlag / Rapporter
 - Rubrik: **Debiteringsunderlag / Rapporter**

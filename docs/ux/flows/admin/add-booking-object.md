@@ -9,7 +9,8 @@ Syfte: Skapa ett nytt bokningsobjekt i admin‑dashboard.
      - **Kopiera** på en befintlig rad
 
 2. **Popup: Bokningsobjekt**
-   - Modal med fält för bokningsobjekt.
+   - Se `docs/ux/components/booking-object-modal.md`.
+   - Modal med fält för bokningsobjekt och grupper.
    - Varje fält har hover‑hjälptext.
    - Knappar: **Spara** / **Avbryt**
 
@@ -18,6 +19,6 @@ Syfte: Skapa ett nytt bokningsobjekt i admin‑dashboard.
    - Tabellen uppdateras med den nya posten.
 
 ## Redigera bokningsobjekt
-- Fungerar på samma sätt som popupen för att skapa.
+- Fungerar på samma sätt som popupen för att skapa (förifylld).
 - Öppnas via **Redigera** i tabellen.
 - Knappar: **Spara** / **Avbryt**

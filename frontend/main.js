@@ -3,8 +3,11 @@ import { ServiceSelection } from "./screens/ServiceSelection.js";
 import { DateSelection } from "./screens/DateSelection.js";
 import { TimeSelection } from "./screens/TimeSelection.js";
 import { Confirmation } from "./screens/Confirmation.js";
+import { AdminDashboard } from "./screens/AdminDashboard.js";
+import { BookingObjectModal } from "./components/BookingObjectModal.js";
 import { createBookingSummary } from "./mocks/bookingSummary.js";
 import { bookings } from "./mocks/bookings.js";
+import { adminUser, bookingObjects, bookingGroups } from "./mocks/admin.js";
 import { services } from "./mocks/services.js";
 import { user } from "./mocks/user.js";
 import { getMonthAvailability, getMonthLabel } from "./mocks/availability.js";
@@ -13,6 +16,202 @@ import { createStore } from "./hooks/useStore.js";
 import { createElement, clearElement } from "./hooks/dom.js";
 
 const app = document.getElementById("app");
+const path = window.location.pathname;
+const hashPath = window.location.hash.replace(/^#/, "");
+const routePath = hashPath || path;
+
+if (routePath.startsWith("/admin/")) {
+  const adminStore = createStore({
+    bookingObjects,
+    bookingGroups,
+    modalOpen: false,
+    modalMode: "add",
+    selectorOpenKey: null,
+    groupModalOpen: false,
+    groupNameDraft: "",
+    modalForm: {
+      name: "",
+      type: "Tidspass",
+      slotDuration: "",
+      windowMin: "",
+      windowMax: "",
+      maxBookings: "",
+      groupId: "",
+      priceWeekday: "",
+      priceWeekend: "",
+      status: "Aktiv",
+      allowHouses: [],
+      allowGroups: [],
+      allowApartments: [],
+      denyHouses: [],
+      denyGroups: [],
+      denyApartments: [],
+    },
+    editId: null,
+  });
+
+  const openModal = (mode, item) => {
+    adminStore.setState({
+      modalOpen: true,
+      modalMode: mode,
+      editId: item?.id || null,
+      modalForm: item
+        ? {
+            name: item.name,
+            type: item.type,
+            slotDuration: item.slotDuration,
+            windowMin: item.windowMin,
+            windowMax: item.windowMax,
+            maxBookings: item.maxBookings,
+            groupId: item.groupId || "",
+            priceWeekday: item.priceWeekday,
+            priceWeekend: item.priceWeekend,
+            status: item.status,
+            allowHouses: item.allowHouses || [],
+            allowGroups: item.allowGroups || [],
+            allowApartments: item.allowApartments || [],
+            denyHouses: item.denyHouses || [],
+            denyGroups: item.denyGroups || [],
+            denyApartments: item.denyApartments || [],
+          }
+        : {
+            name: "",
+            type: "Tidspass",
+            slotDuration: "",
+            windowMin: "",
+            windowMax: "",
+            maxBookings: "",
+            groupId: "",
+            priceWeekday: "",
+            priceWeekend: "",
+            status: "Aktiv",
+            allowHouses: [],
+            allowGroups: [],
+            allowApartments: [],
+            denyHouses: [],
+            denyGroups: [],
+            denyApartments: [],
+          },
+    });
+  };
+
+  const renderAdmin = () => {
+    const state = adminStore.getState();
+    clearElement(app);
+    const shell = createElement("div", { className: "app-shell" });
+
+    const modal = BookingObjectModal({
+      open: state.modalOpen,
+      mode: state.modalMode,
+      form: state.modalForm,
+      bookingGroups: state.bookingGroups,
+      onChange: (field, value) =>
+        adminStore.setState((prev) => ({
+          modalForm: { ...prev.modalForm, [field]: value },
+        })),
+      onSelectGroup: (groupId) =>
+        adminStore.setState((prev) => {
+          if (!groupId) {
+            return { modalForm: { ...prev.modalForm, groupId: "" } };
+          }
+          const group = prev.bookingGroups.find((item) => item.id === groupId);
+          return {
+            modalForm: {
+              ...prev.modalForm,
+              groupId,
+              maxBookings: group?.maxBookings || prev.modalForm.maxBookings,
+            },
+          };
+        }),
+      onUpdateGroupMax: (value) =>
+        adminStore.setState((prev) => {
+          const groupId = prev.modalForm.groupId;
+          if (!groupId) {
+            return {};
+          }
+          return {
+            bookingGroups: prev.bookingGroups.map((group) =>
+              group.id === groupId ? { ...group, maxBookings: value } : group
+            ),
+          };
+        }),
+      groupModalOpen: state.groupModalOpen,
+      groupNameDraft: state.groupNameDraft,
+      onGroupNameChange: (value) => adminStore.setState({ groupNameDraft: value }),
+      onOpenGroupModal: () => adminStore.setState({ groupModalOpen: true, groupNameDraft: "" }),
+      onCloseGroupModal: () => adminStore.setState({ groupModalOpen: false }),
+      onCreateGroup: () =>
+        adminStore.setState((prev) => {
+          const name = prev.groupNameDraft?.trim();
+          if (!name) {
+            return { groupModalOpen: false };
+          }
+          const id = `group-${Date.now()}`;
+          const newGroup = {
+            id,
+            name,
+            maxBookings: prev.modalForm.maxBookings || "1",
+          };
+          return {
+            bookingGroups: [...prev.bookingGroups, newGroup],
+            modalForm: { ...prev.modalForm, groupId: id, maxBookings: newGroup.maxBookings },
+            groupModalOpen: false,
+            groupNameDraft: "",
+          };
+        }),
+      onClose: () => adminStore.setState({ modalOpen: false }),
+      selectorOpenKey: state.selectorOpenKey,
+      onOpenSelector: (key) => adminStore.setState({ selectorOpenKey: key }),
+      onCloseSelector: () => adminStore.setState({ selectorOpenKey: null }),
+      onSave: () =>
+        adminStore.setState((prev) => {
+          const form = prev.modalForm;
+          if (prev.modalMode === "edit") {
+            return {
+              bookingObjects: prev.bookingObjects.map((item) =>
+                item.id === prev.editId
+                  ? { ...item, ...form }
+                  : item
+              ),
+              modalOpen: false,
+            };
+          }
+          const newItem = {
+            id: `obj-${Date.now()}`,
+            ...form,
+          };
+          return {
+            bookingObjects: [...prev.bookingObjects, newItem],
+            modalOpen: false,
+          };
+        }),
+    });
+
+    shell.append(
+      Header({ apartmentId: adminUser.association }),
+      AdminDashboard({
+        adminUser,
+        bookingObjects: state.bookingObjects,
+        onAdd: () => openModal("add"),
+        onCopy: (item) => openModal("copy", item),
+        onEdit: (item) => openModal("edit", item),
+        modal,
+      })
+    );
+    app.append(shell);
+
+    if (state.groupModalOpen) {
+      const input = app.querySelector('[data-autofocus="group-name"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+  };
+
+  adminStore.subscribe(renderAdmin);
+  renderAdmin();
+} else if (routePath.startsWith("/user/")) {
 
 const today = new Date();
 const initialMonth = { year: today.getFullYear(), monthIndex: today.getMonth() };
@@ -98,7 +297,7 @@ const getWeekNumber = (date) => {
   );
 };
 
-const render = () => {
+  const render = () => {
   const state = store.getState();
 
   if (state.step === 1 && services.length === 1 && !state.selectedService) {
@@ -117,13 +316,13 @@ const render = () => {
         ? () => store.setState({ step: 1 })
         : () => store.setState({ step: 2 });
 
-  shell.append(
-    Header({
-      apartmentId: user.apartmentId,
-      showBack: Boolean(headerBack),
-      onBack: headerBack || undefined,
-    })
-  );
+    shell.append(
+      Header({
+        apartmentId: user.apartmentId,
+        showBack: Boolean(headerBack),
+        onBack: headerBack || undefined,
+      })
+    );
 
   let screen;
   let footer;
@@ -344,8 +543,27 @@ const render = () => {
   if (footer) {
     shell.append(footer);
   }
-  app.append(shell);
-};
+    app.append(shell);
+  };
 
-store.subscribe(render);
-render();
+  store.subscribe(render);
+  render();
+} else {
+  clearElement(app);
+  const shell = createElement("div", { className: "app-shell" });
+  shell.append(
+    Header({ apartmentId: "Välkommen" }),
+    createElement("div", {
+      className: "card",
+      children: [
+        createElement("div", { className: "screen-title", text: "BRF Bokningsportal" }),
+        createElement("div", {
+          className: "screen-subtitle",
+          text:
+            "Gå till /#/user/{UUID-token} för boende eller /#/admin/{UUID-token} för admin (hash används utan backend).",
+        }),
+      ],
+    })
+  );
+  app.append(shell);
+}

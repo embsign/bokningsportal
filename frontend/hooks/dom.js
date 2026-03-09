@@ -1,6 +1,14 @@
 export const createElement = (tag, options = {}, children = []) => {
   const element = document.createElement(tag);
-  const { className, text, attrs, onClick, children: optionChildren } = options;
+  const {
+    className,
+    text,
+    attrs,
+    onClick,
+    onInput,
+    onChange,
+    children: optionChildren,
+  } = options;
 
   if (className) {
     element.className = className;
@@ -17,6 +25,12 @@ export const createElement = (tag, options = {}, children = []) => {
   }
   if (onClick) {
     element.addEventListener("click", onClick);
+  }
+  if (onInput) {
+    element.addEventListener("input", onInput);
+  }
+  if (onChange) {
+    element.addEventListener("change", onChange);
   }
 
   const mergedChildren = [...(optionChildren || []), ...children];
