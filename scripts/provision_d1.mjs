@@ -115,7 +115,6 @@ const config = `
 name = "${workerName}"
 main = "backend/src/worker.ts"
 compatibility_date = "2024-11-01"
-migrations_dir = "db/migrations"
 
 [[d1_databases]]
 binding = "DB"
@@ -125,7 +124,10 @@ database_id = "${databaseId}"
 
 fs.writeFileSync("wrangler.generated.toml", config.trim() + "\n");
 
-execSync(`npx wrangler d1 migrations apply ${dbName} --config wrangler.generated.toml --remote`, {
+execSync(
+  `npx wrangler d1 migrations apply ${dbName} --config wrangler.generated.toml --remote --migrations-dir db/migrations`,
+  { stdio: "inherit" }
+);
   stdio: "inherit",
 });
 execSync(`npx wrangler d1 execute ${dbName} --file db/seed.sql --config wrangler.generated.toml --remote`, {
