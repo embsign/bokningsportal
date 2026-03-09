@@ -50,7 +50,7 @@ const getJsonBody = async (request: Request) => {
 const SESSION_TTL_DAYS = 14;
 const buildSessionCookie = (sessionToken: string) =>
   `session=${sessionToken}; HttpOnly; Path=/; SameSite=None; Secure`;
-const AUTH_LAST_SEEN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+const AUTH_LAST_SEEN_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const getAuthContext = async (db: D1Database, token: string) =>
   (await db
