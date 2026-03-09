@@ -124,10 +124,26 @@ database_id = "${databaseId}"
 
 fs.writeFileSync("wrangler.generated.toml", config.trim() + "\n");
 
-execSync(
-  `npx wrangler d1 migrations apply ${dbName} --config wrangler.generated.toml --remote --migrations-dir db/migrations`,
-  { stdio: "inherit" }
-);
+const migrationsSource = "db/migrations";
+const migrationsTarget = "migrations";
+if (!fs.existsSync(migrationsTarget)) {
+  fs.mkdirSync(migrationsTarget, { recursive: true });
+}
+for (const file of fs.readdirSync(migrationsSource)) {
+  if (file.endsWith(".sql")) {
+    fs.copyFileSync(`${migrationsSource}/${file}`, `${migrationsTarget}/${file}`);
+  }
+}
+
+execSync(`npx wrangler d1 migrations apply ${dbName} --config wrangler.generated.toml --remote`, {
+  stdio: "inherit",
+});
+
+for (const file of fs.readdirSync(migrationsTarget)) {
+  if (file.endsWith(".sql")) {
+    fs.unlinkSync(`${migrationsTarget}/${file}`);
+  }
+}
 execSync(`npx wrangler d1 execute ${dbName} --file db/seed.sql --config wrangler.generated.toml --remote`, {
   stdio: "inherit",
 });
