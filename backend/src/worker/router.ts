@@ -43,6 +43,8 @@ const getJsonBody = async (request: Request) => {
 };
 
 const SESSION_TTL_DAYS = 14;
+const buildSessionCookie = (sessionToken: string) =>
+  `session=${sessionToken}; HttpOnly; Path=/; SameSite=None; Secure`;
 
 const getSession = async (db: D1Database, token: string) => {
   const row = await db.prepare("SELECT * FROM sessions WHERE token = ?").bind(token).first();
@@ -259,7 +261,7 @@ const handleAccessTokenLogin = async (request: Request, env: Env) => {
       `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
     ).bind(sessionToken, accessToken.tenant_id, user.id, user.is_admin, expiresAt).run();
-    const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
+    const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
     return json(
       {
         booking_url: `/user/${token}`,
@@ -279,7 +281,7 @@ const handleAccessTokenLogin = async (request: Request, env: Env) => {
     `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
      VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
   ).bind(sessionToken, tenant.id, "account-owner", expiresAt).run();
-  const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
+  const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
   return json(
     {
       booking_url: `/admin/${token}`,
@@ -317,7 +319,7 @@ const handleRfidLogin = async (request: Request, env: Env) => {
      VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
   ).bind(newToken, tag.tenant_id, user.id).run();
 
-  const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
+  const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
   return json(
     {
       booking_url: `/user/${newToken}`,
