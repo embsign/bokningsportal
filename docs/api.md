@@ -28,11 +28,18 @@ Logga in via RFID‑UID (kiosk).
 **Body**:
 `{ "uid": "A1B2C3D4" }`
 
+**Notering**:
+- Returnerar befintlig access‑token för användaren om den finns.
+- Skapar en ny access‑token endast om ingen finns.
+
 **Response**:
 `{ "booking_url": "/user/{UUID-token}", "user": { "id": "...", "apartment_id": "1001", "is_admin": false } }`
 
 ### POST /api/kiosk/access-token
 Generera/rotera QR‑token för inloggning från kiosk.
+
+**Notering**:
+- Roterar access‑token för användaren och returnerar alltid en ny token.
 
 **Response**:
 `{ "access_token": "uuid", "login_url": "/user/{UUID-token}" }`

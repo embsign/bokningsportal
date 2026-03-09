@@ -377,17 +377,26 @@ const handleRfidLogin = async (request: Request, env: Env) => {
      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
   ).bind(sessionToken, tag.tenant_id, user.id, user.is_admin, expiresAt).run();
 
-  await env.DB.prepare("DELETE FROM access_tokens WHERE user_id = ? AND source = 'kiosk'").bind(user.id).run();
-  const newToken = crypto.randomUUID();
-  await env.DB.prepare(
-    `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
-  ).bind(newToken, tag.tenant_id, user.id).run();
+  const existingAccessToken = await env.DB.prepare(
+    "SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1"
+  ).bind(user.id).first();
+  const accessToken =
+    (existingAccessToken?.token as string | undefined) || crypto.randomUUID();
+  if (!existingAccessToken) {
+    await env.DB.prepare(
+      `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
+    ).bind(accessToken, tag.tenant_id, user.id).run();
+  } else {
+    await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
+      .bind(accessToken)
+      .run();
+  }
 
   const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
   return json(
     {
-      booking_url: `/user/${newToken}`,
+      booking_url: `/user/${accessToken}`,
       user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
     },
     { headers }
@@ -397,13 +406,13 @@ const handleRfidLogin = async (request: Request, env: Env) => {
 const handleKioskAccessToken = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
-  await env.DB.prepare("DELETE FROM access_tokens WHERE user_id = ? AND source = 'kiosk'").bind(auth.user.id).run();
-  const token = crypto.randomUUID();
+  await env.DB.prepare("DELETE FROM access_tokens WHERE user_id = ?").bind(auth.user.id).run();
+  const accessToken = crypto.randomUUID();
   await env.DB.prepare(
     `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
      VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
-  ).bind(token, auth.tenant.id, auth.user.id).run();
-  return json({ access_token: token, login_url: `/user/${token}` });
+  ).bind(accessToken, auth.tenant.id, auth.user.id).run();
+  return json({ access_token: accessToken, login_url: `/user/${accessToken}` });
 };
 
 const handleSession = async (request: Request, env: Env) => {
