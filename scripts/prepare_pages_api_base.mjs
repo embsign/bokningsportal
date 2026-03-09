@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const {
   API_BASE,
@@ -13,6 +15,8 @@ const {
 } = process.env;
 
 const workerPrefix = WORKER_NAME_PREFIX || "booking-api";
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const injectScriptPath = path.resolve(scriptDir, "inject_api_base.mjs");
 
 const getPrNumber = () => {
   const explicit = CF_PAGES_PULL_REQUEST_ID || PULL_REQUEST_NUMBER || PR_NUMBER;
@@ -56,7 +60,7 @@ const buildApiBase = () => {
 };
 
 const apiBase = buildApiBase();
-execFileSync("node", ["scripts/inject_api_base.mjs"], {
+execFileSync(process.execPath, [injectScriptPath], {
   stdio: "inherit",
   env: { ...process.env, API_BASE: apiBase },
 });
