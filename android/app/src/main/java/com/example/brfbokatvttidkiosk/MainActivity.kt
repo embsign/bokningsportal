@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -195,6 +196,7 @@ private sealed interface UiState {
     data class Showing(val url: String, val bookingPath: String) : UiState
 }
 
+@Composable
 private fun IdleScreen() {
     Box(
         modifier = Modifier
@@ -210,6 +212,7 @@ private fun IdleScreen() {
     }
 }
 
+@Composable
 private fun LoadingScreen() {
     Box(
         modifier = Modifier
@@ -225,6 +228,7 @@ private fun LoadingScreen() {
     }
 }
 
+@Composable
 private fun WebScreen(
     url: String,
     onWebViewCreated: (WebView) -> Unit,
