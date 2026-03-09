@@ -7,6 +7,18 @@ const parseError = async (response) => {
   return "internal_error";
 };
 
+const isLocalHost = (hostname) => hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+
+const isLocalApiBase = (value) => {
+  try {
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const url = new URL(value, origin);
+    return isLocalHost(url.hostname);
+  } catch {
+    return false;
+  }
+};
+
 const getApiBase = () => {
   if (typeof window !== "undefined" && window.API_BASE) {
     return window.API_BASE.replace(/\/$/, "");
@@ -14,7 +26,16 @@ const getApiBase = () => {
   if (typeof document !== "undefined") {
     const meta = document.querySelector('meta[name="api-base"]');
     if (meta?.content) {
-      return meta.content.replace(/\/$/, "");
+      const value = meta.content.replace(/\/$/, "");
+      // Skyddar deploy-miljö mot felaktigt kvarlämnad localhost-konfiguration.
+      if (
+        typeof window !== "undefined" &&
+        !isLocalHost(window.location.hostname) &&
+        isLocalApiBase(value)
+      ) {
+        return "/api";
+      }
+      return value;
     }
   }
   return "/api";
@@ -22,12 +43,13 @@ const getApiBase = () => {
 
 export const apiRequest = async (path, options = {}) => {
   const base = getApiBase();
+  const headers = new Headers(options.headers || {});
+  if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${base}${path}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers,
     ...options,
   });
 

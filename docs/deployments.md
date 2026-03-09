@@ -53,6 +53,15 @@ Exempel:
 <meta name="api-base" content="https://booking-api.example.workers.dev/api" />
 ```
 
+### Auto‑resolution i build
+
+`scripts/prepare_pages_api_base.mjs` räknar ut rätt API‑bas automatiskt:
+- Production (`main`/`master`) → `https://booking-api.<WORKER_BASE_DOMAIN>/api`
+- PR preview (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`, eller branchformat `pr-123`) → `https://booking-api-pr-123.<WORKER_BASE_DOMAIN>/api`
+- Fallback utan PR‑nummer → production‑worker
+
+Detta gör att frontend kan deployas med rätt worker‑namn även för PR‑previews.
+
 ## Lokalt
 - Backend (Node): `npm run dev` i `backend/`
 - Frontend: `npx serve -s -l 5173` i `frontend/`
