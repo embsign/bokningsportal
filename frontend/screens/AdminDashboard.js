@@ -31,14 +31,29 @@ export const AdminDashboard = ({
   onAdd,
   onCopy,
   onEdit,
+  onImportUsers,
+  onEditUsers,
+  onCreateReport,
   modal,
+  importModal,
+  userPickerModal,
+  editUserModal,
+  reportModal,
 }) => {
   const userSection = sectionCard({
     title: "Användare",
     description: "Hantera boende och behörigheter.",
     actions: [
-      createElement("button", { className: "secondary-button admin-btn-edit", text: "Redigera" }),
-      createElement("button", { className: "secondary-button admin-btn-add", text: "Importera" }),
+      createElement("button", {
+        className: "secondary-button admin-btn-edit",
+        text: "Redigera",
+        onClick: onEditUsers,
+      }),
+      createElement("button", {
+        className: "secondary-button admin-btn-add",
+        text: "Importera",
+        onClick: onImportUsers,
+      }),
     ],
   });
 
@@ -123,8 +138,11 @@ export const AdminDashboard = ({
     title: "Debiteringsunderlag / Rapporter",
     description: "Export och sammanställningar för debitering.",
     actions: [
-      createElement("button", { className: "secondary-button", text: "Öppna rapporter" }),
-      createElement("button", { className: "secondary-button", text: "Exportera" }),
+      createElement("button", {
+        className: "secondary-button admin-btn-add",
+        text: "Skapa rapport",
+        onClick: onCreateReport,
+      }),
     ],
   });
 
@@ -146,6 +164,10 @@ export const AdminDashboard = ({
         children: [userSection, bookingSection, reportsSection],
       }),
       modal,
+      importModal,
+      userPickerModal,
+      editUserModal,
+      reportModal,
     ],
   });
 };

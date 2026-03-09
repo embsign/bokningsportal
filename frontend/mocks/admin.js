@@ -67,3 +67,36 @@ export const bookingObjects = [
     denyApartments: [],
   },
 ];
+
+export const users = [
+  {
+    id: "user-1001",
+    identity: "1-LGH1001 /1001 Kor",
+    apartmentId: "1001",
+    house: "1",
+    groups: ["Boende"],
+    rfid: "04A1B2C3",
+    active: true,
+    admin: false,
+  },
+  {
+    id: "user-1108",
+    identity: "1-LGH1012 /1108 iLoq Blå",
+    apartmentId: "1108",
+    house: "1",
+    groups: ["Boende", "Gym Norra gaveln Hus 1"],
+    rfid: "04D9E2F1",
+    active: true,
+    admin: true,
+  },
+  {
+    id: "user-1205",
+    identity: "6-LGH1133 /1205 tag1",
+    apartmentId: "1205",
+    house: "6",
+    groups: ["Boende H6"],
+    rfid: "0455AA09",
+    active: false,
+    admin: false,
+  },
+];

@@ -13,6 +13,7 @@ Layout (wireframe):
   1) **Användare**
      - Kort beskrivning
      - Knappar: **Redigera**, **Importera**
+     - Redigera‑flöde: se `docs/ux/flows/admin/edit-user.md`
   2) **Bokningsobjekt**
      - Kort beskrivning
      - Knappar: **Redigera**, **Lägg till**
@@ -20,7 +21,8 @@ Layout (wireframe):
      - Modal för redigera/kopiera: se `docs/ux/components/booking-object-modal.md`
   3) **Debiteringsunderlag / Rapporter**
      - Kort beskrivning
-     - Knappar: **Öppna rapporter**, **Exportera**
+     - Knappar: **Skapa rapport**
+     - Rapport‑flöde: se `docs/ux/flows/admin/create-report.md`
 
 Regler:
 - Desktop‑first (mus/tangentbord).

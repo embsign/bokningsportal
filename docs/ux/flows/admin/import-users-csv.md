@@ -20,11 +20,16 @@ Se komponentbeskrivning: `docs/ux/components/import-users-csv.md`.
 
 4. **Avancerat**
    - Regex: maska ut **Hus/Trapphus** från Identitet
-   - Regex: maska ut **Lägenhetsnummer** från Identitet
-   - Mall för unikt ID (t.ex. `{hus}-{lägenhetsnummer}`)
+   - Regex: maska ut **Unik lägenhetsidentitet** från Identitet
    - Separator för **Behörigheter** (lista, t.ex. `|`)
+   - Visa exempelrader med regex‑effekt (grupper 1‑2‑3)
 
-5. **Förhandsgranskning**
+5. **Adminbehörigheter**
+   - Välj vilka behörighetsgrupper som får administratörsbehörighet
+   - Välj‑popup med checkboxar
+   - Valfritt (kan lämnas tomt)
+
+6. **Förhandsgranskning**
    - Visa lista över användare som skulle läsas in.
    - Tydlig sammanfattning:
      - Nya rader
@@ -37,7 +42,14 @@ Se komponentbeskrivning: `docs/ux/components/import-users-csv.md`.
      - Uppdatera ändrade (checkbox)
      - **Importera** (VIsa tydligt hur många som läggs till / uppdateras / raderas)
 
-6. **Import**
+   - Kolumner:
+     - Identitet
+     - Lägenhets ID
+     - Hus/Trapphus
+     - Admin (Ja/Nej)
+     - Status
+
+7. **Import**
    - Statusbar visar progress under importen.
 
 Regler:

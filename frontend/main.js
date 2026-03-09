@@ -5,9 +5,13 @@ import { TimeSelection } from "./screens/TimeSelection.js";
 import { Confirmation } from "./screens/Confirmation.js";
 import { AdminDashboard } from "./screens/AdminDashboard.js";
 import { BookingObjectModal } from "./components/BookingObjectModal.js";
+import { ImportUsersModal } from "./components/ImportUsersModal.js";
+import { UserPickerModal } from "./components/UserPickerModal.js";
+import { EditUserModal } from "./components/EditUserModal.js";
+import { ReportModal } from "./components/ReportModal.js";
 import { createBookingSummary } from "./mocks/bookingSummary.js";
 import { bookings } from "./mocks/bookings.js";
-import { adminUser, bookingObjects, bookingGroups } from "./mocks/admin.js";
+import { adminUser, bookingObjects, bookingGroups, users } from "./mocks/admin.js";
 import { services } from "./mocks/services.js";
 import { user } from "./mocks/user.js";
 import { getMonthAvailability, getMonthLabel } from "./mocks/availability.js";
@@ -21,14 +25,76 @@ const hashPath = window.location.hash.replace(/^#/, "");
 const routePath = hashPath || path;
 
 if (routePath.startsWith("/admin/")) {
+  const buildRegexEffect = (samples, regexSource) => {
+    if (!regexSource) {
+      return samples.map((original) => ({ original, value: "—" }));
+    }
+    let regex;
+    try {
+      regex = new RegExp(regexSource);
+    } catch (error) {
+      return samples.map((original) => ({ original, value: "Ogiltig regex" }));
+    }
+    return samples.map((original) => {
+      const match = regex.exec(original);
+      if (!match) {
+        return { original, value: "Ingen träff" };
+      }
+      if (match.length > 1) {
+        return { original, value: match.slice(1).join("-") };
+      }
+      return { original, value: match[0] };
+    });
+  };
+
+  const houseSamples = [
+    "1-LGH1001 /1001 Kor tag1",
+    "1-LGH1012 /1108 iLoq Blå",
+    "6-LGH1132/1204 iLoq Grön",
+    "6-LGH1133 /1205 tag1",
+    "6-LGH1133/1205 iLoq Röd",
+  ];
+
+  const apartmentSamples = [
+    "1-LGH1001 /1001 Kor tag1",
+    "1-LGH1012 /1108 iLoq Blå",
+    "6-LGH1132/1204 iLoq Grön",
+    "6-LGH1133 /1205 tag1",
+    "6-LGH1133/1205 iLoq Röd",
+  ];
+
   const adminStore = createStore({
     bookingObjects,
     bookingGroups,
+    users,
     modalOpen: false,
     modalMode: "add",
     selectorOpenKey: null,
     groupModalOpen: false,
     groupNameDraft: "",
+    importOpen: false,
+    importStep: 1,
+    importFileName: "",
+    importRowCount: 0,
+    importFocus: "houseRegex",
+    userPickerOpen: false,
+    userQuery: "",
+    editUserOpen: false,
+    editUserId: null,
+    editUserForm: {
+      identity: "",
+      apartmentId: "",
+      house: "",
+      groups: [],
+      rfid: "",
+      active: true,
+      admin: false,
+    },
+    userSelectorOpen: false,
+    reportOpen: false,
+    reportStep: 1,
+    reportMonth: "",
+    reportBookingObjectId: "",
     modalForm: {
       name: "",
       type: "Tidspass",
@@ -187,6 +253,245 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
+    const importModal = ImportUsersModal({
+      open: state.importOpen,
+      step: state.importStep,
+      form: {
+        fileName: state.importFileName,
+        rowCount: state.importRowCount || 17,
+        houseRegex: state.houseRegex || "",
+        apartmentRegex: state.apartmentRegex || "",
+        groupSeparator: state.groupSeparator || "|",
+        addNew: state.addNew !== false,
+        updateChanged: state.updateChanged !== false,
+        removeMissing: state.removeMissing === true,
+        progress: state.importProgress || 0,
+        houseField: state.houseField || "Placering",
+        apartmentField: state.apartmentField || "Lägenhet",
+        adminGroups: state.adminGroups || [],
+        adminSelectorOpen: state.adminSelectorOpen || false,
+        adminGroupOptions: ["Styrelse", "Förvaltare", "Jour"],
+        effectHouse: buildRegexEffect(houseSamples, state.houseRegex || ""),
+        effectApartment: buildRegexEffect(apartmentSamples, state.apartmentRegex || ""),
+        effectGroups: [
+          { original: "Boende|Gym Norra gaveln Hus 1", values: ["Boende", "Gym Norra gaveln Hus 1"] },
+          { original: "Boende", values: ["Boende"] },
+          { original: "Boende H6", values: ["Boende H6"] },
+        ],
+      },
+      mapping: {
+        headers: [
+          "Namn",
+          "Identitetstyp (0=em 1=kod 2=rf 3=mifare)",
+          "Identitetsid",
+          "Identitetsstatus (0=på 1=av)",
+          "PIN",
+          "Starttid",
+          "Sluttid",
+          "Behörighetsgrupp",
+          "Email",
+          "Person Telefonnr",
+          "Person Snabbnr",
+          "Person Linje (0=lokal 1=analog 2=extern)",
+          "OrgGrupp",
+          "Placering",
+          "Våning",
+          "Lägenhet",
+          "Referensid",
+          "OrgTelefonnr",
+          "OrgSnabbnr",
+          "OrgLinje (0=lokal 1=analog 2=extern)",
+          "Fritext1",
+          "Fritext2",
+          "Frinummer",
+          "Utökad fritext",
+          "Dörrstyrning",
+          "Relästyrning",
+        ],
+        identityField: state.identityField || "OrgGrupp",
+        groupsField: state.groupsField || "Behörighetsgrupp",
+        rfidField: state.rfidField || "Identitetsid",
+        activeField: state.activeField || "Identitetsstatus (0=på 1=av)",
+      },
+      preview: {
+        newCount: 12,
+        updatedCount: 5,
+        unchangedCount: 94,
+        removedCount: 3,
+        rows: [
+          {
+            identity: "1-LGH1001 /1001 Kor tag1",
+            apartmentId: "1001",
+            house: "1",
+            status: "Ny",
+            statusClass: "preview-new",
+            admin: true,
+          },
+          {
+            identity: "1-LGH1001 /1001 Kor tag3",
+            apartmentId: "1001",
+            house: "1",
+            status: "Oförändrad",
+            statusClass: "preview-unchanged",
+            admin: false,
+          },
+          {
+            identity: "1-LGH1012 /1108 iLoq Blå",
+            apartmentId: "1108",
+            house: "1",
+            status: "Uppdateras",
+            statusClass: "preview-updated",
+            admin: true,
+          },
+          {
+            identity: "6-LGH1133 /1205 tag1",
+            apartmentId: "1205",
+            house: "6",
+            status: "Oförändrad",
+            statusClass: "preview-unchanged",
+            admin: false,
+          },
+          {
+            identity: "6-LGH1133/1205 iLoq Röd",
+            apartmentId: "1205",
+            house: "6",
+            status: "Tas bort",
+            statusClass: "preview-removed",
+            admin: false,
+          },
+        ],
+      },
+      onClose: () => adminStore.setState({ importOpen: false, importStep: 1 }),
+      onNext: () =>
+        adminStore.setState((prev) => ({ importStep: Math.min(prev.importStep + 1, 5) })),
+      onPrev: () =>
+        adminStore.setState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
+      onImport: () =>
+        adminStore.setState({
+          importStep: 6,
+          importProgress: 35,
+        }),
+      onChange: (field, value) =>
+        adminStore.setState((prev) => {
+          switch (field) {
+            case "fileName":
+              return { importFileName: value, importRowCount: 17 };
+            case "identityField":
+            case "groupsField":
+            case "rfidField":
+            case "activeField":
+            case "houseRegex":
+            case "apartmentRegex":
+            case "houseField":
+            case "apartmentField":
+            case "groupSeparator":
+            case "addNew":
+            case "updateChanged":
+            case "removeMissing":
+            case "adminGroups":
+            case "adminSelectorOpen":
+            case "importFocus":
+              return { [field]: value };
+            default:
+              return prev;
+          }
+        }),
+    });
+
+    const userPickerModal = UserPickerModal({
+      open: state.userPickerOpen,
+      users: state.users,
+      query: state.userQuery,
+      onQueryChange: (value) => adminStore.setState({ userQuery: value }),
+      onSelect: (user) =>
+        adminStore.setState({
+          userPickerOpen: false,
+          userQuery: "",
+          editUserOpen: true,
+          editUserId: user.id,
+          editUserForm: {
+            identity: user.identity,
+            apartmentId: user.apartmentId,
+            house: user.house,
+            groups: user.groups || [],
+            rfid: user.rfid || "",
+            active: user.active !== false,
+            admin: user.admin === true,
+          },
+        }),
+      onClose: () => adminStore.setState({ userPickerOpen: false, userQuery: "" }),
+    });
+
+    const editUserModal = EditUserModal({
+      open: state.editUserOpen,
+      form: state.editUserForm,
+      groupOptions: ["Boende", "Styrelse", "Gym Norra gaveln Hus 1", "Boende H6", "Bastu"],
+      selectorOpen: state.userSelectorOpen,
+      onOpenSelector: () => adminStore.setState({ userSelectorOpen: true }),
+      onCloseSelector: () => adminStore.setState({ userSelectorOpen: false }),
+      onChange: (field, value) =>
+        adminStore.setState((prev) => ({ editUserForm: { ...prev.editUserForm, [field]: value } })),
+      onClose: () => adminStore.setState({ editUserOpen: false, userSelectorOpen: false }),
+      onSave: () =>
+        adminStore.setState((prev) => ({
+          users: prev.users.map((user) =>
+            user.id === prev.editUserId ? { ...user, ...prev.editUserForm } : user
+          ),
+          editUserOpen: false,
+          userSelectorOpen: false,
+        })),
+    });
+
+    const reportModal = ReportModal({
+      open: state.reportOpen,
+      step: state.reportStep,
+      form: {
+        month: state.reportMonth,
+        bookingObjectId: state.reportBookingObjectId,
+      },
+      bookingObjects: state.bookingObjects,
+      onClose: () =>
+        adminStore.setState({ reportOpen: false, reportStep: 1, reportMonth: "", reportBookingObjectId: "" }),
+      onNext: () =>
+        adminStore.setState((prev) => ({ reportStep: Math.min(prev.reportStep + 1, 3) })),
+      onPrev: () =>
+        adminStore.setState((prev) => ({ reportStep: Math.max(prev.reportStep - 1, 1) })),
+      onDownload: () => {
+        const objectName =
+          state.bookingObjects.find((item) => item.id === state.reportBookingObjectId)?.name || "Okänt objekt";
+        const csv = [
+          "Bokningsobjekt,Månad,Antal bokningar,Summa (kr)",
+          `${objectName},${state.reportMonth},12,1800`,
+        ].join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `debiteringsunderlag-${state.reportMonth || "rapport"}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      },
+      onChange: (field, value) =>
+        adminStore.setState((prev) => {
+          switch (field) {
+            case "month":
+              return { reportMonth: value };
+            case "bookingObjectId":
+              return { reportBookingObjectId: value };
+            default:
+              return prev;
+          }
+        }),
+    });
+
+    if (state.importStep === 5 && (state.importProgress || 0) < 100) {
+      setTimeout(() => {
+        adminStore.setState((prev) => ({
+          importProgress: Math.min((prev.importProgress || 0) + 15, 100),
+        }));
+      }, 400);
+    }
+
     shell.append(
       Header({ apartmentId: adminUser.association }),
       AdminDashboard({
@@ -195,13 +500,28 @@ if (routePath.startsWith("/admin/")) {
         onAdd: () => openModal("add"),
         onCopy: (item) => openModal("copy", item),
         onEdit: (item) => openModal("edit", item),
+        onImportUsers: () => adminStore.setState({ importOpen: true, importStep: 1 }),
+        onEditUsers: () => adminStore.setState({ userPickerOpen: true }),
+        onCreateReport: () => adminStore.setState({ reportOpen: true, reportStep: 1 }),
         modal,
+        importModal,
+        userPickerModal,
+        editUserModal,
+        reportModal,
       })
     );
     app.append(shell);
 
     if (state.groupModalOpen) {
       const input = app.querySelector('[data-autofocus="group-name"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+
+    if (state.importOpen && state.importStep === 3 && state.importFocus) {
+      const input = app.querySelector(`[data-autofocus="${state.importFocus}"]`);
       if (input) {
         input.focus();
         input.setSelectionRange?.(input.value.length, input.value.length);
