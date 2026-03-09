@@ -69,7 +69,7 @@ if (env === "preview" && !branchSuffix && (!prNumber || !/^\d+$/.test(prNumber))
 
 const previewSuffix = branchSuffix || `pr-${prNumber}`;
 const dbName = env === "production" ? "booking-prod" : `booking-${previewSuffix}`;
-const workerName = env === "production" ? workerPrefix : `${workerPrefix}-${previewSuffix}`;
+const workerName = env === "production" ? workerPrefix : `${previewSuffix}-${workerPrefix}`;
 
 const runWrangler = (command) => {
   try {

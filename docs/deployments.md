@@ -14,7 +14,7 @@
 - Deploy triggas på `main`.
 
 ### Preview (PR)
-- Worker‑namn: `bokningsportal-{BRANCH_SLUG}` (fallback `bokningsportal-pr-{PR_NUMBER}`)
+- Worker‑namn: `{BRANCH_SLUG}-bokningsportal` (fallback `pr-{PR_NUMBER}-bokningsportal`)
 - DB‑namn: `booking-{BRANCH_SLUG}` (fallback `booking-pr-{PR_NUMBER}`)
 - Deploy triggas på `pull_request`.
 - Branch‑namn används primärt för att matcha Pages preview‑builds.
@@ -57,9 +57,9 @@ Exempel:
 
 `scripts/prepare_pages_api_base.mjs` räknar ut rätt API‑bas automatiskt:
 - Production (`main`/`master`) → `https://bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- Preview branch → `https://bokningsportal-<branch-slug>.<WORKER_BASE_DOMAIN>/api`
-- PR fallback (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`) → `https://bokningsportal-pr-123.<WORKER_BASE_DOMAIN>/api`
-- Fallback utan PR‑nummer → production‑worker
+- Preview branch → `https://<branch-slug>-bokningsportal.<WORKER_BASE_DOMAIN>/api`
+- PR fallback (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`) → `https://pr-123-bokningsportal.<WORKER_BASE_DOMAIN>/api`
+- Om preview‑namn inte kan härledas failar builden (ingen fallback till production).
 
 Detta gör att frontend kan deployas med rätt worker‑namn även för PR‑previews.
 
