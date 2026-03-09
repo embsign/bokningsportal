@@ -115,6 +115,7 @@ const config = `
 name = "${workerName}"
 main = "backend/src/worker.ts"
 compatibility_date = "2024-11-01"
+migrations_dir = "db/migrations"
 
 [[d1_databases]]
 binding = "DB"
