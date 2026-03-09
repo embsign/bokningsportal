@@ -128,8 +128,6 @@ execSync(
   `npx wrangler d1 migrations apply ${dbName} --config wrangler.generated.toml --remote --migrations-dir db/migrations`,
   { stdio: "inherit" }
 );
-  stdio: "inherit",
-});
 execSync(`npx wrangler d1 execute ${dbName} --file db/seed.sql --config wrangler.generated.toml --remote`, {
   stdio: "inherit",
 });
