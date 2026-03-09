@@ -4,12 +4,11 @@ Regler och konventioner för frontend (LLM‑agentens referens).
 
 ## Tenant‑detektion
 - Web‑access använder UUID‑access‑token och behöver inte välja tenant manuellt.
-- Kiosk‑läge får tenant via `X-BRF-ID` (eller motsvarande header).
+- Kiosk‑läge får tenant via RFID‑login där UID resolves i backend.
 
 ## API‑anrop
-- Bas‑URL: `VITE_API_BASE` eller default `/api`.
+- Bas‑URL: `API_BASE` (via `window.API_BASE` eller meta‑tagg) eller default `/api`.
 - Alla anrop använder `credentials: "include"`.
-- `X-BRF-ID` skickas när tenant är resolverad (ej för publika endpoints).
 - `Content-Type: application/json` används för JSON‑payloads.
 
 ## Login‑flöden

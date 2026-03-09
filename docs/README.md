@@ -13,6 +13,8 @@ LLM‑agent ska kunna återskapa applikationen (funktion, regler, API, data och 
 - API‑spec: `docs/api.md`
 - Bokningslogik: `docs/booking-logic.md`
 - Databas (D1): `docs/database.md`
+- Miljövariabler: `docs/env.md`
+- Deployments: `docs/deployments.md`
 - Features: `docs/features/`
 - Regler: `docs/rules/`
 
@@ -39,12 +41,12 @@ LLM‑agent ska kunna återskapa applikationen (funktion, regler, API, data och 
 
 ## Nyckelfakta
 - Web‑access använder UUID‑access‑token som avgör tenant automatiskt.
-- Kiosk‑läge körs som Android‑app som sätter `X-BRF-ID` (eller motsvarande header) för tenant.
+- Kiosk‑läge körs som Android‑app som resolve:ar tenant via RFID UID‑uppslag.
 - API ligger under `/api` och proxas via Pages Function i produktion.
 - Autentisering är sessionsbaserad (HttpOnly cookie).
 - Systemet använder UTC utan hantering av lokala tidszoner.
 
 ## Missing Information / Open Questions
-- Exakt lista på konfigurationsvariabler (Pages/Worker env vars) och defaultvärden.
+- Operativa rutiner (backup/restore av D1, loggning/monitorering, incident‑flöde).
 - Operativa rutiner (backup/restore av D1, loggning/monitorering, incident‑flöde).
 - Eventuella SLA:er/uppsatta krav på svarstider och kapacitet.

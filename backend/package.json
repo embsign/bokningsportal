@@ -1,0 +1,16 @@
+{
+  "name": "embsign-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --config ../wrangler.toml --port 8787",
+    "dev:remote": "wrangler dev --config ../wrangler.toml"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "miniflare": "^3.20240524.1",
+    "typescript": "^5.5.4",
+    "wrangler": "^3.66.0"
+  }
+}

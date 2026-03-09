@@ -9,7 +9,7 @@ Regler och konventioner för backend (LLM‑agentens referens).
 
 ## Tenant‑resolution (API)
 - Web‑access: tenant härleds från UUID access‑token (auto‑login).
-- Kiosk‑läge: tenant kommer från `X-BRF-ID` (eller motsvarande header) satt av Android‑appens WebView.
+- Kiosk‑läge: tenant resolves via RFID UID‑uppslag i `/api/rfid-login`.
 
 Om tenant saknas eller är inaktiv returneras `400 invalid_tenant`.
 

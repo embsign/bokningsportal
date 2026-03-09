@@ -33,6 +33,7 @@ Regler för bokning som ska följas av både UI och backend.
 - Vanlig användare kan bara avboka sina egna bokningar.
 - Admin kan avboka alla bokningar.
 - Admin kan skapa/tar bort blockeringar, som inte får överlappa bokningar/block.
+- UI ska använda `CancelBookingModal` för att bekräfta avbokning när användaren klickar på sin egen bokning.
 
 ## Felkoder (översikt)
 - `invalid_time_range`

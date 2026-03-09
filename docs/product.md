@@ -29,8 +29,13 @@ Detaljerad logik finns i `docs/booking-logic.md`, API‑ytor i `docs/api.md`.
    spara kontakt‑email, få admin‑åtkomsttoken i sista steget av setup.
 2. **Resident booking:** logga in via RFID på kiosk, generera QR‑länk för mobil inloggning,
    boka, granska bokningar och avboka vid behov.
-3. **POS RFID login:** skanna tagg i Android‑appen, öppna WebView med `X-BRF-ID`, generera QR‑länk vid behov.
+3. **POS RFID login:** skanna tagg i Android‑appen, resolve tenant via UID‑uppslag, öppna WebView efter login, generera QR‑länk vid behov.
 4. **Admin operations:** log in as admin, review calendar, block slots, manage resources, import RFID tags, review user list.
+
+## Routes (UX)
+- `/` landningssida (se `docs/ux/landing.md`)
+- `/user/{UUID-token}` boende‑inloggning via personlig QR‑kod
+- `/admin/{UUID-token}` account‑owner/admin‑inloggning
 
 ## Non Goals
 
