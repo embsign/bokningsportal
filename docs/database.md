@@ -1,129 +1,171 @@
-# Database Schema
+# Datamodell (uppdaterad)
 
-Schema is defined by D1 migrations in `cloudflare/worker/migrations`.
+Denna modell speglar nuvarande frontend‑implementation och UX‑flöden.
 
-## Tables
+## Översikt
+
+Huvuddomäner:
+- **Boende/användare** (user)
+- **Bokningsobjekt** (booking object)
+- **Bokningar** (bookings)
+- **Behörighetsgrupper** (access groups)
+- **Inloggning** (access tokens, sessions, RFID)
+- **Adminflöden** (importregler, rapporter)
+
+## Entiteter
 
 ### tenants
-- **Fields**:
+- **Syfte**: BRF/tenant.
+- **Fält**:
   - `id` (TEXT, PK)
   - `name` (TEXT, NOT NULL)
-  - `admin_apartment_id` (TEXT, NOT NULL, default `admin`)
   - `is_active` (INTEGER, NOT NULL, default `1`)
   - `created_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
-  - `admin_email` (TEXT, nullable) — contact email only (not for auth)
   - `organization_number` (TEXT, nullable)
-- **Relationships**: has many `tenant_configs`, `apartments`, `resources`, `bookings`,
-  `booking_blocks`, `sessions`, `rfid_tags`.
+  - `admin_email` (TEXT, nullable)
 
-### tenant_configs
-- **Fields**:
+### users
+- **Syfte**: Boende/användare (lägenhet/identitet).
+- **Fält**:
+  - `id` (TEXT, PK) — intern unik identifierare
   - `tenant_id` (TEXT, NOT NULL)
-  - `key` (TEXT, NOT NULL)
-  - `value` (TEXT, NOT NULL)
-  - `updated_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
-- **Constraints**: PK (`tenant_id`, `key`), FK to `tenants`.
-
-### apartments
-- **Fields**:
-  - `tenant_id` (TEXT, NOT NULL)
-  - `id` (TEXT, NOT NULL)
-  - `is_active` (INTEGER, NOT NULL, default `1`)
+  - `identity` (TEXT, NOT NULL) — visningsidentitet (t.ex. "1-LGH1001 /1001")
+  - `apartment_id` (TEXT, NOT NULL) — lägenhets‑ID
   - `house` (TEXT, nullable)
-  - `lgh_internal` (TEXT, nullable)
-  - `skv_lgh` (TEXT, nullable)
-  - `access_groups` (TEXT, nullable)
-- **Constraints**: PK (`tenant_id`, `id`), FK to `tenants`.
+  - `is_active` (INTEGER, NOT NULL, default `1`)
+  - `is_admin` (INTEGER, NOT NULL, default `0`) — manuellt admin‑flagga
+  - `created_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
+  - `updated_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
 
-### resources
-- **Fields**:
-  - `id` (INTEGER, PK, autoincrement)
+### access_groups
+- **Syfte**: Behörighetsgrupper som kan tilldelas användare.
+- **Fält**:
+  - `id` (TEXT, PK)
   - `tenant_id` (TEXT, NOT NULL)
   - `name` (TEXT, NOT NULL)
-  - `booking_type` (TEXT, NOT NULL, default `time-slot`)
-  - `category` (TEXT, NOT NULL, default `""`)
-  - `slot_duration_minutes` (INTEGER, NOT NULL, default `60`)
-  - `slot_start_hour` (INTEGER, NOT NULL, default `6`)
-  - `slot_end_hour` (INTEGER, NOT NULL, default `22`)
-  - `max_future_days` (INTEGER, NOT NULL, default `30`)
-  - `min_future_days` (INTEGER, NOT NULL, default `0`)
-  - `max_bookings` (INTEGER, NOT NULL, default `2`)
-  - `allow_houses` (TEXT, NOT NULL, default `""`)
-  - `deny_apartment_ids` (TEXT, NOT NULL, default `""`)
+
+### user_access_groups
+- **Syfte**: Many‑to‑many mellan users och access_groups.
+- **Fält**:
+  - `user_id` (TEXT, NOT NULL)
+  - `group_id` (TEXT, NOT NULL)
+- **Constraints**: PK (`user_id`, `group_id`)
+
+### rfid_tags
+- **Syfte**: Koppling RFID‑UID → user.
+- **Fält**:
+  - `tenant_id` (TEXT, NOT NULL)
+  - `uid` (TEXT, NOT NULL)
+  - `user_id` (TEXT, NOT NULL)
   - `is_active` (INTEGER, NOT NULL, default `1`)
-  - `price_weekday_cents` (INTEGER, NOT NULL, default `0`)
-  - `price_weekend_cents` (INTEGER, NOT NULL, default `0`)
-  - `price_cents` (INTEGER, NOT NULL, default `0`)
-  - `is_billable` (INTEGER, NOT NULL, default `0`)
-- **Constraints**: FK to `tenants`.
+- **Constraints**: PK (`tenant_id`, `uid`)
 
-### bookings
-- **Fields**:
-  - `id` (INTEGER, PK, autoincrement)
-  - `tenant_id` (TEXT, NOT NULL)
-  - `apartment_id` (TEXT, NOT NULL)
-  - `resource_id` (INTEGER, NOT NULL)
-  - `start_time` (TEXT, NOT NULL)
-  - `end_time` (TEXT, NOT NULL)
-  - `is_billable` (INTEGER, NOT NULL, default `0`)
-- **Constraints**: FK to `tenants`, FK to `resources`.
-
-### booking_blocks
-- **Fields**:
-  - `id` (INTEGER, PK, autoincrement)
-  - `tenant_id` (TEXT, NOT NULL)
-  - `resource_id` (INTEGER, NOT NULL)
-  - `start_time` (TEXT, NOT NULL)
-  - `end_time` (TEXT, NOT NULL)
-  - `reason` (TEXT, NOT NULL, default `""`)
-  - `created_by` (TEXT, NOT NULL, default `admin`)
-  - `created_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
-- **Constraints**: FK to `tenants`, FK to `resources`.
-
-### sessions
-- **Fields**:
+### access_tokens
+- **Syfte**: QR‑/kiosk‑inloggning via UUID‑token.
+- **Fält**:
   - `token` (TEXT, PK)
   - `tenant_id` (TEXT, NOT NULL)
-  - `apartment_id` (TEXT, NOT NULL)
+  - `user_id` (TEXT, NOT NULL)
+  - `created_at` (TEXT, NOT NULL)
+  - `last_used_at` (TEXT, nullable)
+  - `revoked_at` (TEXT, nullable)
+  - `source` (TEXT, NOT NULL) — `kiosk`, `user`, `admin`
+
+### sessions
+- **Syfte**: Server‑session (cookie).
+- **Fält**:
+  - `token` (TEXT, PK)
+  - `tenant_id` (TEXT, NOT NULL)
+  - `user_id` (TEXT, NOT NULL)
   - `is_admin` (INTEGER, NOT NULL, default `0`)
   - `created_at` (TEXT, NOT NULL)
   - `last_seen_at` (TEXT, NOT NULL)
   - `expires_at` (TEXT, NOT NULL)
-- **Constraints**: FK to `tenants`.
 
-### access_tokens
-- **Fields**:
-  - `token` (TEXT, PK) — UUID access token
+### booking_groups
+- **Syfte**: Samlar max‑regler för bokningsobjekt.
+- **Fält**:
+  - `id` (TEXT, PK)
   - `tenant_id` (TEXT, NOT NULL)
-  - `apartment_id` (TEXT, NOT NULL)
-  - `is_admin` (INTEGER, NOT NULL, default `0`)
-  - `created_at` (TEXT, NOT NULL)
-  - `last_used_at` (TEXT, nullable)
-  - `revoked_at` (TEXT, nullable)
-  - `source` (TEXT, nullable) — e.g. `kiosk`, `setup`
-- **Constraints**: FK to `tenants`.
+  - `name` (TEXT, NOT NULL)
+  - `max_bookings` (INTEGER, NOT NULL)
 
-### rfid_tags
-- **Fields**:
+### booking_objects
+- **Syfte**: Resurser som kan bokas.
+- **Fält**:
+  - `id` (TEXT, PK)
   - `tenant_id` (TEXT, NOT NULL)
-  - `uid` (TEXT, NOT NULL)
-  - `apartment_id` (TEXT, NOT NULL)
-  - `house` (TEXT, NOT NULL, default `""`)
-  - `lgh_internal` (TEXT, NOT NULL, default `""`)
-  - `skv_lgh` (TEXT, NOT NULL, default `""`)
-  - `access_groups` (TEXT, NOT NULL, default `""`)
-  - `is_admin` (INTEGER, NOT NULL, default `0`)
+  - `name` (TEXT, NOT NULL)
+  - `description` (TEXT, nullable)
+  - `booking_type` (TEXT, NOT NULL) — `time-slot` | `full-day`
+  - `slot_duration_minutes` (INTEGER, nullable) — endast för `time-slot`
+  - `window_min_days` (INTEGER, NOT NULL, default `0`)
+  - `window_max_days` (INTEGER, NOT NULL, default `30`)
+  - `price_weekday_cents` (INTEGER, NOT NULL, default `0`)
+  - `price_weekend_cents` (INTEGER, NOT NULL, default `0`)
   - `is_active` (INTEGER, NOT NULL, default `1`)
-- **Constraints**: PK (`tenant_id`, `uid`), FK to `tenants`.
+  - `group_id` (TEXT, nullable) — FK till `booking_groups`
+  - `max_bookings_override` (INTEGER, nullable)
 
-## Indexes
-- `resources`: `idx_resources_tenant_active` on (`tenant_id`, `is_active`, `id`)
-- `bookings`: `idx_bookings_resource_time`, `idx_bookings_apartment_time`
-- `booking_blocks`: `idx_booking_blocks_resource_time`
-- `sessions`: `idx_sessions_tenant_token`
-- `rfid_tags`: `idx_rfid_tags_tenant_apartment`
+### booking_object_permissions
+- **Syfte**: Allow/Deny‑regler per bokningsobjekt.
+- **Fält**:
+  - `booking_object_id` (TEXT, NOT NULL)
+  - `mode` (TEXT, NOT NULL) — `allow` | `deny`
+  - `scope` (TEXT, NOT NULL) — `house` | `group` | `apartment`
+  - `value` (TEXT, NOT NULL)
+- **Constraints**: index på (`booking_object_id`, `mode`, `scope`)
 
-## Missing Information / Open Questions
-- Uttalad strategi för datamigrering/backups (t.ex. D1 export/restore).
-- Eventuella constraints i applikationskod som inte uttrycks i DB (t.ex. unika regler per tenant).
-- D1‑migreringar behöver uppdateras för att ta bort lösenordsfält och lägga till `access_tokens`.
+### bookings
+- **Syfte**: Bokningar gjorda av användare.
+- **Fält**:
+  - `id` (TEXT, PK)
+  - `tenant_id` (TEXT, NOT NULL)
+  - `user_id` (TEXT, NOT NULL)
+  - `booking_object_id` (TEXT, NOT NULL)
+  - `start_time` (TEXT, NOT NULL)
+  - `end_time` (TEXT, NOT NULL)
+  - `price_cents` (INTEGER, NOT NULL, default `0`)
+  - `created_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
+  - `cancelled_at` (TEXT, nullable)
+
+### booking_blocks
+- **Syfte**: Admin‑blockeringar av tider/dagar.
+- **Fält**:
+  - `id` (TEXT, PK)
+  - `tenant_id` (TEXT, NOT NULL)
+  - `booking_object_id` (TEXT, NOT NULL)
+  - `start_time` (TEXT, NOT NULL)
+  - `end_time` (TEXT, NOT NULL)
+  - `reason` (TEXT, nullable)
+  - `created_by` (TEXT, NOT NULL)
+  - `created_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
+
+### user_import_rules
+- **Syfte**: Sparade inställningar för CSV‑import.
+- **Fält**:
+  - `tenant_id` (TEXT, NOT NULL)
+  - `identity_field` (TEXT, NOT NULL)
+  - `groups_field` (TEXT, nullable)
+  - `rfid_field` (TEXT, nullable)
+  - `active_field` (TEXT, nullable)
+  - `house_field` (TEXT, nullable)
+  - `apartment_field` (TEXT, nullable)
+  - `house_regex` (TEXT, nullable)
+  - `apartment_regex` (TEXT, nullable)
+  - `group_separator` (TEXT, nullable)
+  - `admin_groups` (TEXT, nullable) — lista, t.ex. "Styrelse|Jour"
+  - `updated_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
+- **Constraints**: PK (`tenant_id`)
+
+## Viktiga constraints
+- **Bokningsfönster**: `window_min_days`/`window_max_days` styr tillgänglighet.
+- **Maxbokningar**: från `booking_groups.max_bookings` eller `max_bookings_override`.
+- **Behörigheter**: allow/deny‑regler filtrerar vilka användare som kan boka objektet.
+- **Admin**: `users.is_admin` styr admin‑åtkomst; även admin‑grupper kan sätta flaggan vid import.
+
+## Indexförslag
+- `users`: `idx_users_tenant_active` på (`tenant_id`, `is_active`)
+- `bookings`: `idx_bookings_object_time`, `idx_bookings_user_time`
+- `booking_blocks`: `idx_blocks_object_time`
+- `rfid_tags`: `idx_rfid_tags_tenant_uid`
