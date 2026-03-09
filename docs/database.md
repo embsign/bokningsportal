@@ -21,6 +21,8 @@ Huvuddomäner:
   - `name` (TEXT, NOT NULL)
   - `is_active` (INTEGER, NOT NULL, default `1`)
   - `created_at` (TEXT, NOT NULL, default `CURRENT_TIMESTAMP`)
+  - `last_accessed_at` (TEXT, nullable) — senaste aktivitet för tenant
+  - `account_owner_token` (TEXT, nullable) — admin‑login via `/admin/{UUID-token}`
   - `organization_number` (TEXT, nullable)
   - `admin_email` (TEXT, nullable)
 
@@ -29,8 +31,7 @@ Huvuddomäner:
 - **Fält**:
   - `id` (TEXT, PK) — intern unik identifierare
   - `tenant_id` (TEXT, NOT NULL)
-  - `identity` (TEXT, NOT NULL) — visningsidentitet (t.ex. "1-LGH1001 /1001")
-  - `apartment_id` (TEXT, NOT NULL) — lägenhets‑ID
+  - `apartment_id` (TEXT, NOT NULL) — används som identitet/visningsvärde
   - `house` (TEXT, nullable)
   - `is_active` (INTEGER, NOT NULL, default `1`)
   - `is_admin` (INTEGER, NOT NULL, default `0`) — manuellt admin‑flagga
@@ -58,7 +59,9 @@ Huvuddomäner:
   - `uid` (TEXT, NOT NULL)
   - `user_id` (TEXT, NOT NULL)
   - `is_active` (INTEGER, NOT NULL, default `1`)
-- **Constraints**: PK (`tenant_id`, `uid`)
+- **Constraints**:
+  - PK (`uid`) — globalt unikt RFID‑kort
+  - FK `tenant_id` → `tenants`
 
 ### access_tokens
 - **Syfte**: QR‑/kiosk‑inloggning via UUID‑token.
@@ -68,8 +71,8 @@ Huvuddomäner:
   - `user_id` (TEXT, NOT NULL)
   - `created_at` (TEXT, NOT NULL)
   - `last_used_at` (TEXT, nullable)
-  - `revoked_at` (TEXT, nullable)
   - `source` (TEXT, NOT NULL) — `kiosk`, `user`, `admin`
+ - **Notering**: Vid token‑rotation raderas den gamla tokenen (ingen historik).
 
 ### sessions
 - **Syfte**: Server‑session (cookie).
