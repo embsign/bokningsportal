@@ -50,7 +50,6 @@ const getJsonBody = async (request: Request) => {
 const SESSION_TTL_DAYS = 14;
 const buildSessionCookie = (sessionToken: string) =>
   `session=${sessionToken}; HttpOnly; Path=/; SameSite=None; Secure`;
-const AUTH_LAST_SEEN_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const getAuthContext = async (db: D1Database, token: string) =>
   (await db
@@ -122,12 +121,6 @@ const requireAuth = async (request: Request, env: Env) => {
   }
   if (!user) {
     return { error: errorResponse(401, "unauthorized") };
-  }
-  const lastSeenMs = Date.parse(String(context.session_last_seen_at || ""));
-  if (!Number.isFinite(lastSeenMs) || Date.now() - lastSeenMs >= AUTH_LAST_SEEN_UPDATE_INTERVAL_MS) {
-    await env.DB.prepare("UPDATE sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token = ?")
-      .bind(token)
-      .run();
   }
   return {
     session: {
