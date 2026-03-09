@@ -29,6 +29,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import com.example.brfbokatvttidkiosk.ui.theme.BRFBokaTvättidKioskTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -69,6 +70,12 @@ class MainActivity : ComponentActivity() {
                 when (val state = uiState) {
                     UiState.Idle -> IdleScreen()
                     UiState.Loading -> LoadingScreen()
+                    is UiState.DebugWait -> DebugWaitScreen(
+                        uid = state.uid,
+                        requestUrl = state.requestUrl,
+                        responseBody = state.responseBody,
+                        bookingUrl = state.bookingUrl
+                    )
                     is UiState.Showing -> WebScreen(
                         url = state.url,
                         onWebViewCreated = { webViewRef = it },
@@ -155,11 +162,23 @@ class MainActivity : ComponentActivity() {
             val result = withContext(Dispatchers.IO) {
                 fetchBookingUrl(uid)
             }
-            uiState = result ?: UiState.Idle
+            if (result == null) {
+                uiState = UiState.Idle
+                return@launch
+            }
+
+            uiState = UiState.DebugWait(
+                uid = uid,
+                requestUrl = loginEndpoint,
+                responseBody = result.responseBody,
+                bookingUrl = result.fullUrl
+            )
+            delay(20_000)
+            uiState = UiState.Showing(result.fullUrl, result.bookingPath)
         }
     }
 
-    private fun fetchBookingUrl(uid: String): UiState.Showing? {
+    private fun fetchBookingUrl(uid: String): BookingResponse? {
         return try {
             val connection = (URL(loginEndpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -200,7 +219,11 @@ class MainActivity : ComponentActivity() {
                 bookingUrlRaw
             }
 
-            UiState.Showing(fullUrl, bookingPath)
+            BookingResponse(
+                fullUrl = fullUrl,
+                bookingPath = bookingPath,
+                responseBody = responseBody
+            )
         } catch (_: Exception) {
             null
         }
@@ -237,8 +260,20 @@ class MainActivity : ComponentActivity() {
 private sealed interface UiState {
     data object Idle : UiState
     data object Loading : UiState
+    data class DebugWait(
+        val uid: String,
+        val requestUrl: String,
+        val responseBody: String,
+        val bookingUrl: String
+    ) : UiState
     data class Showing(val url: String, val bookingPath: String) : UiState
 }
+
+private data class BookingResponse(
+    val fullUrl: String,
+    val bookingPath: String,
+    val responseBody: String
+)
 
 @Composable
 private fun IdleScreen() {
@@ -268,6 +303,34 @@ private fun LoadingScreen() {
             text = "Startar bokningsskärmen...",
             color = Color.White,
             textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun DebugWaitScreen(
+    uid: String,
+    requestUrl: String,
+    responseBody: String,
+    bookingUrl: String
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = """
+                UID: $uid
+                API-path: $requestUrl
+                Svar:
+                $responseBody
+                Svars-URL: $bookingUrl
+                Väntar 20 sekunder innan webbläsaren öppnas...
+            """.trimIndent(),
+            color = Color.White,
+            textAlign = TextAlign.Start
         )
     }
 }
