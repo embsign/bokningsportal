@@ -1,0 +1,10 @@
+name = "booking-api"
+main = "backend/src/worker.ts"
+compatibility_date = "2024-11-01"
+migrations_dir = "db/migrations"
+rules = [{ type = "Text", globs = ["**/*.sql"] }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "booking-prod"
+database_id = "REPLACE_AT_DEPLOY"

@@ -9,13 +9,25 @@ import { ImportUsersModal } from "./components/ImportUsersModal.js";
 import { UserPickerModal } from "./components/UserPickerModal.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
-import { createBookingSummary } from "./mocks/bookingSummary.js";
-import { bookings } from "./mocks/bookings.js";
-import { adminUser, bookingObjects, bookingGroups, users } from "./mocks/admin.js";
-import { services } from "./mocks/services.js";
-import { user } from "./mocks/user.js";
-import { getMonthAvailability, getMonthLabel } from "./mocks/availability.js";
-import { getWeekStart, getWeekTimeslots } from "./mocks/timeslots.js";
+import { createBookingSummary } from "./utils/bookingSummary.js";
+import { getSession, loginWithAccessToken } from "./api/session.js";
+import { getServices } from "./api/services.js";
+import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
+import { getMonthAvailability, getMonthLabel, getWeekAvailability, getWeekStart } from "./api/availability.js";
+import {
+  getBookingGroups,
+  getBookingObjects,
+  getUsers,
+  updateUser,
+  createBookingGroup,
+  createBookingObject,
+  updateBookingObject,
+  getImportRules,
+  saveImportRules,
+  previewImport,
+  applyImport,
+  downloadReportCsv,
+} from "./api/admin.js";
 import { createStore } from "./hooks/useStore.js";
 import { createElement, clearElement } from "./hooks/dom.js";
 
@@ -64,9 +76,15 @@ if (routePath.startsWith("/admin/")) {
   ];
 
   const adminStore = createStore({
-    bookingObjects,
-    bookingGroups,
-    users,
+    adminUser: { name: "", association: "" },
+    bookingObjects: [],
+    bookingGroups: [],
+    users: [],
+    importRules: null,
+    importPreview: null,
+    importHeaders: [],
+    importCsvText: "",
+    importLoading: false,
     modalOpen: false,
     modalMode: "add",
     selectorOpenKey: null,
@@ -161,10 +179,88 @@ if (routePath.startsWith("/admin/")) {
     });
   };
 
+  let adminInitialized = false;
+  const buildImportRules = (state) => ({
+    identity_field: state.identityField || state.importRules?.identity_field || "OrgGrupp",
+    groups_field: state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
+    rfid_field: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
+    active_field: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
+    house_field: state.houseField || state.importRules?.house_field || "Placering",
+    apartment_field: state.apartmentField || state.importRules?.apartment_field || "Lägenhet",
+    house_regex: state.houseRegex || state.importRules?.house_regex || "",
+    apartment_regex: state.apartmentRegex || state.importRules?.apartment_regex || "",
+    group_separator: state.groupSeparator || state.importRules?.group_separator || "|",
+    admin_groups: (state.adminGroups?.length ? state.adminGroups : state.importRules?.admin_groups?.split("|") || []).join("|"),
+  });
+
+  const loadAdminData = async () => {
+    try {
+      const [bookingObjectsData, bookingGroupsData, usersData, rulesData] = await Promise.all([
+        getBookingObjects(),
+        getBookingGroups(),
+        getUsers(),
+        getImportRules(),
+      ]);
+      const rules = rulesData?.rules || null;
+      adminStore.setState({
+        bookingObjects: bookingObjectsData,
+        bookingGroups: bookingGroupsData,
+        users: usersData,
+        importRules: rules,
+        identityField: rules?.identity_field,
+        groupsField: rules?.groups_field,
+        rfidField: rules?.rfid_field,
+        activeField: rules?.active_field,
+        houseField: rules?.house_field,
+        apartmentField: rules?.apartment_field,
+        houseRegex: rules?.house_regex,
+        apartmentRegex: rules?.apartment_regex,
+        groupSeparator: rules?.group_separator,
+        adminGroups: rules?.admin_groups ? rules.admin_groups.split("|").filter(Boolean) : [],
+      });
+    } catch (error) {
+      if (error.status === 403) {
+        alert("Behörighet saknas.");
+      }
+    }
+  };
+
+  const initAdmin = async () => {
+    if (adminInitialized) {
+      return;
+    }
+    adminInitialized = true;
+    const token = routePath.split("/")[2];
+    if (token) {
+      try {
+        await loginWithAccessToken(token);
+      } catch (error) {
+        if (error.status === 401) {
+          alert("Sessionen är ogiltig eller har gått ut.");
+        }
+      }
+    }
+    try {
+      const session = await getSession();
+      adminStore.setState({
+        adminUser: {
+          name: session.user.apartment_id,
+          association: session.tenant.name,
+        },
+      });
+      await loadAdminData();
+    } catch (error) {
+      if (error.status === 401) {
+        alert("Sessionen är ogiltig eller har gått ut.");
+      }
+    }
+  };
+
   const renderAdmin = () => {
     const state = adminStore.getState();
     clearElement(app);
     const shell = createElement("div", { className: "app-shell" });
+    initAdmin();
 
     const modal = BookingObjectModal({
       open: state.modalOpen,
@@ -206,51 +302,30 @@ if (routePath.startsWith("/admin/")) {
       onGroupNameChange: (value) => adminStore.setState({ groupNameDraft: value }),
       onOpenGroupModal: () => adminStore.setState({ groupModalOpen: true, groupNameDraft: "" }),
       onCloseGroupModal: () => adminStore.setState({ groupModalOpen: false }),
-      onCreateGroup: () =>
-        adminStore.setState((prev) => {
-          const name = prev.groupNameDraft?.trim();
-          if (!name) {
-            return { groupModalOpen: false };
-          }
-          const id = `group-${Date.now()}`;
-          const newGroup = {
-            id,
-            name,
-            maxBookings: prev.modalForm.maxBookings || "1",
-          };
-          return {
-            bookingGroups: [...prev.bookingGroups, newGroup],
-            modalForm: { ...prev.modalForm, groupId: id, maxBookings: newGroup.maxBookings },
-            groupModalOpen: false,
-            groupNameDraft: "",
-          };
-        }),
+      onCreateGroup: async () => {
+        const name = adminStore.getState().groupNameDraft?.trim();
+        if (!name) {
+          adminStore.setState({ groupModalOpen: false });
+          return;
+        }
+        await createBookingGroup({ name, max_bookings: Number(adminStore.getState().modalForm.maxBookings || 1) });
+        await loadAdminData();
+        adminStore.setState({ groupModalOpen: false, groupNameDraft: "" });
+      },
       onClose: () => adminStore.setState({ modalOpen: false }),
       selectorOpenKey: state.selectorOpenKey,
       onOpenSelector: (key) => adminStore.setState({ selectorOpenKey: key }),
       onCloseSelector: () => adminStore.setState({ selectorOpenKey: null }),
-      onSave: () =>
-        adminStore.setState((prev) => {
-          const form = prev.modalForm;
-          if (prev.modalMode === "edit") {
-            return {
-              bookingObjects: prev.bookingObjects.map((item) =>
-                item.id === prev.editId
-                  ? { ...item, ...form }
-                  : item
-              ),
-              modalOpen: false,
-            };
-          }
-          const newItem = {
-            id: `obj-${Date.now()}`,
-            ...form,
-          };
-          return {
-            bookingObjects: [...prev.bookingObjects, newItem],
-            modalOpen: false,
-          };
-        }),
+      onSave: async () => {
+        const form = adminStore.getState().modalForm;
+        if (adminStore.getState().modalMode === "edit") {
+          await updateBookingObject(adminStore.getState().editId, form);
+        } else {
+          await createBookingObject(form);
+        }
+        await loadAdminData();
+        adminStore.setState({ modalOpen: false });
+      },
     });
 
     const importModal = ImportUsersModal({
@@ -270,7 +345,9 @@ if (routePath.startsWith("/admin/")) {
         apartmentField: state.apartmentField || "Lägenhet",
         adminGroups: state.adminGroups || [],
         adminSelectorOpen: state.adminSelectorOpen || false,
-        adminGroupOptions: ["Styrelse", "Förvaltare", "Jour"],
+        adminGroupOptions: state.importRules?.admin_groups
+          ? state.importRules.admin_groups.split("|").filter(Boolean)
+          : ["Styrelse", "Förvaltare", "Jour"],
         effectHouse: buildRegexEffect(houseSamples, state.houseRegex || ""),
         effectApartment: buildRegexEffect(apartmentSamples, state.apartmentRegex || ""),
         effectGroups: [
@@ -280,102 +357,105 @@ if (routePath.startsWith("/admin/")) {
         ],
       },
       mapping: {
-        headers: [
-          "Namn",
-          "Identitetstyp (0=em 1=kod 2=rf 3=mifare)",
-          "Identitetsid",
-          "Identitetsstatus (0=på 1=av)",
-          "PIN",
-          "Starttid",
-          "Sluttid",
-          "Behörighetsgrupp",
-          "Email",
-          "Person Telefonnr",
-          "Person Snabbnr",
-          "Person Linje (0=lokal 1=analog 2=extern)",
-          "OrgGrupp",
-          "Placering",
-          "Våning",
-          "Lägenhet",
-          "Referensid",
-          "OrgTelefonnr",
-          "OrgSnabbnr",
-          "OrgLinje (0=lokal 1=analog 2=extern)",
-          "Fritext1",
-          "Fritext2",
-          "Frinummer",
-          "Utökad fritext",
-          "Dörrstyrning",
-          "Relästyrning",
-        ],
-        identityField: state.identityField || "OrgGrupp",
-        groupsField: state.groupsField || "Behörighetsgrupp",
-        rfidField: state.rfidField || "Identitetsid",
-        activeField: state.activeField || "Identitetsstatus (0=på 1=av)",
+        headers: state.importHeaders?.length ? state.importHeaders : ["OrgGrupp", "Placering", "Lägenhet"],
+        identityField: state.identityField || state.importRules?.identity_field || "OrgGrupp",
+        groupsField: state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
+        rfidField: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
+        activeField: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
       },
-      preview: {
-        newCount: 12,
-        updatedCount: 5,
-        unchangedCount: 94,
-        removedCount: 3,
-        rows: [
-          {
-            identity: "1-LGH1001 /1001 Kor tag1",
-            apartmentId: "1001",
-            house: "1",
-            status: "Ny",
-            statusClass: "preview-new",
-            admin: true,
-          },
-          {
-            identity: "1-LGH1001 /1001 Kor tag3",
-            apartmentId: "1001",
-            house: "1",
-            status: "Oförändrad",
-            statusClass: "preview-unchanged",
-            admin: false,
-          },
-          {
-            identity: "1-LGH1012 /1108 iLoq Blå",
-            apartmentId: "1108",
-            house: "1",
-            status: "Uppdateras",
-            statusClass: "preview-updated",
-            admin: true,
-          },
-          {
-            identity: "6-LGH1133 /1205 tag1",
-            apartmentId: "1205",
-            house: "6",
-            status: "Oförändrad",
-            statusClass: "preview-unchanged",
-            admin: false,
-          },
-          {
-            identity: "6-LGH1133/1205 iLoq Röd",
-            apartmentId: "1205",
-            house: "6",
-            status: "Tas bort",
-            statusClass: "preview-removed",
-            admin: false,
-          },
-        ],
+      preview: state.importPreview || {
+        newCount: 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        removedCount: 0,
+        rows: [],
       },
       onClose: () => adminStore.setState({ importOpen: false, importStep: 1 }),
-      onNext: () =>
-        adminStore.setState((prev) => ({ importStep: Math.min(prev.importStep + 1, 5) })),
+      onNext: async () => {
+        const nextStep = Math.min(state.importStep + 1, 5);
+        adminStore.setState({ importStep: nextStep });
+        if (nextStep === 5 && state.importCsvText) {
+          const rules = buildImportRules(adminStore.getState());
+          const preview = await previewImport(state.importCsvText, rules);
+          adminStore.setState({
+            importPreview: {
+              newCount: preview.summary.new,
+              updatedCount: preview.summary.updated,
+              unchangedCount: preview.summary.unchanged,
+              removedCount: preview.summary.removed,
+              rows: preview.rows.map((row) => ({
+                identity: row.identity,
+                apartmentId: row.apartment_id,
+                house: row.house,
+                status: row.status,
+                statusClass:
+                  row.status === "Ny"
+                    ? "preview-new"
+                    : row.status === "Uppdateras"
+                      ? "preview-updated"
+                      : row.status === "Tas bort"
+                        ? "preview-removed"
+                        : "preview-unchanged",
+                admin: row.admin,
+              })),
+            },
+            importHeaders: preview.headers,
+          });
+        }
+      },
       onPrev: () =>
         adminStore.setState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
-      onImport: () =>
-        adminStore.setState({
-          importStep: 6,
-          importProgress: 35,
-        }),
+      onImport: async () => {
+        adminStore.setState({ importStep: 6, importProgress: 35 });
+        const rules = buildImportRules(adminStore.getState());
+        await saveImportRules(rules);
+        await applyImport(state.importCsvText, rules, {
+          add_new: state.addNew !== false,
+          update_existing: state.updateChanged !== false,
+          remove_missing: state.removeMissing === true,
+        });
+        adminStore.setState({ importProgress: 100 });
+        await loadAdminData();
+      },
       onChange: (field, value) =>
         adminStore.setState((prev) => {
           switch (field) {
             case "fileName":
-              return { importFileName: value, importRowCount: 17 };
+              return { importFileName: value };
+            case "file":
+              if (value) {
+                value.text().then((text) => {
+                  adminStore.setState({ importCsvText: text, importRowCount: text.split("\n").length });
+                  const rules = buildImportRules(adminStore.getState());
+                  previewImport(text, rules).then((preview) =>
+                    adminStore.setState({
+                      importHeaders: preview.headers,
+                      importPreview: {
+                        newCount: preview.summary.new,
+                        updatedCount: preview.summary.updated,
+                        unchangedCount: preview.summary.unchanged,
+                        removedCount: preview.summary.removed,
+                        rows: preview.rows.map((row) => ({
+                          identity: row.identity,
+                          apartmentId: row.apartment_id,
+                          house: row.house,
+                          status: row.status,
+                          statusClass:
+                            row.status === "Ny"
+                              ? "preview-new"
+                              : row.status === "Uppdateras"
+                                ? "preview-updated"
+                                : row.status === "Tas bort"
+                                  ? "preview-removed"
+                                  : "preview-unchanged",
+                          admin: row.admin,
+                        })),
+                      },
+                    })
+                  );
+                });
+              }
+              return {};
             case "identityField":
             case "groupsField":
             case "rfidField":
@@ -432,14 +512,11 @@ if (routePath.startsWith("/admin/")) {
       onChange: (field, value) =>
         adminStore.setState((prev) => ({ editUserForm: { ...prev.editUserForm, [field]: value } })),
       onClose: () => adminStore.setState({ editUserOpen: false, userSelectorOpen: false }),
-      onSave: () =>
-        adminStore.setState((prev) => ({
-          users: prev.users.map((user) =>
-            user.id === prev.editUserId ? { ...user, ...prev.editUserForm } : user
-          ),
-          editUserOpen: false,
-          userSelectorOpen: false,
-        })),
+      onSave: async () => {
+        await updateUser(state.editUserId, state.editUserForm);
+        await loadAdminData();
+        adminStore.setState({ editUserOpen: false, userSelectorOpen: false });
+      },
     });
 
     const reportModal = ReportModal({
@@ -456,13 +533,8 @@ if (routePath.startsWith("/admin/")) {
         adminStore.setState((prev) => ({ reportStep: Math.min(prev.reportStep + 1, 3) })),
       onPrev: () =>
         adminStore.setState((prev) => ({ reportStep: Math.max(prev.reportStep - 1, 1) })),
-      onDownload: () => {
-        const objectName =
-          state.bookingObjects.find((item) => item.id === state.reportBookingObjectId)?.name || "Okänt objekt";
-        const csv = [
-          "Bokningsobjekt,Månad,Antal bokningar,Summa (kr)",
-          `${objectName},${state.reportMonth},12,1800`,
-        ].join("\n");
+      onDownload: async () => {
+        const csv = await downloadReportCsv(state.reportMonth, state.reportBookingObjectId);
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -493,9 +565,9 @@ if (routePath.startsWith("/admin/")) {
     }
 
     shell.append(
-      Header({ apartmentId: adminUser.association }),
+      Header({ apartmentId: state.adminUser?.association || "—" }),
       AdminDashboard({
-        adminUser,
+        adminUser: state.adminUser,
         bookingObjects: state.bookingObjects,
         onAdd: () => openModal("add"),
         onCopy: (item) => openModal("copy", item),
@@ -544,7 +616,18 @@ const store = createStore({
   monthCursor: initialMonth,
   weekCursor: getWeekStart(today),
   confirmed: false,
-  bookings,
+  services: [],
+  bookings: [],
+  sessionUser: null,
+  sessionTenant: null,
+  sessionError: null,
+  sessionLoading: true,
+  availabilityMonthKey: null,
+  availabilityMonth: [],
+  availabilityWeekKey: null,
+  availabilityWeek: [],
+  availabilityLoading: false,
+  dataLoading: false,
   cancelModalOpen: false,
   cancelBooking: null,
   cancelledDayIds: [],
@@ -553,7 +636,7 @@ const store = createStore({
   qrGenerated: false,
   qrModalOpen: false,
   uiStates: {
-    service: "normal",
+    service: "loading",
     date: "normal",
     time: "normal",
     confirmation: "normal",
@@ -604,6 +687,9 @@ const bookingMatches = (booking, target) => {
   );
 };
 
+const findBookingId = (bookingsList, target) =>
+  bookingsList.find((booking) => bookingMatches(booking, target))?.id;
+
 const getWeekNumber = (date) => {
   const temp = new Date(date.getTime());
   temp.setHours(0, 0, 0, 0);
@@ -617,11 +703,110 @@ const getWeekNumber = (date) => {
   );
 };
 
+const loadUserData = async () => {
+  store.setState((prev) => ({ dataLoading: true, uiStates: { ...prev.uiStates, service: "loading" } }));
+  try {
+    const [servicesData, bookingsData] = await Promise.all([getServices(), getCurrentBookings()]);
+    store.setState({
+      services: servicesData,
+      bookings: bookingsData,
+      dataLoading: false,
+      uiStates: {
+        ...store.getState().uiStates,
+        service: servicesData.length ? "normal" : "empty",
+      },
+    });
+  } catch (error) {
+    store.setState((prev) => ({
+      dataLoading: false,
+      uiStates: { ...prev.uiStates, service: "error" },
+    }));
+  }
+};
+
+let userInitialized = false;
+const initUser = async () => {
+  if (userInitialized) {
+    return;
+  }
+  userInitialized = true;
+  const token = routePath.split("/")[2];
+  if (token) {
+    try {
+      await loginWithAccessToken(token);
+    } catch (error) {
+      if (error.status === 401) {
+        store.setState({
+          sessionError: "unauthorized",
+          sessionLoading: false,
+          uiStates: { ...store.getState().uiStates, service: "error" },
+        });
+        return;
+      }
+    }
+  }
+  try {
+    const session = await getSession();
+    store.setState({
+      sessionUser: session.user,
+      sessionTenant: session.tenant,
+      sessionLoading: false,
+    });
+    await loadUserData();
+  } catch (error) {
+    store.setState({
+      sessionError: "unauthorized",
+      sessionLoading: false,
+      uiStates: { ...store.getState().uiStates, service: "error" },
+    });
+  }
+};
+
+const loadMonthAvailability = async (service, year, monthIndex) => {
+  const key = `${service.id}-${year}-${monthIndex}`;
+  store.setState({ availabilityLoading: true, uiStates: { ...store.getState().uiStates, date: "loading" } });
+  try {
+    const days = await getMonthAvailability(service.id, year, monthIndex);
+    store.setState({
+      availabilityMonthKey: key,
+      availabilityMonth: days,
+      availabilityLoading: false,
+      uiStates: { ...store.getState().uiStates, date: days.length ? "normal" : "empty" },
+    });
+  } catch (error) {
+    store.setState({ availabilityLoading: false, uiStates: { ...store.getState().uiStates, date: "error" } });
+  }
+};
+
+const loadWeekAvailability = async (service, weekStart) => {
+  const key = `${service.id}-${weekStart.toISOString().slice(0, 10)}`;
+  store.setState({ availabilityLoading: true, uiStates: { ...store.getState().uiStates, time: "loading" } });
+  try {
+    const days = await getWeekAvailability(service.id, weekStart);
+    store.setState({
+      availabilityWeekKey: key,
+      availabilityWeek: days,
+      availabilityLoading: false,
+      uiStates: { ...store.getState().uiStates, time: days.length ? "normal" : "empty" },
+    });
+  } catch (error) {
+    store.setState({ availabilityLoading: false, uiStates: { ...store.getState().uiStates, time: "error" } });
+  }
+};
+
   const render = () => {
   const state = store.getState();
+  initUser();
 
-  if (state.step === 1 && services.length === 1 && !state.selectedService) {
-    store.setState({ selectedService: services[0], step: 2 });
+  if (state.step === 1 && state.services.length === 1 && !state.selectedService) {
+    store.setState({
+      selectedService: state.services[0],
+      availabilityMonthKey: null,
+      availabilityWeekKey: null,
+      availabilityMonth: [],
+      availabilityWeek: [],
+      step: 2,
+    });
     return;
   }
 
@@ -638,7 +823,7 @@ const getWeekNumber = (date) => {
 
     shell.append(
       Header({
-        apartmentId: user.apartmentId,
+        apartmentId: state.sessionUser?.apartment_id || "—",
         showBack: Boolean(headerBack),
         onBack: headerBack || undefined,
       })
@@ -649,13 +834,17 @@ const getWeekNumber = (date) => {
 
   if (state.step === 1) {
     screen = ServiceSelection({
-      services,
+      services: state.services,
       selectedService: state.selectedService,
       onSelect: (service) =>
         store.setState({
           selectedService: service,
           selectedDate: null,
           selectedSlot: null,
+          availabilityMonthKey: null,
+          availabilityWeekKey: null,
+          availabilityMonth: [],
+          availabilityWeek: [],
           step: 2,
           confirmed: false,
         }),
@@ -665,12 +854,18 @@ const getWeekNumber = (date) => {
       onOpenCancel: (booking) =>
         store.setState({ cancelModalOpen: true, cancelBooking: booking }),
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
-      onConfirmCancel: () =>
-        store.setState((prev) => ({
-          bookings: prev.bookings.filter((item) => !bookingMatches(item, prev.cancelBooking)),
+      onConfirmCancel: async () => {
+        const target = store.getState().cancelBooking;
+        if (target?.id) {
+          await cancelBooking(target.id);
+        }
+        const bookingsData = await getCurrentBookings();
+        store.setState({
+          bookings: bookingsData,
           cancelModalOpen: false,
           cancelBooking: null,
-        })),
+        });
+      },
       qrWarningOpen: state.qrWarningOpen,
       qrGenerated: state.qrGenerated,
       qrModalOpen: state.qrModalOpen,
@@ -692,24 +887,13 @@ const getWeekNumber = (date) => {
 
   if (state.step === 2 && state.selectedService?.bookingType === "full-day") {
     const { year, monthIndex } = state.monthCursor;
-    const days = getMonthAvailability(year, monthIndex).map((day) => {
-      if (state.cancelledDayIds.includes(day.id)) {
-        return { ...day, status: "available" };
-      }
-      const matchesBooking = state.bookings.some(
-        (booking) =>
-          booking.serviceName === state.selectedService?.name &&
-          booking.timeLabel === "Heldag" &&
-          booking.dateLabel === formatDateLabel(day.date)
-      );
-      if (day.status === "disabled") {
-        return day;
-      }
-      if (matchesBooking) {
-        return { ...day, status: "mine" };
-      }
-      return { ...day, status: "available" };
-    });
+    const monthKey = `${state.selectedService.id}-${year}-${monthIndex}`;
+    if (state.availabilityMonthKey !== monthKey && !state.availabilityLoading) {
+      loadMonthAvailability(state.selectedService, year, monthIndex);
+    }
+    const days = (state.availabilityMonth || []).map((day) =>
+      state.cancelledDayIds.includes(day.id) ? { ...day, status: "available" } : day
+    );
     const visibleDays = isMobile ? days.filter((day) => day.status !== "disabled") : days;
 
     screen = DateSelection({
@@ -757,20 +941,32 @@ const getWeekNumber = (date) => {
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
-      onConfirmCancel: () =>
-        store.setState((prev) => ({
-          cancelledDayIds: [...prev.cancelledDayIds, prev.cancelBooking?.id].filter(Boolean),
-          bookings: prev.bookings.filter((item) => !bookingMatches(item, prev.cancelBooking)),
+      onConfirmCancel: async () => {
+        const target = store.getState().cancelBooking;
+        const bookingId = findBookingId(store.getState().bookings, target);
+        if (bookingId) {
+          await cancelBooking(bookingId);
+        }
+        const bookingsData = await getCurrentBookings();
+        store.setState({
+          cancelledDayIds: [...store.getState().cancelledDayIds, store.getState().cancelBooking?.id].filter(Boolean),
+          bookings: bookingsData,
           cancelModalOpen: false,
           cancelBooking: null,
-        })),
+        });
+        loadMonthAvailability(state.selectedService, year, monthIndex);
+      },
     });
 
     footer = null;
   }
 
   if (state.step === 2 && state.selectedService?.bookingType !== "full-day") {
-    const weekSlots = getWeekTimeslots(state.weekCursor, state.selectedService?.bookingType).map((day) => ({
+    const weekKey = `${state.selectedService.id}-${state.weekCursor.toISOString().slice(0, 10)}`;
+    if (state.availabilityWeekKey !== weekKey && !state.availabilityLoading) {
+      loadWeekAvailability(state.selectedService, state.weekCursor);
+    }
+    const weekSlots = (state.availabilityWeek || []).map((day) => ({
       ...day,
       slots: day.slots.map((slot) =>
         state.cancelledSlotIds.includes(slot.id) ? { ...slot, status: "available" } : slot
@@ -825,13 +1021,21 @@ const getWeekNumber = (date) => {
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
-      onConfirmCancel: () =>
-        store.setState((prev) => ({
-          cancelledSlotIds: [...prev.cancelledSlotIds, prev.cancelBooking?.id].filter(Boolean),
-          bookings: prev.bookings.filter((item) => !bookingMatches(item, prev.cancelBooking)),
+      onConfirmCancel: async () => {
+        const target = store.getState().cancelBooking;
+        const bookingId = findBookingId(store.getState().bookings, target);
+        if (bookingId) {
+          await cancelBooking(bookingId);
+        }
+        const bookingsData = await getCurrentBookings();
+        store.setState({
+          cancelledSlotIds: [...store.getState().cancelledSlotIds, store.getState().cancelBooking?.id].filter(Boolean),
+          bookings: bookingsData,
           cancelModalOpen: false,
           cancelBooking: null,
-        })),
+        });
+        loadWeekAvailability(state.selectedService, state.weekCursor);
+      },
     });
 
     footer = null;
@@ -850,7 +1054,44 @@ const getWeekNumber = (date) => {
       confirmed: state.confirmed,
       isMobile,
       onBack: () => store.setState({ step: 2 }),
-      onConfirm: () => store.setState({ confirmed: true }),
+      onConfirm: async () => {
+        if (!summary) {
+          return;
+        }
+        store.setState((prev) => ({ uiStates: { ...prev.uiStates, confirmation: "loading" } }));
+        try {
+          let startTime = null;
+          let endTime = null;
+          if (state.selectedSlot?.startTime && state.selectedSlot?.endTime) {
+            startTime = state.selectedSlot.startTime;
+            endTime = state.selectedSlot.endTime;
+          } else if (state.selectedDate?.date) {
+            const date = state.selectedDate.date;
+            const day = date.toISOString().slice(0, 10);
+            startTime = `${day}T00:00:00.000Z`;
+            endTime = `${day}T23:59:59.000Z`;
+          }
+          await createBooking({
+            booking_object_id: state.selectedService.id,
+            start_time: startTime,
+            end_time: endTime,
+          });
+          const bookingsData = await getCurrentBookings();
+          store.setState({
+            bookings: bookingsData,
+            confirmed: true,
+            uiStates: { ...store.getState().uiStates, confirmation: "normal" },
+          });
+        } catch (error) {
+          if (error.status === 409) {
+            alert("Tiden är redan bokad.");
+          }
+          if (error.status === 403) {
+            alert("Du saknar behörighet att boka.");
+          }
+          store.setState((prev) => ({ uiStates: { ...prev.uiStates, confirmation: "error" } }));
+        }
+      },
       confirmDisabled: !summary,
     });
 
@@ -881,6 +1122,15 @@ const getWeekNumber = (date) => {
           className: "screen-subtitle",
           text:
             "Gå till /#/user/{UUID-token} för boende eller /#/admin/{UUID-token} för admin (hash används utan backend).",
+        }),
+        createElement("div", { className: "section-title", text: "Testa demon" }),
+        createElement("div", {
+          className: "footer-actions",
+          children: [
+            createElement("a", { className: "primary-button", attrs: { href: "/admin/admin-demo-token" }, text: "Admin-demo" }),
+            createElement("a", { className: "secondary-button", attrs: { href: "/user/user-demo-token-anna" }, text: "Anna Andersson" }),
+            createElement("a", { className: "secondary-button", attrs: { href: "/user/user-demo-token-erik" }, text: "Erik Eriksson" }),
+          ],
         }),
       ],
     })

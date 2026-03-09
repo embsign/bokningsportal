@@ -48,6 +48,13 @@ body {
   gap: 24px;
 }
 
+.footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .admin-dashboard {
   display: flex;
   flex-direction: column;

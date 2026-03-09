@@ -7,7 +7,7 @@ Regler och konventioner för frontend (LLM‑agentens referens).
 - Kiosk‑läge får tenant via RFID‑login där UID resolves i backend.
 
 ## API‑anrop
-- Bas‑URL: `VITE_API_BASE` eller default `/api`.
+- Bas‑URL: `API_BASE` (via `window.API_BASE` eller meta‑tagg) eller default `/api`.
 - Alla anrop använder `credentials: "include"`.
 - `Content-Type: application/json` används för JSON‑payloads.
 

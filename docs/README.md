@@ -13,6 +13,8 @@ LLM‑agent ska kunna återskapa applikationen (funktion, regler, API, data och 
 - API‑spec: `docs/api.md`
 - Bokningslogik: `docs/booking-logic.md`
 - Databas (D1): `docs/database.md`
+- Miljövariabler: `docs/env.md`
+- Deployments: `docs/deployments.md`
 - Features: `docs/features/`
 - Regler: `docs/rules/`
 
@@ -45,6 +47,6 @@ LLM‑agent ska kunna återskapa applikationen (funktion, regler, API, data och 
 - Systemet använder UTC utan hantering av lokala tidszoner.
 
 ## Missing Information / Open Questions
-- Exakt lista på konfigurationsvariabler (Pages/Worker env vars) och defaultvärden.
+- Operativa rutiner (backup/restore av D1, loggning/monitorering, incident‑flöde).
 - Operativa rutiner (backup/restore av D1, loggning/monitorering, incident‑flöde).
 - Eventuella SLA:er/uppsatta krav på svarstider och kapacitet.

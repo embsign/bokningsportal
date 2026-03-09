@@ -60,7 +60,11 @@ export const ImportUsersModal = ({
           createElement("input", {
             className: "input",
             attrs: { type: "file", accept: ".csv" },
-            onChange: (event) => onChange("fileName", event.target.files?.[0]?.name || ""),
+            onChange: (event) => {
+              const file = event.target.files?.[0];
+              onChange("file", file || null);
+              onChange("fileName", file?.name || "");
+            },
           }),
         ],
       }),
