@@ -111,13 +111,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (uiState != UiState.Idle) {
-            return super.dispatchKeyEvent(event)
-        }
-
-        if (event.action != KeyEvent.ACTION_UP) {
-            return super.dispatchKeyEvent(event)
+            return super.onKeyUp(keyCode, event)
         }
 
         val now = System.currentTimeMillis()
@@ -126,7 +122,7 @@ class MainActivity : ComponentActivity() {
         }
         lastHidKeyTimestamp = now
 
-        when (event.keyCode) {
+        when (keyCode) {
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 val uid = hidBuffer.toString().trim()
@@ -150,7 +146,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        return super.dispatchKeyEvent(event)
+        return super.onKeyUp(keyCode, event)
     }
 
     private fun requestBookingUrl(uid: String) {
