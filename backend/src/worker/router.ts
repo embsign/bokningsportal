@@ -1,10 +1,15 @@
 import { Env, D1Database } from "./types.js";
 
-const json = (data: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(data), {
+const json = (data: unknown, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers || undefined);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json; charset=utf-8");
+  }
+  return new Response(JSON.stringify(data), {
     ...init,
-    headers: { "content-type": "application/json; charset=utf-8", ...(init.headers || {}) },
+    headers,
   });
+};
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
 
@@ -43,6 +48,8 @@ const getJsonBody = async (request: Request) => {
 };
 
 const SESSION_TTL_DAYS = 14;
+const buildSessionCookie = (sessionToken: string) =>
+  `session=${sessionToken}; HttpOnly; Path=/; SameSite=None; Secure`;
 
 const getSession = async (db: D1Database, token: string) => {
   const row = await db.prepare("SELECT * FROM sessions WHERE token = ?").bind(token).first();
@@ -164,6 +171,13 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     )
     .bind(bookingObjectId, start.toISOString(), end.toISOString())
     .all();
+  const bookingByDate = new Map<string, any>();
+  for (const row of bookings.results) {
+    const day = (row.start_time as string).slice(0, 10);
+    if (!bookingByDate.has(day)) {
+      bookingByDate.set(day, row);
+    }
+  }
 
   const days: { date: string; status: string }[] = [];
   const today = new Date();
@@ -178,7 +192,7 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     if (date < today || date < minDate || date > maxDate) {
       status = "disabled";
     }
-    const booking = bookings.results.find((row) => (row.start_time as string).startsWith(dateString));
+    const booking = bookingByDate.get(dateString);
     if (booking) {
       status = booking.user_id === user.id ? "mine" : "booked";
     }
@@ -191,7 +205,27 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
   const startDate = parseDate(weekStart);
+  const endDate = addDays(startDate, 7);
+  const overlapsResult = await db
+    .prepare(
+      `SELECT user_id, start_time, end_time FROM bookings
+       WHERE booking_object_id = ?
+         AND cancelled_at IS NULL
+         AND NOT (end_time <= ? OR start_time >= ?)`
+    )
+    .bind(bookingObjectId, startDate.toISOString(), endDate.toISOString())
+    .all();
+  const overlaps = overlapsResult.results.map((row: any) => ({
+    userId: row.user_id as string,
+    startMs: new Date(row.start_time as string).getTime(),
+    endMs: new Date(row.end_time as string).getTime(),
+  }));
   const slotMinutes = (bookingObject.slot_duration_minutes as number) || 60;
+  const nowMs = Date.now();
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
   const days = [];
   for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
     const date = new Date(startDate);
@@ -199,32 +233,20 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     const dateString = formatDate(date);
     const label = date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "numeric" });
     const slots = [];
-    const minDate = new Date();
-    minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
-    const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
     const dayDisabled = date < minDate || date > maxDate;
     for (let hour = 8; hour < 20; hour += slotMinutes / 60) {
       const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, 0, 0));
       const end = new Date(start);
       end.setUTCMinutes(end.getUTCMinutes() + slotMinutes);
-      const startTime = start.toISOString();
-      const endTime = end.toISOString();
+      const startMs = start.getTime();
+      const endMs = end.getTime();
       let status: "available" | "booked" | "mine" | "disabled" = "available";
-      if (start < new Date() || dayDisabled) {
+      if (startMs < nowMs || dayDisabled) {
         status = "disabled";
       }
-      const overlaps = await db
-        .prepare(
-          `SELECT user_id FROM bookings
-           WHERE booking_object_id = ?
-             AND cancelled_at IS NULL
-             AND NOT (end_time <= ? OR start_time >= ?)`
-        )
-        .bind(bookingObjectId, startTime, endTime)
-        .first();
-      if (overlaps) {
-        status = overlaps.user_id === user.id ? "mine" : "booked";
+      const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
+      if (overlap) {
+        status = overlap.userId === user.id ? "mine" : "booked";
       }
       const isWeekend = [0, 6].includes(start.getUTCDay());
       const price = isWeekend ? (bookingObject.price_weekend_cents as number) : (bookingObject.price_weekday_cents as number);
@@ -248,7 +270,13 @@ const handleAccessTokenLogin = async (request: Request, env: Env) => {
   }
   const accessToken = await env.DB.prepare("SELECT * FROM access_tokens WHERE token = ?").bind(token).first();
   if (accessToken) {
-    await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?").bind(token).run();
+    try {
+      await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
+        .bind(token)
+        .run();
+    } catch {
+      // Bakåtkompatibilitet för preview-databaser skapade före last_used_at-kolumnen.
+    }
     const user = await getUser(env.DB, accessToken.user_id as string);
     if (!user) {
       return errorResponse(401, "invalid_access_token");
@@ -259,7 +287,7 @@ const handleAccessTokenLogin = async (request: Request, env: Env) => {
       `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
     ).bind(sessionToken, accessToken.tenant_id, user.id, user.is_admin, expiresAt).run();
-    const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
+    const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
     return json(
       {
         booking_url: `/user/${token}`,
@@ -279,7 +307,7 @@ const handleAccessTokenLogin = async (request: Request, env: Env) => {
     `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
      VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
   ).bind(sessionToken, tenant.id, "account-owner", expiresAt).run();
-  const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
+  const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
   return json(
     {
       booking_url: `/admin/${token}`,
@@ -317,7 +345,7 @@ const handleRfidLogin = async (request: Request, env: Env) => {
      VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
   ).bind(newToken, tag.tenant_id, user.id).run();
 
-  const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
+  const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
   return json(
     {
       booking_url: `/user/${newToken}`,
