@@ -5,6 +5,7 @@ const explicitEnv = process.env.DEPLOY_ENV;
 const explicitPr = process.env.PR_NUMBER;
 const workerPrefix = process.env.WORKER_NAME_PREFIX || "bokningsportal";
 const printEnv = process.env.PRINT_ENV === "1";
+const isWorkersCi = process.env.WORKERS_CI === "1";
 
 const normalizeBranchSuffix = (branch) =>
   (branch || "")
@@ -24,7 +25,9 @@ if (printEnv) {
 
 const getBranchName = () => {
   const keys = [
+    "WORKERS_CI_BRANCH",
     "CF_PAGES_BRANCH",
+    "CF_BRANCH",
     "GITHUB_HEAD_REF",
     "GITHUB_REF_NAME",
     "GIT_BRANCH",
@@ -58,9 +61,13 @@ const getPrNumber = (branchName) => {
 const branchName = getBranchName();
 const prNumber = getPrNumber(branchName);
 const branchSuffix = normalizeBranchSuffix(branchName);
-const env =
-  explicitEnv ||
-  (branchName === "main" || branchName === "master" ? "production" : prNumber ? "preview" : "production");
+
+if (isWorkersCi && !explicitEnv && !branchName && !prNumber) {
+  console.error("Workers CI utan branch-info. Vägrar implicit production deploy.");
+  process.exit(1);
+}
+
+const env = explicitEnv || (branchName === "main" || branchName === "master" ? "production" : "preview");
 
 if (env === "preview" && !branchSuffix && (!prNumber || !/^\d+$/.test(prNumber))) {
   console.error("Preview deploy requires branch name or PR number.");
