@@ -34,13 +34,12 @@ Valfria:
 ### Frontend build (Pages)
 
 Följande variabler används av `scripts/prepare_pages_api_base.mjs`:
-- **WORKER_BASE_DOMAIN** (krävs om `API_BASE` inte sätts)
-  - Exempel: `embsign.workers.dev`
-- **WORKER_NAME_PREFIX** (valfri, default `booking-api`)
+- **WORKER_BASE_DOMAIN** (valfri, default `embsign.workers.dev`)
+- **WORKER_NAME_PREFIX** (valfri, default `bokningsportal`)
 - **API_BASE** (valfri override, högsta prioritet)
 - **CF_PAGES_PULL_REQUEST_ID** / **PULL_REQUEST_NUMBER** / **PR_NUMBER** (för PR‑preview)
 - **CF_PAGES_BRANCH** / **GITHUB_HEAD_REF** / **GITHUB_REF_NAME** (branchdetektion)
 
 Om inget explicit `API_BASE` sätts byggs URL automatiskt:
-- `main`/`master` → `https://booking-api.<WORKER_BASE_DOMAIN>/api`
-- PR preview → `https://booking-api-pr-<PR_NUMBER>.<WORKER_BASE_DOMAIN>/api`
+- `main`/`master` → `https://bokningsportal.<WORKER_BASE_DOMAIN>/api`
+- PR preview → `https://bokningsportal-pr-<PR_NUMBER>.<WORKER_BASE_DOMAIN>/api`

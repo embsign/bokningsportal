@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 const explicitEnv = process.env.DEPLOY_ENV;
 const explicitPr = process.env.PR_NUMBER;
+const workerPrefix = process.env.WORKER_NAME_PREFIX || "bokningsportal";
 const printEnv = process.env.PRINT_ENV === "1";
 
 if (printEnv) {
@@ -57,7 +58,7 @@ if (env === "preview" && (!prNumber || !/^\d+$/.test(prNumber))) {
 }
 
 const dbName = env === "production" ? "booking-prod" : `booking-pr-${prNumber}`;
-const workerName = env === "production" ? "booking-api" : `booking-api-pr-${prNumber}`;
+const workerName = env === "production" ? workerPrefix : `${workerPrefix}-pr-${prNumber}`;
 
 const runWrangler = (command) => {
   try {

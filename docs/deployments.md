@@ -9,12 +9,12 @@
 ## Preview vs Production
 
 ### Produktion
-- Worker‑namn: `booking-api`
+- Worker‑namn: `bokningsportal`
 - DB‑namn: `booking-prod`
 - Deploy triggas på `main`.
 
 ### Preview (PR)
-- Worker‑namn: `booking-api-pr-{PR_NUMBER}`
+- Worker‑namn: `bokningsportal-pr-{PR_NUMBER}`
 - DB‑namn: `booking-pr-{PR_NUMBER}`
 - Deploy triggas på `pull_request`.
 - **PR_NUMBER måste vara satt** (annars failar deploy).
@@ -50,14 +50,14 @@ Frontend läser API‑bas från:
 I produktion/preview bör `API_BASE` injiceras i HTML.
 Exempel:
 ```html
-<meta name="api-base" content="https://booking-api.example.workers.dev/api" />
+<meta name="api-base" content="https://bokningsportal.example.workers.dev/api" />
 ```
 
 ### Auto‑resolution i build
 
 `scripts/prepare_pages_api_base.mjs` räknar ut rätt API‑bas automatiskt:
-- Production (`main`/`master`) → `https://booking-api.<WORKER_BASE_DOMAIN>/api`
-- PR preview (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`, eller branchformat `pr-123`) → `https://booking-api-pr-123.<WORKER_BASE_DOMAIN>/api`
+- Production (`main`/`master`) → `https://bokningsportal.<WORKER_BASE_DOMAIN>/api`
+- PR preview (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`, eller branchformat `pr-123`) → `https://bokningsportal-pr-123.<WORKER_BASE_DOMAIN>/api`
 - Fallback utan PR‑nummer → production‑worker
 
 Detta gör att frontend kan deployas med rätt worker‑namn även för PR‑previews.

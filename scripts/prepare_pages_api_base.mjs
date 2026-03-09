@@ -14,7 +14,9 @@ const {
   WORKER_NAME_PREFIX,
 } = process.env;
 
-const workerPrefix = WORKER_NAME_PREFIX || "booking-api";
+const DEFAULT_WORKER_BASE_DOMAIN = "embsign.workers.dev";
+const workerPrefix = WORKER_NAME_PREFIX || "bokningsportal";
+const workerBaseDomain = WORKER_BASE_DOMAIN || DEFAULT_WORKER_BASE_DOMAIN;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const injectScriptPath = path.resolve(scriptDir, "inject_api_base.mjs");
 
@@ -43,20 +45,22 @@ const buildApiBase = () => {
   }
 
   if (!WORKER_BASE_DOMAIN) {
-    throw new Error("WORKER_BASE_DOMAIN must be set when API_BASE is not provided.");
+    console.warn(
+      `WORKER_BASE_DOMAIN saknas, använder default: ${DEFAULT_WORKER_BASE_DOMAIN}.`
+    );
   }
 
   const branch = CF_PAGES_BRANCH || GITHUB_HEAD_REF || GITHUB_REF_NAME || "";
   if (branch === "main" || branch === "master") {
-    return `https://${workerPrefix}.${WORKER_BASE_DOMAIN}/api`;
+    return `https://${workerPrefix}.${workerBaseDomain}/api`;
   }
 
   const prNumber = getPrNumber();
   if (prNumber) {
-    return `https://${workerPrefix}-pr-${prNumber}.${WORKER_BASE_DOMAIN}/api`;
+    return `https://${workerPrefix}-pr-${prNumber}.${workerBaseDomain}/api`;
   }
 
-  return `https://${workerPrefix}.${WORKER_BASE_DOMAIN}/api`;
+  return `https://${workerPrefix}.${workerBaseDomain}/api`;
 };
 
 const apiBase = buildApiBase();
