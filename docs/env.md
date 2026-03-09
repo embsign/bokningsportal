@@ -42,4 +42,5 @@ Följande variabler används av `scripts/prepare_pages_api_base.mjs`:
 
 Om inget explicit `API_BASE` sätts byggs URL automatiskt:
 - `main`/`master` → `https://bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- PR preview → `https://bokningsportal-pr-<PR_NUMBER>.<WORKER_BASE_DOMAIN>/api`
+- Preview branch → `https://bokningsportal-<BRANCH_SLUG>.<WORKER_BASE_DOMAIN>/api`
+- PR fallback → `https://bokningsportal-pr-<PR_NUMBER>.<WORKER_BASE_DOMAIN>/api`

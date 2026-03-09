@@ -6,6 +6,15 @@ const explicitPr = process.env.PR_NUMBER;
 const workerPrefix = process.env.WORKER_NAME_PREFIX || "bokningsportal";
 const printEnv = process.env.PRINT_ENV === "1";
 
+const normalizeBranchSuffix = (branch) =>
+  (branch || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40)
+    .replace(/-$/g, "");
+
 if (printEnv) {
   console.log("Available env vars:");
   Object.keys(process.env)
@@ -16,8 +25,8 @@ if (printEnv) {
 const getBranchName = () => {
   const keys = [
     "CF_PAGES_BRANCH",
-    "GITHUB_REF_NAME",
     "GITHUB_HEAD_REF",
+    "GITHUB_REF_NAME",
     "GIT_BRANCH",
     "BRANCH",
     "CI_COMMIT_REF_NAME",
@@ -48,17 +57,19 @@ const getPrNumber = (branchName) => {
 
 const branchName = getBranchName();
 const prNumber = getPrNumber(branchName);
+const branchSuffix = normalizeBranchSuffix(branchName);
 const env =
   explicitEnv ||
   (branchName === "main" || branchName === "master" ? "production" : prNumber ? "preview" : "production");
 
-if (env === "preview" && (!prNumber || !/^\d+$/.test(prNumber))) {
-  console.error("Preview deploy requires PR number. Set PR_NUMBER or use branch name pr-123.");
+if (env === "preview" && !branchSuffix && (!prNumber || !/^\d+$/.test(prNumber))) {
+  console.error("Preview deploy requires branch name or PR number.");
   process.exit(1);
 }
 
-const dbName = env === "production" ? "booking-prod" : `booking-pr-${prNumber}`;
-const workerName = env === "production" ? workerPrefix : `${workerPrefix}-pr-${prNumber}`;
+const previewSuffix = branchSuffix || `pr-${prNumber}`;
+const dbName = env === "production" ? "booking-prod" : `booking-${previewSuffix}`;
+const workerName = env === "production" ? workerPrefix : `${workerPrefix}-${previewSuffix}`;
 
 const runWrangler = (command) => {
   try {

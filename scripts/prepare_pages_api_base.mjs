@@ -20,6 +20,15 @@ const workerBaseDomain = WORKER_BASE_DOMAIN || DEFAULT_WORKER_BASE_DOMAIN;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const injectScriptPath = path.resolve(scriptDir, "inject_api_base.mjs");
 
+const normalizeBranchSuffix = (branch) =>
+  (branch || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40)
+    .replace(/-$/g, "");
+
 const getPrNumber = () => {
   const explicit = CF_PAGES_PULL_REQUEST_ID || PULL_REQUEST_NUMBER || PR_NUMBER;
   if (explicit && /^\d+$/.test(explicit)) {
@@ -53,6 +62,11 @@ const buildApiBase = () => {
   const branch = CF_PAGES_BRANCH || GITHUB_HEAD_REF || GITHUB_REF_NAME || "";
   if (branch === "main" || branch === "master") {
     return `https://${workerPrefix}.${workerBaseDomain}/api`;
+  }
+
+  const branchSuffix = normalizeBranchSuffix(branch);
+  if (branchSuffix) {
+    return `https://${workerPrefix}-${branchSuffix}.${workerBaseDomain}/api`;
   }
 
   const prNumber = getPrNumber();
