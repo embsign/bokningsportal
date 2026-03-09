@@ -171,6 +171,13 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     )
     .bind(bookingObjectId, start.toISOString(), end.toISOString())
     .all();
+  const bookingByDate = new Map<string, any>();
+  for (const row of bookings.results) {
+    const day = (row.start_time as string).slice(0, 10);
+    if (!bookingByDate.has(day)) {
+      bookingByDate.set(day, row);
+    }
+  }
 
   const days: { date: string; status: string }[] = [];
   const today = new Date();
@@ -185,7 +192,7 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     if (date < today || date < minDate || date > maxDate) {
       status = "disabled";
     }
-    const booking = bookings.results.find((row) => (row.start_time as string).startsWith(dateString));
+    const booking = bookingByDate.get(dateString);
     if (booking) {
       status = booking.user_id === user.id ? "mine" : "booked";
     }
