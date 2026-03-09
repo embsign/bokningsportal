@@ -1,8 +1,8 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 
-const env = process.env.DEPLOY_ENV || "preview";
-const prNumber = process.env.PR_NUMBER;
+const explicitEnv = process.env.DEPLOY_ENV;
+const explicitPr = process.env.PR_NUMBER;
 const printEnv = process.env.PRINT_ENV === "1";
 
 if (printEnv) {
@@ -12,8 +12,47 @@ if (printEnv) {
     .forEach((key) => console.log(key));
 }
 
+const getBranchName = () => {
+  const keys = [
+    "CF_PAGES_BRANCH",
+    "GITHUB_REF_NAME",
+    "GITHUB_HEAD_REF",
+    "GIT_BRANCH",
+    "BRANCH",
+    "CI_COMMIT_REF_NAME",
+    "BITBUCKET_BRANCH",
+    "VERCEL_GIT_COMMIT_REF",
+  ];
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) return value;
+  }
+  return "";
+};
+
+const getPrNumber = (branchName) => {
+  if (explicitPr && /^\d+$/.test(explicitPr)) {
+    return explicitPr;
+  }
+  const keys = ["PR_NUMBER", "PULL_REQUEST_NUMBER", "CF_PAGES_PULL_REQUEST_ID"];
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && /^\d+$/.test(value)) {
+      return value;
+    }
+  }
+  const match = /^pr-(\d+)$/.exec(branchName || "");
+  return match?.[1] || "";
+};
+
+const branchName = getBranchName();
+const prNumber = getPrNumber(branchName);
+const env =
+  explicitEnv ||
+  (branchName === "main" || branchName === "master" ? "production" : prNumber ? "preview" : "production");
+
 if (env === "preview" && (!prNumber || !/^\d+$/.test(prNumber))) {
-  console.error("PR_NUMBER must be provided for preview deployments.");
+  console.error("Preview deploy requires PR number. Set PR_NUMBER or use branch name pr-123.");
   process.exit(1);
 }
 
