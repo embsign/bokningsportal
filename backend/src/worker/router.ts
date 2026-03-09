@@ -1,10 +1,15 @@
 import { Env, D1Database } from "./types.js";
 
-const json = (data: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(data), {
+const json = (data: unknown, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers || undefined);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json; charset=utf-8");
+  }
+  return new Response(JSON.stringify(data), {
     ...init,
-    headers: { "content-type": "application/json; charset=utf-8", ...(init.headers || {}) },
+    headers,
   });
+};
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
 
@@ -250,7 +255,13 @@ const handleAccessTokenLogin = async (request: Request, env: Env) => {
   }
   const accessToken = await env.DB.prepare("SELECT * FROM access_tokens WHERE token = ?").bind(token).first();
   if (accessToken) {
-    await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?").bind(token).run();
+    try {
+      await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
+        .bind(token)
+        .run();
+    } catch {
+      // Bakåtkompatibilitet för preview-databaser skapade före last_used_at-kolumnen.
+    }
     const user = await getUser(env.DB, accessToken.user_id as string);
     if (!user) {
       return errorResponse(401, "invalid_access_token");
