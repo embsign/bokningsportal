@@ -26,10 +26,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.brfbokatvttidkiosk.ui.theme.BRFBokaTvättidKioskTheme
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -40,8 +42,9 @@ import java.net.URL
 
 class MainActivity : ComponentActivity() {
 
-    private val baseUrl = "https://bokningsportal.app"
-    private val loginEndpoint = "$baseUrl/api/rfid-login"
+    private val frontendBaseUrl = "https://bokningsportal.app"
+    private val apiBaseUrl = "https://bokningsportal.embsign.workers.dev"
+    private val loginEndpoint = "$apiBaseUrl/api/rfid-login"
 
     private var nfcAdapter: NfcAdapter? = null
     private lateinit var pendingIntent: PendingIntent
@@ -57,6 +60,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         pendingIntent = PendingIntent.getActivity(
             this,
@@ -70,12 +80,6 @@ class MainActivity : ComponentActivity() {
                 when (val state = uiState) {
                     UiState.Idle -> IdleScreen()
                     UiState.Loading -> LoadingScreen()
-                    is UiState.DebugWait -> DebugWaitScreen(
-                        uid = state.uid,
-                        requestUrl = state.requestUrl,
-                        responseBody = state.responseBody,
-                        bookingUrl = state.bookingUrl
-                    )
                     is UiState.Showing -> WebScreen(
                         url = state.url,
                         onWebViewCreated = { webViewRef = it },
@@ -162,30 +166,39 @@ class MainActivity : ComponentActivity() {
             val result = withContext(Dispatchers.IO) {
                 fetchBookingUrl(uid)
             }
-            if (result == null) {
+            if (result is BookingResult.Failure) {
                 uiState = UiState.Idle
                 return@launch
             }
 
-            uiState = UiState.DebugWait(
-                uid = uid,
-                requestUrl = loginEndpoint,
-                responseBody = result.responseBody,
-                bookingUrl = result.fullUrl
-            )
-            delay(20_000)
-            uiState = UiState.Showing(result.fullUrl, result.bookingPath)
+            val success = result as BookingResult.Success
+            uiState = UiState.Showing(success.fullUrl, success.bookingPath)
         }
     }
 
-    private fun fetchBookingUrl(uid: String): BookingResponse? {
+    private fun fetchBookingUrl(uid: String): BookingResult {
+        val primaryResult = doRequest(loginEndpoint, uid)
+        if (primaryResult is BookingResult.Failure && primaryResult.statusCode == 405) {
+            val alternateUrl = if (loginEndpoint.endsWith("/")) {
+                loginEndpoint.dropLast(1)
+            } else {
+                "$loginEndpoint/"
+            }
+            return doRequest(alternateUrl, uid)
+        }
+        return primaryResult
+    }
+
+    private fun doRequest(requestUrl: String, uid: String): BookingResult {
         return try {
-            val connection = (URL(loginEndpoint).openConnection() as HttpURLConnection).apply {
+            val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 10000
                 readTimeout = 10000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("User-Agent", "AndroidKiosk/1.0")
             }
 
             connection.outputStream.use { stream ->
@@ -199,18 +212,38 @@ class MainActivity : ComponentActivity() {
                 connection.errorStream
             }
 
-            if (inputStream == null) return null
+            if (inputStream == null) {
+                return BookingResult.Failure(
+                    requestUrl = requestUrl,
+                    statusCode = responseCode,
+                    message = "Tomt svar från servern (HTTP $responseCode)."
+                )
+            }
             val responseBody = BufferedReader(InputStreamReader(inputStream)).use { it.readText() }
-            if (responseCode !in 200..299) return null
+            if (responseCode !in 200..299) {
+                return BookingResult.Failure(
+                    requestUrl = requestUrl,
+                    statusCode = responseCode,
+                    message = "API-fel (HTTP $responseCode).",
+                    responseBody = responseBody
+                )
+            }
 
             val json = JSONObject(responseBody)
             val bookingUrlRaw = json.optString("booking_url", "")
-            if (bookingUrlRaw.isBlank()) return null
+            if (bookingUrlRaw.isBlank()) {
+                return BookingResult.Failure(
+                    requestUrl = requestUrl,
+                    statusCode = responseCode,
+                    message = "Svar saknar booking_url.",
+                    responseBody = responseBody
+                )
+            }
 
             val fullUrl = if (bookingUrlRaw.startsWith("http")) {
                 bookingUrlRaw
             } else {
-                baseUrl.trimEnd('/') + "/" + bookingUrlRaw.trimStart('/')
+                frontendBaseUrl.trimEnd('/') + "/" + bookingUrlRaw.trimStart('/')
             }
 
             val bookingPath = if (bookingUrlRaw.startsWith("http")) {
@@ -219,13 +252,19 @@ class MainActivity : ComponentActivity() {
                 bookingUrlRaw
             }
 
-            BookingResponse(
+            BookingResult.Success(
+                requestUrl = requestUrl,
+                statusCode = responseCode,
                 fullUrl = fullUrl,
                 bookingPath = bookingPath,
                 responseBody = responseBody
             )
-        } catch (_: Exception) {
-            null
+        } catch (ex: Exception) {
+            BookingResult.Failure(
+                requestUrl = requestUrl,
+                statusCode = null,
+                message = "Undantag: ${ex.message ?: "Okänt fel"}"
+            )
         }
     }
 
@@ -233,7 +272,7 @@ class MainActivity : ComponentActivity() {
         if (url.isNullOrBlank()) return false
 
         val uri = Uri.parse(url)
-        if (uri.host != Uri.parse(baseUrl).host) return false
+        if (uri.host != Uri.parse(frontendBaseUrl).host) return false
 
         val path = uri.path.orEmpty()
         if (path == "/" || path.startsWith("/login") || path.startsWith("/kiosk") || path.startsWith("/pos")) {
@@ -260,20 +299,25 @@ class MainActivity : ComponentActivity() {
 private sealed interface UiState {
     data object Idle : UiState
     data object Loading : UiState
-    data class DebugWait(
-        val uid: String,
-        val requestUrl: String,
-        val responseBody: String,
-        val bookingUrl: String
-    ) : UiState
     data class Showing(val url: String, val bookingPath: String) : UiState
 }
 
-private data class BookingResponse(
-    val fullUrl: String,
-    val bookingPath: String,
-    val responseBody: String
-)
+private sealed interface BookingResult {
+    data class Success(
+        val requestUrl: String,
+        val statusCode: Int,
+        val fullUrl: String,
+        val bookingPath: String,
+        val responseBody: String
+    ) : BookingResult
+
+    data class Failure(
+        val requestUrl: String,
+        val statusCode: Int?,
+        val message: String,
+        val responseBody: String? = null
+    ) : BookingResult
+}
 
 @Composable
 private fun IdleScreen() {
@@ -303,34 +347,6 @@ private fun LoadingScreen() {
             text = "Startar bokningsskärmen...",
             color = Color.White,
             textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun DebugWaitScreen(
-    uid: String,
-    requestUrl: String,
-    responseBody: String,
-    bookingUrl: String
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = """
-                UID: $uid
-                API-path: $requestUrl
-                Svar:
-                $responseBody
-                Svars-URL: $bookingUrl
-                Väntar 20 sekunder innan webbläsaren öppnas...
-            """.trimIndent(),
-            color = Color.White,
-            textAlign = TextAlign.Start
         )
     }
 }
