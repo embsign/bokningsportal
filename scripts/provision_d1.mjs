@@ -59,13 +59,15 @@ if (env === "preview" && (!prNumber || !/^\d+$/.test(prNumber))) {
 const dbName = env === "production" ? "booking-prod" : `booking-pr-${prNumber}`;
 const workerName = env === "production" ? "booking-api" : `booking-api-pr-${prNumber}`;
 
-const list = JSON.parse(execSync("npx wrangler d1 list --json", { stdio: ["pipe", "pipe", "inherit"] }).toString());
+const list = JSON.parse(
+  execSync("npx wrangler d1 list --format json", { stdio: ["pipe", "pipe", "inherit"] }).toString()
+);
 const existing = list.find((db) => db.name === dbName);
 
 let databaseId = existing?.uuid;
 if (!databaseId) {
   const created = JSON.parse(
-    execSync(`npx wrangler d1 create ${dbName} --json`, { stdio: ["pipe", "pipe", "inherit"] }).toString()
+    execSync(`npx wrangler d1 create ${dbName} --format json`, { stdio: ["pipe", "pipe", "inherit"] }).toString()
   );
   databaseId = created?.uuid;
 }
