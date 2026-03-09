@@ -7,6 +7,7 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -46,6 +47,11 @@ class MainActivity : ComponentActivity() {
     private var webViewRef: WebView? = null
 
     private var uiState by mutableStateOf<UiState>(UiState.Idle)
+    private val hidBuffer = StringBuilder()
+    private var lastHidKeyTimestamp = 0L
+
+    private val hidKeyTimeoutMs = 300L
+    private val hidMaxLength = 64
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,6 +109,48 @@ class MainActivity : ComponentActivity() {
             val uid = it.id.joinToString("") { byte -> "%02X".format(byte) }
             requestBookingUrl(uid)
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (uiState != UiState.Idle) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        if (event.action != KeyEvent.ACTION_UP) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        val now = System.currentTimeMillis()
+        if (now - lastHidKeyTimestamp > hidKeyTimeoutMs) {
+            hidBuffer.setLength(0)
+        }
+        lastHidKeyTimestamp = now
+
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                val uid = hidBuffer.toString().trim()
+                hidBuffer.setLength(0)
+                if (uid.isNotBlank()) {
+                    requestBookingUrl(uid.uppercase())
+                    return true
+                }
+            }
+            else -> {
+                val ch = event.unicodeChar
+                if (ch != 0) {
+                    val char = ch.toChar()
+                    if (char.isLetterOrDigit()) {
+                        if (hidBuffer.length < hidMaxLength) {
+                            hidBuffer.append(char)
+                        }
+                        return true
+                    }
+                }
+            }
+        }
+
+        return super.dispatchKeyEvent(event)
     }
 
     private fun requestBookingUrl(uid: String) {
