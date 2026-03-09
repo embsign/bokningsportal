@@ -48,7 +48,21 @@ const getPrNumber = () => {
   return "";
 };
 
-const buildApiBase = () => {
+const buildProductionApiBase = () => `https://${workerPrefix}.${workerBaseDomain}/api`;
+
+const checkApiBaseReachable = async (apiBase) => {
+  try {
+    const response = await fetch(`${apiBase}/session`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    });
+    return response.status !== 404;
+  } catch {
+    return false;
+  }
+};
+
+const buildApiBase = async () => {
   if (API_BASE) {
     return API_BASE;
   }
@@ -59,25 +73,38 @@ const buildApiBase = () => {
     );
   }
 
+  const productionApiBase = buildProductionApiBase();
   const branch = CF_PAGES_BRANCH || GITHUB_HEAD_REF || GITHUB_REF_NAME || "";
   if (branch === "main" || branch === "master") {
-    return `https://${workerPrefix}.${workerBaseDomain}/api`;
+    return productionApiBase;
   }
 
   const branchSuffix = normalizeBranchSuffix(branch);
   if (branchSuffix) {
-    return `https://${workerPrefix}-${branchSuffix}.${workerBaseDomain}/api`;
+    const previewApiBase = `https://${workerPrefix}-${branchSuffix}.${workerBaseDomain}/api`;
+    const previewReachable = await checkApiBaseReachable(previewApiBase);
+    if (previewReachable) {
+      return previewApiBase;
+    }
+    console.warn(`Preview worker saknas (${previewApiBase}), fallback till production worker.`);
+    return productionApiBase;
   }
 
   const prNumber = getPrNumber();
   if (prNumber) {
-    return `https://${workerPrefix}-pr-${prNumber}.${workerBaseDomain}/api`;
+    const previewApiBase = `https://${workerPrefix}-pr-${prNumber}.${workerBaseDomain}/api`;
+    const previewReachable = await checkApiBaseReachable(previewApiBase);
+    if (previewReachable) {
+      return previewApiBase;
+    }
+    console.warn(`Preview worker saknas (${previewApiBase}), fallback till production worker.`);
+    return productionApiBase;
   }
 
-  return `https://${workerPrefix}.${workerBaseDomain}/api`;
+  return productionApiBase;
 };
 
-const apiBase = buildApiBase();
+const apiBase = await buildApiBase();
 execFileSync(process.execPath, [injectScriptPath], {
   stdio: "inherit",
   env: { ...process.env, API_BASE: apiBase },
