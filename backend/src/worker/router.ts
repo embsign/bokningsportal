@@ -1,10 +1,14 @@
 import { Env, D1Database } from "./types.js";
 
-const json = (data: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(data), {
-    ...init,
-    headers: { "content-type": "application/json; charset=utf-8", ...(init.headers || {}) },
-  });
+const json = (data: unknown, init: ResponseInit = {}) => {
+  const h: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
+  if (init.headers instanceof Headers) {
+    init.headers.forEach((v, k) => { h[k] = v; });
+  } else if (init.headers && typeof init.headers === "object" && !Array.isArray(init.headers)) {
+    Object.assign(h, init.headers);
+  }
+  return new Response(JSON.stringify(data), { ...init, headers: h });
+};
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
 
