@@ -14,6 +14,8 @@ Syfte: Samla administrativa genvägar och ge överblick.
 - Knappar:
   - **Redigera**
   - **Importera**
+ - Redigera öppnar användarlista (UserPickerModal) och därefter EditUserModal.
+ - Importera öppnar ImportUsersModal.
 
 ### Bokningsobjekt
 - Rubrik: **Bokningsobjekt**
@@ -25,9 +27,10 @@ Syfte: Samla administrativa genvägar och ge överblick.
 ### Debiteringsunderlag / Rapporter
 - Rubrik: **Debiteringsunderlag / Rapporter**
 - Knappar:
-  - **Öppna rapporter**
-  - **Exportera**
+  - **Skapa rapport**
+ - Skapa rapport öppnar ReportModal.
 
 ## Interaktion
 - Knappar öppnar respektive vy eller modal.
 - Konsekvent knappstil; fokus på mus/tangentbord.
+ - Se komponentdetaljer i `docs/design/components.md`.

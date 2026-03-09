@@ -36,11 +36,11 @@ Se komponentbeskrivning: `docs/ux/components/import-users-csv.md`.
      - Oförändrade rader
      - Rader med ändringar (behörigheter ex.)
      - Rader som tas bort
-   - Val:
-     - Lägg till nya (checkbox)
-     - Radera borttagna (checkbox)
-     - Uppdatera ändrade (checkbox)
-     - **Importera** (VIsa tydligt hur många som läggs till / uppdateras / raderas)
+  - Val:
+    - Lägg till nya (checkbox)
+    - Uppdatera rader som ändrats (checkbox)
+    - Radera borttagna (checkbox)
+    - **Importera** (Visa tydligt hur många som läggs till / uppdateras / raderas)
 
    - Kolumner:
      - Identitet

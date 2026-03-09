@@ -9,23 +9,18 @@ Komponenterna ska spegla den faktiska implementationen i `frontend/`.
 
 ## Header
 - Syfte: Visar app‑identitet och inloggad lägenhet.
-- Layout: Horisontell bar med logotyp/namn till vänster, lägenhetsindikator i mitten och hjälp/logga ut till höger.
-  - logotype/namn byts till en Tillbaka-knapp när man klickar sig bort från overviewn
-- Innehåll:
-  - Logotyp + portalnamn
-  - Inloggningsindikator: "Lägenhet {id}"
-  - Hjälp / Logga ut
-- Interaktion: Hjälp/Logga ut är klickbara.
-- Används i: Service selection, Date selection, Time selection, Confirmation.
+- Layout: Horisontell bar med tre områden (vänster/mitten/höger).
+  - Vänster visar logotyp/namn eller **⟵ Tillbaka** när användaren inte är på första steget.
+  - Mitten visar "Lägenhet {id}".
+  - Höger visar Hjälp/Logga ut.
+- Interaktion:
+  - Tillbaka går ett steg tillbaka i bokningsflödet.
+  - Hjälp/Logga ut är klickbara (mock).
+- Används i: Service selection, Date selection, Time selection, Confirmation, Admin dashboard.
 
 ## FooterNavigation
 - Syfte: Standardnavigering (Tillbaka / Nästa / Boka).
-- Layout: Ligger längst ned; kan visa enbart Tillbaka eller enbart Boka beroende på steg.
-- Innehåll:
-  - Tillbaka (sekundär)
-  - Nästa eller Boka (primär)
-- Interaktion: Tillbaka går till föregående steg; primär CTA går vidare eller bekräftar.
-- Används i: Service selection, Date selection, Time selection, Confirmation (i modal).
+- Status: Finns i kod men används inte i nuvarande UI.
 
 ## ServiceCard
 - Syfte: Visa bokningsbar service.
@@ -53,18 +48,17 @@ Komponenterna ska spegla den faktiska implementationen i `frontend/`.
 - Innehåll:
   - Månadsnavigering (föregående/nästa)
   - Rubrik med månadens namn
-  - Veckodagsrad (synlig på breda skärmar)
+  - Veckodagsrad (alltid synlig, Söndag i rött)
   - DayCard för varje dag
-  - Legend för statusfärger
 - Interaktion: Dagkort är klickbara om de inte är disabled.
 - Används i: Date selection (full‑day).
 
 ## DayCard
 - Syfte: Visa ett datum i månadsvy.
-- Layout: Klickbart kort med datum, centrerat.
+- Layout: Klickbart kort med veckodag + datum.
 - Innehåll:
   - Datum (t.ex. 1/3)
-  - Veckodag inuti kort på smala skärmar
+  - Veckodag (förkortning) inuti kort
 - Interaktion: Klickbar om status inte är disabled.
 - Statusfärger:
   - Grå: passerad/disabled
@@ -91,11 +85,10 @@ Komponenterna ska spegla den faktiska implementationen i `frontend/`.
 - Syfte: Visa tidspass över en vecka i ett gemensamt grid.
 - Layout: Kolumner per dag (Mån–Sön), rader per tidsblock.
 - Innehåll:
-  - Veckonavigering (föregående/nästa)
-  - Veckorubrik (t.ex. "Vecka 36")
+  - Veckonavigering (föregående/nästa) visas i Time selection‑headern
+  - Veckorubrik (t.ex. "Vecka 36") visas i Time selection‑headern
   - Veckodag + datum per kolumn
   - TimeslotButton i varje cell
-  - Legend för status (färg/ikon)
 - Interaktion: Navigering byter vecka inom bokningsregler; slot väljs via TimeslotButton.
 - Används i: Time selection.
 
@@ -120,7 +113,7 @@ Komponenterna ska spegla den faktiska implementationen i `frontend/`.
 - Interaktion:
   - Avbryt stänger modal
   - Avboka bekräftar avbokning
-- Används i: Service selection (aktuella bokningar).
+-- Används i: Service selection, Date selection, Time selection.
 
 ## QRCodeFlow (kiosk)
 - Syfte: Generera ny QR‑kod för personlig mobil‑inloggning.
@@ -147,3 +140,56 @@ Komponenterna ska spegla den faktiska implementationen i `frontend/`.
   - Efter bekräftelse: "Bokning klar" + kalender‑åtgärd
 - Interaktion: Tillbaka stänger modal och går tillbaka; Boka bekräftar.
 - Används i: Confirmation.
+
+## CurrentBookingsSection
+- Syfte: Visa användarens aktuella bokningar på servicesidan.
+- Innehåll:
+  - Rubrik: "Aktuella bokningar"
+  - Lista med BookingCard
+  - Tomt‑läge: "Inga aktiva bokningar."
+- Interaktion: Bokningskort med status "mine" är klickbara och öppnar CancelBookingModal.
+- Används i: Service selection.
+
+## BookingCard
+- Syfte: Sammanfatta en bokning i listvy.
+- Innehåll:
+  - Servicenamn
+  - Veckodag + datum
+  - Tid/heldag
+- Statusfärger: samma färglogik som bokningsstatus (ledigt/upptaget/bokat/egna).
+
+## QRSection (kiosk)
+- Syfte: Ge länk för mobilbokning via QR‑kod.
+- Innehåll:
+  - Rubrik: "Boka med mobilen"
+  - Beskrivningstext
+  - Knapp: "Generera QR kod"
+- Interaktion: Öppnar varnings‑modal och därefter QR‑modal.
+
+## AdminDashboard
+- Syfte: Samlad administration i tre sektioner.
+- Sektioner:
+  - Användare: **Redigera**, **Importera**
+  - Bokningsobjekt: **Lägg till**, radåtgärder **Redigera**/**Kopiera**
+  - Debiteringsunderlag / Rapporter: **Skapa rapport**
+- Används i: Admin dashboard.
+
+## BookingObjectModal
+- Syfte: Skapa, kopiera eller redigera bokningsobjekt.
+- Se detaljer i `docs/ux/components/booking-object-modal.md`.
+
+## ImportUsersModal
+- Syfte: Importera användare via CSV i flera steg.
+- Se detaljer i `docs/ux/components/import-users-csv.md`.
+
+## UserPickerModal
+- Syfte: Välja användare att redigera.
+- Innehåll: Sökfält + lista med användarrader och "Välj".
+
+## EditUserModal
+- Syfte: Redigera användarens fält.
+- Fält: Identitet, Lägenhets ID, Hus/Trapphus, RFID‑tagg, Behörighetsgrupper, Admin, Status.
+
+## ReportModal
+- Syfte: Skapa debiteringsrapport.
+- Steg: Välj månad → Välj bokningsobjekt → Ladda ner CSV.

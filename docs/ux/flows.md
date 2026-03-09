@@ -9,15 +9,15 @@ Inloggning sker på två sätt:
 Steg:
 1. Service selection  
    - Visas bara om användaren har fler än en tillgänglig service.
-2a. Date selection or 
-2b. Date/Time selection
+2a. Date selection (heldag)  
+2b. Time selection (tidspass)
 3. Booking confirmation
 
 Filer:
-- `ux/wireframes/booking-flow/01-service-selection.md`
-- `ux/wireframes/booking-flow/02a-date-selection.md`
-- `ux/wireframes/booking-flow/02b-time-selection.md`
-- `ux/wireframes/booking-flow/03-confirmation.md`
+- `docs/ux/flows/booking-flow/01-service-selection.md`
+- `docs/ux/flows/booking-flow/02a-date-selection.md`
+- `docs/ux/flows/booking-flow/02b-time-selection.md`
+- `docs/ux/flows/booking-flow/03-confirmation.md`
 
 ## Övriga flöden
 - `docs/ux/flows/cancel-booking.md`
@@ -30,3 +30,5 @@ Filer:
 - `docs/ux/flows/admin/01-dashboard.md`
 - `docs/ux/flows/admin/add-booking-object.md`
 - `docs/ux/flows/admin/import-users-csv.md`
+- `docs/ux/flows/admin/edit-user.md`
+- `docs/ux/flows/admin/create-report.md`

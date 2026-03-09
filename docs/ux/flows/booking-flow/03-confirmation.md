@@ -6,7 +6,6 @@ Syfte: Bekräfta bokningsdetaljer innan slutlig bokning.
 - Header
 - Modal (Confirmation)
 - BookingSummary
-- FooterNavigation
 
 Standardlayout:
 - Baslayout och gemensamma komponenter beskrivs i `docs/design/components.md`.
@@ -24,8 +23,8 @@ Layout (wireframe):
   - Varaktighet
   - Eventuell Debitering
 
-[Footer]
-- [FooterNavigation component] (Tillbaka / Boka)
+Modal‑footer:
+- Knappar: **Tillbaka** / **Boka**
 
 Efter bekräftelse (state):
 - Bekräftelsemeddelande: "Bokning klar"

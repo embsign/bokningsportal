@@ -1,12 +1,12 @@
-# 03 - Date selection
+# 02b - Time selection
 
-Syfte: Välja dag & tid för tidslslot
+Syfte: Välja dag & tid för tidsslot
 
 Återanvända komponenter:
 - Header
 - TimeslotGrid (Week View)
 - TimeslotButton
-- FooterNavigation
+- CancelBookingModal
 
 Standardlayout:
 - Baslayout och gemensamma komponenter beskrivs i `docs/design/components.md`.
@@ -18,29 +18,21 @@ Layout (wireframe):
 [Main]
 - Ingen rubrik / text mellan Header och huvudyta
 - Huvudyta: [TimeslotGrid (Week View) component]
-  - Veckonavigering: "< Föregående vecka" och "Nästa vecka >"
-    - På mobil / smal skärm kan inte en hel vecka visas - då får navigering ändras till det antal dagar som får plats i bredd
+  - Veckonavigering: "‹ Föregående vecka" och "Nästa vecka ›" visas i headern
   - Veckor får bara stegas enligt bokningsregler
-  - Rubrik med veckonummer "Vecka 36"
-  - Tydlig centrerad rubrik äver tidspassen med veckodagarnas namn samt datum. Söndag i rött
+  - Rubrik med veckonummer "Vecka 36" visas i headern
+  - Tydlig centrerad rubrik över tidspassen med veckodagarnas namn samt datum. Söndag i rött
   - Kolumner per dag (Mån-Sön)
   - Rader per tidsblock (t.ex. 30 min)
   - Varje ruta visar:
-    - Tid (t.ex. 14-16)
+    - Tid (t.ex. 08:00-10:00)
     - Debitering (om relevant)
-    - CTA: Hela rutan är klickbar
-    - Status/visualisering:
-      - Utgråad/disabled: passerad tid (grå)
-        Visualiseras endast med färg
-      - Upptagen: bokad av annan (röd)
-      - Bokad: Bokad av användaren (gul)
-      - Ledig: valbar (grön)
-  - Legend för status (färg/ikon)
+    - Statusfärger och klickbeteende: se `docs/design/components.md` (TimeslotButton)
+  - Legend för status (färg/ikon) visas under grid
   - [TimeslotButton component] används i varje tidspass
-
-[Footer]
-- [FooterNavigation component] (Tillbaka om möjligt, om renderad)
 
 Regler:
 - Dagar utanför bokningsregler är disabled.
 - Tidigare datum är disabled.
+- Klick på slot med status **Bokad** öppnar CancelBookingModal.
+- I mobilvy filtreras dagar utan bokningsbara slots bort.

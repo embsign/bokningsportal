@@ -16,8 +16,9 @@ Layout (wireframe):
      - Redigera‑flöde: se `docs/ux/flows/admin/edit-user.md`
   2) **Bokningsobjekt**
      - Kort beskrivning
-     - Knappar: **Redigera**, **Lägg till**
-     - Tabellöversikt visar status (aktiv/inaktiv)
+     - Knappar: **Lägg till**
+     - Radåtgärder: **Redigera**, **Kopiera**
+     - Tabellöversikt visar status (aktiv/inaktiv) och konfiguration
      - Modal för redigera/kopiera: se `docs/ux/components/booking-object-modal.md`
   3) **Debiteringsunderlag / Rapporter**
      - Kort beskrivning

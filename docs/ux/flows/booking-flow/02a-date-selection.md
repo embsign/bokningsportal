@@ -6,7 +6,7 @@ Syfte: Välja datum för full-day
 - Header
 - Calendar (Month View)
 - DayCard
-- FooterNavigation
+- CancelBookingModal
 
 Standardlayout:
 - Baslayout och gemensamma komponenter beskrivs i `docs/design/components.md`.
@@ -21,21 +21,13 @@ Layout (wireframe):
   - Månadsnavigering: "< Januari" och "Mars >"
   - Månader får bara stegas enligt bokningsregler
   - Rubrik med månadens namn
-  - Tydlig centrerad rubrik äver dagkorten med veckodagarnas namn. Söndag i rött
+  - Tydlig centrerad rubrik över dagkorten med veckodagarnas namn. Söndag i rött
   - [DayCard component] (Mån-Sön)
-    - Datum 1/3
-    - CTA: Hela rutan är klickbar
-    - Status/visualisering:
-      - Utgråad/disabled: passerad tid (grå)
-        Visualiseras endast med färg
-      - Upptagen: bokad av annan (röd)
-      - Bokad: Bokad av användaren (gul)
-      - Ledig: valbar (grön)
-  - Legend för status (färg/ikon)
-
-[Footer]
-- [FooterNavigation component] (Tillbaka om möjligt, om renderad)
+    - Statusfärger och klickbeteende: se `docs/design/components.md` (DayCard)
+  - Legend för status (färg/ikon) visas under kalendern
 
 Regler:
 - Dagar utanför bokningsregler är disabled.
 - Tidigare datum är disabled.
+- Klick på dag med status **Bokad** öppnar CancelBookingModal.
+- I mobilvy filtreras dagar utan bokningsbara slots bort (endast dagar med minst en aktiv slot visas).

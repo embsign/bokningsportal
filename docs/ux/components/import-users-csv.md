@@ -7,8 +7,9 @@ Syfte: Låta admin importera användare från CSV med mappning, preview och kont
   1) Välj fil
   2) Fältmappning
   3) Avancerat
-  4) Förhandsgranskning
-  5) Import‑status
+  4) Adminbehörigheter
+  5) Förhandsgranskning
+  6) Import‑status
 
 ## Delkomponenter
 
@@ -26,20 +27,33 @@ Syfte: Låta admin importera användare från CSV med mappning, preview och kont
 ### Avancerat
 - Regex‑fält:
   - Hus/Trapphus från Identitet
-  - Lägenhetsnummer från Identitet
-- Mall för unikt ID (t.ex. `{hus}-{lägenhetsnummer}`)
+  - Unik lägenhetsidentitet från Identitet
 - Separator för Behörigheter (t.ex. `|`)
+- Live‑feedback visar hur regex‑grupper 1‑2‑3 blir till filtrerat värde.
+
+### Adminbehörigheter
+- Välj vilka behörighetsgrupper som får administratörsbehörighet.
+- Välj‑popup med checkboxar.
+- Valfritt steg.
 
 ### Förhandsgranskning
 - Tabell med användare som kommer importeras
 - Summering av:
   - Nya rader
   - Oförändrade rader
+  - Rader som uppdateras
   - Rader som tas bort
 - Val:
   - Lägg till nya
+  - Uppdatera rader som ändrats
   - Radera borttagna
   - **Importera**
+ - Kolumner:
+   - Identitet
+   - Lägenhets ID
+   - Hus/Trapphus
+   - Admin (Ja/Nej)
+   - Status
 
 ### Import‑status
 - Statusbar/progress
@@ -47,4 +61,4 @@ Syfte: Låta admin importera användare från CSV med mappning, preview och kont
 
 ## Interaktion
 - Inställningar sparas och förinställs nästa gång.
-- Import kan avbrytas innan den startas (Avbryt‑knapp i varje steg).
+- **Avbryt** visas i steg 1, övriga steg använder **Tillbaka**.
