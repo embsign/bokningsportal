@@ -36,6 +36,15 @@ const app = document.getElementById("app");
 const path = window.location.pathname;
 const hashPath = window.location.hash.replace(/^#/, "");
 const routePath = hashPath || path;
+const openHelp = () => {
+  window.alert(
+    "Hjälp\n\nBoka genom att välja objekt, vecka/datum och tid.\nVid problem med behörighet eller bokning, kontakta styrelsen/förvaltaren."
+  );
+};
+const logout = () => {
+  setAccessToken(null);
+  window.location.assign("/");
+};
 
 if (routePath.startsWith("/admin/")) {
   const buildRegexEffect = (samples, regexSource) => {
@@ -560,7 +569,11 @@ if (routePath.startsWith("/admin/")) {
     }
 
     shell.append(
-      Header({ apartmentId: state.adminUser?.association || "—" }),
+      Header({
+        apartmentId: state.adminUser?.association || "—",
+        onHelp: openHelp,
+        onLogout: logout,
+      }),
       AdminDashboard({
         adminUser: state.adminUser,
         bookingObjects: state.bookingObjects,
@@ -812,6 +825,8 @@ const loadWeekAvailability = async (service, weekStart) => {
         apartmentId: state.sessionUser?.apartment_id || "—",
         showBack: Boolean(headerBack),
         onBack: headerBack || undefined,
+        onHelp: openHelp,
+        onLogout: logout,
       })
     );
 
@@ -1099,7 +1114,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   clearElement(app);
   const shell = createElement("div", { className: "app-shell" });
   shell.append(
-    Header({ apartmentId: "Välkommen" }),
+    Header({ apartmentId: "Välkommen", onHelp: openHelp, onLogout: logout }),
     createElement("div", {
       className: "card",
       children: [
