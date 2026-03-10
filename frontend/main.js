@@ -647,9 +647,11 @@ const canMoveMonth = (year, monthIndex) => {
 
 const canMoveWeek = (weekDate) => {
   const currentWeek = getWeekStart(new Date());
+  const min = new Date(currentWeek);
+  min.setDate(min.getDate() - 21);
   const max = new Date(currentWeek);
   max.setDate(max.getDate() + 21);
-  return weekDate >= currentWeek && weekDate <= max;
+  return weekDate >= min && weekDate <= max;
 };
 
 const getWeekLabel = (weekStart) => `Vecka ${getWeekNumber(weekStart)}`;
