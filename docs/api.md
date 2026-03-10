@@ -4,7 +4,7 @@ Denna API‑spec följer nuvarande frontend‑implementation och UX‑flöden.
 
 ## Konventioner
 - Baspath: `/api`
-- Autentisering: HttpOnly `session` cookie efter login.
+- Autentisering: `Authorization: Bearer <access_token>`.
 - Tenant‑resolution:
   - Web: UUID‑token (QR‑länk).
   - Kiosk: RFID‑UID lookup → tenant + user.
@@ -12,15 +12,6 @@ Denna API‑spec följer nuvarande frontend‑implementation och UX‑flöden.
 - Datumformat: ISO 8601 (`YYYY-MM-DD` / `YYYY-MM` / ISO‑datetime).
 
 ## Publika endpoints
-
-### POST /api/access-token-login
-Logga in via UUID‑token (QR‑länk).
-
-**Body**:
-`{ "access_token": "uuid" }`
-
-**Response**:
-`{ "booking_url": "/user/{UUID-token}", "user": { "id": "...", "apartment_id": "1001", "is_admin": false } }`
 
 ### POST /api/rfid-login
 Logga in via RFID‑UID (kiosk).
@@ -31,6 +22,7 @@ Logga in via RFID‑UID (kiosk).
 **Notering**:
 - Returnerar befintlig access‑token för användaren om den finns.
 - Skapar en ny access‑token endast om ingen finns.
+- Sätter ingen session‑cookie; `booking_url` innehåller token som används i `Authorization`.
 
 **Response**:
 `{ "booking_url": "/user/{UUID-token}", "user": { "id": "...", "apartment_id": "1001", "is_admin": false } }`
@@ -40,6 +32,7 @@ Generera/rotera QR‑token för inloggning från kiosk.
 
 **Notering**:
 - Roterar access‑token för användaren och returnerar alltid en ny token.
+- Kräver `Authorization: Bearer <access_token>`.
 
 **Response**:
 `{ "access_token": "uuid", "login_url": "/user/{UUID-token}" }`
@@ -48,6 +41,8 @@ Generera/rotera QR‑token för inloggning från kiosk.
 
 ### GET /api/session
 Returnerar aktuell användare och tenant.
+
+**Auth**: `Authorization: Bearer <access_token>`
 
 **Response**:
 `{ "tenant": { "id": "...", "name": "..." }, "user": { "id": "...", "apartment_id": "1001", "is_admin": false } }`

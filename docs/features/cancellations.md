@@ -10,10 +10,10 @@ Den här sidan beskriver avbokning ur ett feature‑perspektiv.
 ## Data Sources (API)
 - `DELETE /api/cancel`
 - `GET /api/bookings`
-- `POST /api/access-token-login` (web‑login via token)
+- Autentisering: `Authorization: Bearer <access_token>`
 
 ## Flöde (hög nivå)
-1. Användaren loggar in via access‑token (web) eller RFID‑session (kiosk).
+1. Användaren autentiseras via access‑token (web) eller RFID‑login (kiosk).
 2. Användaren väljer en befintlig bokning.
 3. Klienten skickar `DELETE /api/cancel` med `booking_id`.
 4. Servern tar bort bokningen om användaren har rätt.

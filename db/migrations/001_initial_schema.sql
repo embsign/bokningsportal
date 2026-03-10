@@ -59,18 +59,6 @@ CREATE TABLE IF NOT EXISTS access_tokens (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
-  token TEXT PRIMARY KEY,
-  tenant_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  is_admin INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  last_seen_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
 CREATE TABLE IF NOT EXISTS booking_groups (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
