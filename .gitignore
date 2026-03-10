@@ -35,3 +35,12 @@ logs/
 
 # Dev database
 backend/dev.db
+
+# Android
+android/.gradle/
+android/.cxx/
+android/local.properties
+android/**/build/
+android/**/.externalNativeBuild/
+android/**/.idea/
+*.iml

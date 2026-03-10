@@ -1,29 +1,20 @@
 import { Env, D1Database } from "./types.js";
 
 const json = (data: unknown, init: ResponseInit = {}) => {
-  const h: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
-  if (init.headers instanceof Headers) {
-    init.headers.forEach((v, k) => { h[k] = v; });
-  } else if (init.headers && typeof init.headers === "object" && !Array.isArray(init.headers)) {
-    Object.assign(h, init.headers);
+  const headers = new Headers(init.headers || undefined);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json; charset=utf-8");
   }
-  return new Response(JSON.stringify(data), { ...init, headers: h });
+  if (!headers.has("cache-control")) {
+    headers.set("cache-control", "no-store");
+  }
+  return new Response(JSON.stringify(data), {
+    ...init,
+    headers,
+  });
 };
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
-
-const parseCookies = (cookieHeader: string | null) => {
-  const cookies: Record<string, string> = {};
-  if (!cookieHeader) {
-    return cookies;
-  }
-  cookieHeader.split(";").forEach((part) => {
-    const [key, ...rest] = part.trim().split("=");
-    if (!key) return;
-    cookies[key] = decodeURIComponent(rest.join("="));
-  });
-  return cookies;
-};
 
 const addDays = (date: Date, days: number) => {
   const next = new Date(date);
@@ -46,59 +37,79 @@ const getJsonBody = async (request: Request) => {
   }
 };
 
-const SESSION_TTL_DAYS = 14;
-
-const getSession = async (db: D1Database, token: string) => {
-  const row = await db.prepare("SELECT * FROM sessions WHERE token = ?").bind(token).first();
-  if (!row) {
-    return null;
-  }
-  if (new Date(row.expires_at as string) <= new Date()) {
-    return null;
-  }
-  return row;
+const parseBearerToken = (value: string | null) => {
+  if (!value) return null;
+  const [type, token] = value.split(" ");
+  if (!type || !token) return null;
+  if (type.toLowerCase() !== "bearer") return null;
+  return token.trim() || null;
 };
+
+const getAuthContext = async (db: D1Database, token: string) =>
+  (await db
+    .prepare(
+      `SELECT
+         at.token AS access_token,
+         at.tenant_id AS tenant_id,
+         t.name AS tenant_name,
+         u.id AS user_id,
+         u.apartment_id AS user_apartment_id,
+         u.house AS user_house,
+         u.is_admin AS user_is_admin,
+         u.is_active AS user_is_active
+       FROM access_tokens at
+       JOIN tenants t ON t.id = at.tenant_id
+       JOIN users u ON u.id = at.user_id
+       WHERE at.token = ?`
+    )
+    .bind(token)
+    .first()) as any;
 
 const getUser = async (db: D1Database, userId: string) =>
   (await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first()) as any;
 
-const getTenant = async (db: D1Database, tenantId: string) =>
-  (await db.prepare("SELECT * FROM tenants WHERE id = ?").bind(tenantId).first()) as any;
-
 const requireAuth = async (request: Request, env: Env) => {
-  const cookies = parseCookies(request.headers.get("cookie"));
-  const token = cookies.session;
+  const token = parseBearerToken(request.headers.get("authorization"));
   if (!token) {
     return { error: errorResponse(401, "unauthorized") };
   }
-  const session = await getSession(env.DB, token);
-  if (!session) {
-    return { error: errorResponse(401, "unauthorized") };
+  const context = await getAuthContext(env.DB, token);
+  if (context) {
+    const tenant = {
+      id: context.tenant_id,
+      name: context.tenant_name,
+    };
+    const user = {
+      id: context.user_id,
+      apartment_id: context.user_apartment_id,
+      is_admin: context.user_is_admin,
+      tenant_id: tenant.id,
+      house: context.user_house,
+      is_active: context.user_is_active,
+    };
+    if (!user.is_active) {
+      return { error: errorResponse(401, "unauthorized") };
+    }
+    return { user, tenant };
   }
-  const tenant = await getTenant(env.DB, session.tenant_id as string);
+
+  const tenant = await env.DB.prepare("SELECT * FROM tenants WHERE account_owner_token = ?")
+    .bind(token)
+    .first();
   if (!tenant) {
     return { error: errorResponse(401, "unauthorized") };
   }
-  let user = null;
-  if (session.user_id === "account-owner") {
-    user = {
+  return {
+    tenant: { id: tenant.id as string, name: tenant.name as string },
+    user: {
       id: "account-owner",
       apartment_id: "admin",
       is_admin: 1,
-      tenant_id: tenant.id,
+      tenant_id: tenant.id as string,
       house: null,
       is_active: 1,
-    };
-  } else {
-    user = await getUser(env.DB, session.user_id as string);
-  }
-  if (!user) {
-    return { error: errorResponse(401, "unauthorized") };
-  }
-  await env.DB.prepare("UPDATE sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token = ?")
-    .bind(token)
-    .run();
-  return { session, user, tenant };
+    },
+  };
 };
 
 const requireAdmin = async (request: Request, env: Env) => {
@@ -125,28 +136,36 @@ const listUserGroups = async (db: D1Database, userId: string) => {
   return rows.results.map((row: any) => row.name as string);
 };
 
-const canUserAccessBookingObject = async (db: D1Database, user: any, bookingObjectId: string) => {
+const permissionMatchesUser = (user: any, userGroups: Set<string>, scope: string, value: string) => {
+  if (scope === "house") return user.house === value;
+  if (scope === "apartment") return user.apartment_id === value;
+  if (scope === "group") return userGroups.has(value);
+  return false;
+};
+
+const canUserAccessWithPermissions = (permissions: any[], user: any, userGroups: string[]) => {
+  if (!permissions.length) {
+    return true;
+  }
+  const groupsSet = new Set(userGroups);
+  const deny = permissions.filter((p: any) => p.mode === "deny");
+  if (deny.some((p: any) => permissionMatchesUser(user, groupsSet, p.scope as string, p.value as string))) {
+    return false;
+  }
+  const allow = permissions.filter((p: any) => p.mode === "allow");
+  if (!allow.length) {
+    return true;
+  }
+  return allow.some((p: any) => permissionMatchesUser(user, groupsSet, p.scope as string, p.value as string));
+};
+
+const canUserAccessBookingObject = async (db: D1Database, user: any, bookingObjectId: string, userGroups?: string[]) => {
   const permissions = await db
     .prepare("SELECT mode, scope, value FROM booking_object_permissions WHERE booking_object_id = ?")
     .bind(bookingObjectId)
     .all();
-  if (!permissions.results.length) {
-    return true;
-  }
-  const userGroups = await listUserGroups(db, user.id);
-  const matches = (scope: string, value: string) => {
-    if (scope === "house") return user.house === value;
-    if (scope === "apartment") return user.apartment_id === value;
-    if (scope === "group") return userGroups.includes(value);
-    return false;
-  };
-  const deny = permissions.results.filter((p: any) => p.mode === "deny");
-  if (deny.some((p: any) => matches(p.scope as string, p.value as string))) {
-    return false;
-  }
-  const allow = permissions.results.filter((p: any) => p.mode === "allow");
-  if (!allow.length) return true;
-  return allow.some((p: any) => matches(p.scope as string, p.value as string));
+  const groups = userGroups || (await listUserGroups(db, user.id));
+  return canUserAccessWithPermissions(permissions.results, user, groups);
 };
 
 const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string) => {
@@ -168,6 +187,13 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     )
     .bind(bookingObjectId, start.toISOString(), end.toISOString())
     .all();
+  const bookingByDate = new Map<string, any>();
+  for (const row of bookings.results) {
+    const day = (row.start_time as string).slice(0, 10);
+    if (!bookingByDate.has(day)) {
+      bookingByDate.set(day, row);
+    }
+  }
 
   const days: { date: string; status: string }[] = [];
   const today = new Date();
@@ -182,7 +208,7 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     if (date < today || date < minDate || date > maxDate) {
       status = "disabled";
     }
-    const booking = bookings.results.find((row) => (row.start_time as string).startsWith(dateString));
+    const booking = bookingByDate.get(dateString);
     if (booking) {
       status = booking.user_id === user.id ? "mine" : "booked";
     }
@@ -195,7 +221,27 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
   const startDate = parseDate(weekStart);
+  const endDate = addDays(startDate, 7);
+  const overlapsResult = await db
+    .prepare(
+      `SELECT user_id, start_time, end_time FROM bookings
+       WHERE booking_object_id = ?
+         AND cancelled_at IS NULL
+         AND NOT (end_time <= ? OR start_time >= ?)`
+    )
+    .bind(bookingObjectId, startDate.toISOString(), endDate.toISOString())
+    .all();
+  const overlaps = overlapsResult.results.map((row: any) => ({
+    userId: row.user_id as string,
+    startMs: new Date(row.start_time as string).getTime(),
+    endMs: new Date(row.end_time as string).getTime(),
+  }));
   const slotMinutes = (bookingObject.slot_duration_minutes as number) || 60;
+  const nowMs = Date.now();
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
   const days = [];
   for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
     const date = new Date(startDate);
@@ -203,32 +249,20 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     const dateString = formatDate(date);
     const label = date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "numeric" });
     const slots = [];
-    const minDate = new Date();
-    minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
-    const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
     const dayDisabled = date < minDate || date > maxDate;
     for (let hour = 8; hour < 20; hour += slotMinutes / 60) {
       const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, 0, 0));
       const end = new Date(start);
       end.setUTCMinutes(end.getUTCMinutes() + slotMinutes);
-      const startTime = start.toISOString();
-      const endTime = end.toISOString();
+      const startMs = start.getTime();
+      const endMs = end.getTime();
       let status: "available" | "booked" | "mine" | "disabled" = "available";
-      if (start < new Date() || dayDisabled) {
+      if (startMs < nowMs || dayDisabled) {
         status = "disabled";
       }
-      const overlaps = await db
-        .prepare(
-          `SELECT user_id FROM bookings
-           WHERE booking_object_id = ?
-             AND cancelled_at IS NULL
-             AND NOT (end_time <= ? OR start_time >= ?)`
-        )
-        .bind(bookingObjectId, startTime, endTime)
-        .first();
-      if (overlaps) {
-        status = overlaps.user_id === user.id ? "mine" : "booked";
+      const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
+      if (overlap) {
+        status = overlap.userId === user.id ? "mine" : "booked";
       }
       const isWeekend = [0, 6].includes(start.getUTCDay());
       const price = isWeekend ? (bookingObject.price_weekend_cents as number) : (bookingObject.price_weekday_cents as number);
@@ -242,55 +276,6 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     days.push({ label, date: dateString, slots });
   }
   return days;
-};
-
-const handleAccessTokenLogin = async (request: Request, env: Env) => {
-  const body = await getJsonBody(request);
-  const token = body?.access_token;
-  if (!token) {
-    return errorResponse(401, "invalid_access_token");
-  }
-  const accessToken = await env.DB.prepare("SELECT * FROM access_tokens WHERE token = ?").bind(token).first();
-  if (accessToken) {
-    await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?").bind(token).run();
-    const user = await getUser(env.DB, accessToken.user_id as string);
-    if (!user) {
-      return errorResponse(401, "invalid_access_token");
-    }
-    const sessionToken = crypto.randomUUID();
-    const expiresAt = addDays(new Date(), SESSION_TTL_DAYS).toISOString();
-    await env.DB.prepare(
-      `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
-    ).bind(sessionToken, accessToken.tenant_id, user.id, user.is_admin, expiresAt).run();
-    const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
-    return json(
-      {
-        booking_url: `/user/${token}`,
-        user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
-      },
-      { headers }
-    );
-  }
-
-  const tenant = await env.DB.prepare("SELECT * FROM tenants WHERE account_owner_token = ?").bind(token).first();
-  if (!tenant) {
-    return errorResponse(401, "invalid_access_token");
-  }
-  const sessionToken = crypto.randomUUID();
-  const expiresAt = addDays(new Date(), SESSION_TTL_DAYS).toISOString();
-  await env.DB.prepare(
-    `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
-     VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
-  ).bind(sessionToken, tenant.id, "account-owner", expiresAt).run();
-  const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
-  return json(
-    {
-      booking_url: `/admin/${token}`,
-      user: { id: "account-owner", apartment_id: "admin", is_admin: true },
-    },
-    { headers }
-  );
 };
 
 const handleRfidLogin = async (request: Request, env: Env) => {
@@ -307,40 +292,41 @@ const handleRfidLogin = async (request: Request, env: Env) => {
   if (!user) {
     return errorResponse(401, "invalid_rfid");
   }
-  const sessionToken = crypto.randomUUID();
-  const expiresAt = addDays(new Date(), SESSION_TTL_DAYS).toISOString();
-  await env.DB.prepare(
-    `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
-  ).bind(sessionToken, tag.tenant_id, user.id, user.is_admin, expiresAt).run();
 
-  await env.DB.prepare("DELETE FROM access_tokens WHERE user_id = ? AND source = 'kiosk'").bind(user.id).run();
-  const newToken = crypto.randomUUID();
-  await env.DB.prepare(
-    `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
-  ).bind(newToken, tag.tenant_id, user.id).run();
+  const existingAccessToken = await env.DB.prepare(
+    "SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1"
+  ).bind(user.id).first();
+  const accessToken =
+    (existingAccessToken?.token as string | undefined) || crypto.randomUUID();
+  if (!existingAccessToken) {
+    await env.DB.prepare(
+      `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
+    ).bind(accessToken, tag.tenant_id, user.id).run();
+  } else {
+    await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
+      .bind(accessToken)
+      .run();
+  }
 
-  const headers = new Headers({ "Set-Cookie": `session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax` });
   return json(
     {
-      booking_url: `/user/${newToken}`,
+      booking_url: `/user/${accessToken}`,
       user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
-    },
-    { headers }
+    }
   );
 };
 
 const handleKioskAccessToken = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
-  await env.DB.prepare("DELETE FROM access_tokens WHERE user_id = ? AND source = 'kiosk'").bind(auth.user.id).run();
-  const token = crypto.randomUUID();
+  await env.DB.prepare("DELETE FROM access_tokens WHERE user_id = ?").bind(auth.user.id).run();
+  const accessToken = crypto.randomUUID();
   await env.DB.prepare(
     `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
      VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
-  ).bind(token, auth.tenant.id, auth.user.id).run();
-  return json({ access_token: token, login_url: `/user/${token}` });
+  ).bind(accessToken, auth.tenant.id, auth.user.id).run();
+  return json({ access_token: accessToken, login_url: `/user/${accessToken}` });
 };
 
 const handleSession = async (request: Request, env: Env) => {
@@ -359,13 +345,34 @@ const handleServices = async (request: Request, env: Env) => {
     .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
     .bind(auth.tenant.id)
     .all();
-  const filtered = auth.user.is_admin === 1
-    ? bookingObjects.results
-    : await Promise.all(
-        bookingObjects.results.map(async (obj) => ((await canUserAccessBookingObject(env.DB, auth.user, obj.id as string)) ? obj : null))
-      );
+  let filtered: any[] = bookingObjects.results;
+  if (auth.user.is_admin !== 1) {
+    const [userGroups, permissionRows] = await Promise.all([
+      listUserGroups(env.DB, auth.user.id),
+      env.DB
+        .prepare(
+          `SELECT bop.booking_object_id, bop.mode, bop.scope, bop.value
+           FROM booking_object_permissions bop
+           JOIN booking_objects bo ON bo.id = bop.booking_object_id
+           WHERE bo.tenant_id = ?
+             AND bo.is_active = 1`
+        )
+        .bind(auth.tenant.id)
+        .all(),
+    ]);
+    const permissionsByObject = new Map<string, any[]>();
+    for (const permission of permissionRows.results) {
+      const objectId = permission.booking_object_id as string;
+      if (!permissionsByObject.has(objectId)) {
+        permissionsByObject.set(objectId, []);
+      }
+      permissionsByObject.get(objectId)!.push(permission);
+    }
+    filtered = bookingObjects.results.filter((obj: any) =>
+      canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
+    );
+  }
   const services = filtered
-    .filter(Boolean)
     .map((obj: any) => ({
       id: obj.id,
       name: obj.name,
@@ -479,22 +486,41 @@ const handleAvailabilityWeek = async (request: Request, env: Env, url: URL) => {
 const handleAdminUsers = async (request: Request, env: Env) => {
   const auth = await requireAdmin(request, env);
   if ("error" in auth) return auth.error;
-  const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
-  const result = [];
-  for (const user of users.results) {
-    const groups = await listUserGroups(env.DB, user.id as string);
-    const rfid = await env.DB.prepare("SELECT uid FROM rfid_tags WHERE user_id = ?").bind(user.id).first();
-    result.push({
-      id: user.id,
-      identity: user.apartment_id,
-      apartment_id: user.apartment_id,
-      house: user.house || "",
-      groups,
-      rfid: rfid?.uid || "",
-      is_admin: user.is_admin === 1,
-      is_active: user.is_active === 1,
-    });
-  }
+  const users = await env.DB
+    .prepare(
+      `SELECT
+         u.id,
+         u.apartment_id,
+         u.house,
+         u.is_admin,
+         u.is_active,
+         GROUP_CONCAT(DISTINCT ag.name) AS group_names,
+         COALESCE(MAX(CASE WHEN rt.is_active = 1 THEN rt.uid END), '') AS rfid
+       FROM users u
+       LEFT JOIN user_access_groups uag ON uag.user_id = u.id
+       LEFT JOIN access_groups ag ON ag.id = uag.group_id
+       LEFT JOIN rfid_tags rt ON rt.user_id = u.id
+       WHERE u.tenant_id = ?
+       GROUP BY u.id, u.apartment_id, u.house, u.is_admin, u.is_active
+       ORDER BY u.apartment_id ASC`
+    )
+    .bind(auth.tenant.id)
+    .all();
+  const result = users.results.map((user: any) => ({
+    id: user.id,
+    identity: user.apartment_id,
+    apartment_id: user.apartment_id,
+    house: user.house || "",
+    groups: user.group_names
+      ? String(user.group_names)
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : [],
+    rfid: user.rfid || "",
+    is_admin: user.is_admin === 1,
+    is_active: user.is_active === 1,
+  }));
   return json({ users: result });
 };
 
@@ -539,29 +565,49 @@ const handleAdminUpdateUser = async (request: Request, env: Env, userId: string)
 const handleAdminBookingObjects = async (request: Request, env: Env) => {
   const auth = await requireAdmin(request, env);
   if ("error" in auth) return auth.error;
-  const rows = await env.DB.prepare("SELECT * FROM booking_objects WHERE tenant_id = ?").bind(auth.tenant.id).all();
-  const objects = [];
-  for (const row of rows.results) {
-    const permissions = await env.DB
-      .prepare("SELECT mode, scope, value FROM booking_object_permissions WHERE booking_object_id = ?")
-      .bind((row as any).id)
-      .all();
-    const allowHouses = permissions.results.filter((p: any) => p.mode === "allow" && p.scope === "house").map((p: any) => p.value);
-    const allowGroups = permissions.results.filter((p: any) => p.mode === "allow" && p.scope === "group").map((p: any) => p.value);
-    const allowApartments = permissions.results.filter((p: any) => p.mode === "allow" && p.scope === "apartment").map((p: any) => p.value);
-    const denyHouses = permissions.results.filter((p: any) => p.mode === "deny" && p.scope === "house").map((p: any) => p.value);
-    const denyGroups = permissions.results.filter((p: any) => p.mode === "deny" && p.scope === "group").map((p: any) => p.value);
-    const denyApartments = permissions.results.filter((p: any) => p.mode === "deny" && p.scope === "apartment").map((p: any) => p.value);
-    objects.push({
-      ...row,
-      allowHouses,
-      allowGroups,
-      allowApartments,
-      denyHouses,
-      denyGroups,
-      denyApartments,
-    });
+  const rows = await env.DB
+    .prepare(
+      `SELECT
+         bo.*,
+         bop.mode AS permission_mode,
+         bop.scope AS permission_scope,
+         bop.value AS permission_value
+       FROM booking_objects bo
+       LEFT JOIN booking_object_permissions bop ON bop.booking_object_id = bo.id
+       WHERE bo.tenant_id = ?
+       ORDER BY bo.name ASC`
+    )
+    .bind(auth.tenant.id)
+    .all();
+  const objectsById = new Map<string, any>();
+  for (const row of rows.results as any[]) {
+    if (!objectsById.has(row.id)) {
+      const { permission_mode: _mode, permission_scope: _scope, permission_value: _value, ...bookingObject } = row;
+      objectsById.set(row.id, {
+        ...bookingObject,
+        allowHouses: [],
+        allowGroups: [],
+        allowApartments: [],
+        denyHouses: [],
+        denyGroups: [],
+        denyApartments: [],
+      });
+    }
+    if (!row.permission_mode || !row.permission_scope) {
+      continue;
+    }
+    const target = objectsById.get(row.id)!;
+    const mode = row.permission_mode as string;
+    const scope = row.permission_scope as string;
+    const value = row.permission_value as string;
+    if (mode === "allow" && scope === "house") target.allowHouses.push(value);
+    if (mode === "allow" && scope === "group") target.allowGroups.push(value);
+    if (mode === "allow" && scope === "apartment") target.allowApartments.push(value);
+    if (mode === "deny" && scope === "house") target.denyHouses.push(value);
+    if (mode === "deny" && scope === "group") target.denyGroups.push(value);
+    if (mode === "deny" && scope === "apartment") target.denyApartments.push(value);
   }
+  const objects = Array.from(objectsById.values());
   return json({ booking_objects: objects });
 };
 
@@ -853,7 +899,6 @@ export const router = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");
 
-  if (request.method === "POST" && path === "/api/access-token-login") return handleAccessTokenLogin(request, env);
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
 
