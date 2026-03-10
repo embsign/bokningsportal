@@ -10,7 +10,8 @@ import { UserPickerModal } from "./components/UserPickerModal.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
-import { getSession, loginWithAccessToken } from "./api/session.js";
+import { getSession } from "./api/session.js";
+import { setAccessToken } from "./api/client.js";
 import { getServices } from "./api/services.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
 import { getMonthAvailability, getMonthLabel, getWeekAvailability, getWeekStart } from "./api/availability.js";
@@ -232,13 +233,7 @@ if (routePath.startsWith("/admin/")) {
     adminInitialized = true;
     const token = routePath.split("/")[2];
     if (token) {
-      try {
-        await loginWithAccessToken(token);
-      } catch (error) {
-        if (error.status === 401) {
-          alert("Sessionen är ogiltig eller har gått ut.");
-        }
-      }
+      setAccessToken(token);
     }
     try {
       const session = await getSession();
@@ -732,18 +727,7 @@ const initUser = async () => {
   userInitialized = true;
   const token = routePath.split("/")[2];
   if (token) {
-    try {
-      await loginWithAccessToken(token);
-    } catch (error) {
-      if (error.status === 401) {
-        store.setState({
-          sessionError: "unauthorized",
-          sessionLoading: false,
-          uiStates: { ...store.getState().uiStates, service: "error" },
-        });
-        return;
-      }
-    }
+    setAccessToken(token);
   }
   try {
     const session = await getSession();

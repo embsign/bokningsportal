@@ -11,7 +11,7 @@ Den här sidan beskriver hur tillgänglighet för resurser exponeras och använd
 - `GET /api/resources`
 - `GET /api/slots?resource_id=&date=YYYY-MM-DD`
 - `GET /api/availability-range?resource_id=&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
-- `POST /api/access-token-login` (web‑login via token)
+- Autentisering: `Authorization: Bearer <access_token>`
 
 ## Klientbeteende
 - Håll antalet backend‑anrop lågt: använd `availability-range` för att hämta en hel vecka eller månad i ett enda anrop.

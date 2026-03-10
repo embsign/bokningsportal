@@ -1,3 +1,11 @@
+let accessToken = null;
+
+export const setAccessToken = (token) => {
+  accessToken = token || null;
+};
+
+export const getAccessToken = () => accessToken;
+
 const parseError = async (response) => {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -44,11 +52,13 @@ const getApiBase = () => {
 export const apiRequest = async (path, options = {}) => {
   const base = getApiBase();
   const headers = new Headers(options.headers || {});
+  if (accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
   if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   const response = await fetch(`${base}${path}`, {
-    credentials: "include",
     headers,
     ...options,
   });

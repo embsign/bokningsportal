@@ -11,10 +11,10 @@ Den här sidan beskriver bokningsflödet ur ett feature‑perspektiv.
 - `GET /api/slots`
 - `GET /api/resources`
 - `GET /api/bookings` (visar egna bokningar; admin får kalender)
-- `POST /api/access-token-login` (web‑login via token)
+- Autentisering: `Authorization: Bearer <access_token>`
 
 ## Flöde (hög nivå)
-1. Användaren loggar in via access‑token (web) eller RFID‑session (kiosk).
+1. Användaren autentiseras via access‑token (web) eller RFID‑login (kiosk).
 2. Användaren väljer resurs och tid.
 3. Klienten skickar bokning via `POST /api/book`.
 4. Servern validerar åtkomst, överlapp och bokningsfönster.

@@ -13,19 +13,6 @@ const json = (data: unknown, init: ResponseInit = {}) => {
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
 
-const parseCookies = (cookieHeader: string | null) => {
-  const cookies: Record<string, string> = {};
-  if (!cookieHeader) {
-    return cookies;
-  }
-  cookieHeader.split(";").forEach((part) => {
-    const [key, ...rest] = part.trim().split("=");
-    if (!key) return;
-    cookies[key] = decodeURIComponent(rest.join("="));
-  });
-  return cookies;
-};
-
 const addDays = (date: Date, days: number) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -47,30 +34,30 @@ const getJsonBody = async (request: Request) => {
   }
 };
 
-const SESSION_TTL_DAYS = 14;
-const buildSessionCookie = (sessionToken: string) =>
-  `session=${sessionToken}; HttpOnly; Path=/; SameSite=None; Secure`;
+const parseBearerToken = (value: string | null) => {
+  if (!value) return null;
+  const [type, token] = value.split(" ");
+  if (!type || !token) return null;
+  if (type.toLowerCase() !== "bearer") return null;
+  return token.trim() || null;
+};
 
 const getAuthContext = async (db: D1Database, token: string) =>
   (await db
     .prepare(
       `SELECT
-         s.token AS session_token,
-         s.tenant_id AS session_tenant_id,
-         s.user_id AS session_user_id,
-         s.expires_at AS session_expires_at,
-         s.last_seen_at AS session_last_seen_at,
-         t.id AS tenant_id,
+         at.token AS access_token,
+         at.tenant_id AS tenant_id,
          t.name AS tenant_name,
          u.id AS user_id,
          u.apartment_id AS user_apartment_id,
          u.house AS user_house,
          u.is_admin AS user_is_admin,
          u.is_active AS user_is_active
-       FROM sessions s
-       JOIN tenants t ON t.id = s.tenant_id
-       LEFT JOIN users u ON u.id = s.user_id
-       WHERE s.token = ?`
+       FROM access_tokens at
+       JOIN tenants t ON t.id = at.tenant_id
+       JOIN users u ON u.id = at.user_id
+       WHERE at.token = ?`
     )
     .bind(token)
     .first()) as any;
@@ -79,38 +66,17 @@ const getUser = async (db: D1Database, userId: string) =>
   (await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first()) as any;
 
 const requireAuth = async (request: Request, env: Env) => {
-  const cookies = parseCookies(request.headers.get("cookie"));
-  const token = cookies.session;
+  const token = parseBearerToken(request.headers.get("authorization"));
   if (!token) {
     return { error: errorResponse(401, "unauthorized") };
   }
   const context = await getAuthContext(env.DB, token);
-  if (!context) {
-    return { error: errorResponse(401, "unauthorized") };
-  }
-  if (new Date(context.session_expires_at as string) <= new Date()) {
-    return { error: errorResponse(401, "unauthorized") };
-  }
-
-  const tenant = {
-    id: context.tenant_id,
-    name: context.tenant_name,
-  };
-  let user = null;
-  if (context.session_user_id === "account-owner") {
-    user = {
-      id: "account-owner",
-      apartment_id: "admin",
-      is_admin: 1,
-      tenant_id: tenant.id,
-      house: null,
-      is_active: 1,
+  if (context) {
+    const tenant = {
+      id: context.tenant_id,
+      name: context.tenant_name,
     };
-  } else {
-    if (!context.user_id) {
-      return { error: errorResponse(401, "unauthorized") };
-    }
-    user = {
+    const user = {
       id: context.user_id,
       apartment_id: context.user_apartment_id,
       is_admin: context.user_is_admin,
@@ -118,20 +84,28 @@ const requireAuth = async (request: Request, env: Env) => {
       house: context.user_house,
       is_active: context.user_is_active,
     };
+    if (!user.is_active) {
+      return { error: errorResponse(401, "unauthorized") };
+    }
+    return { user, tenant };
   }
-  if (!user) {
+
+  const tenant = await env.DB.prepare("SELECT * FROM tenants WHERE account_owner_token = ?")
+    .bind(token)
+    .first();
+  if (!tenant) {
     return { error: errorResponse(401, "unauthorized") };
   }
   return {
-    session: {
-      token: context.session_token,
-      tenant_id: context.session_tenant_id,
-      user_id: context.session_user_id,
-      expires_at: context.session_expires_at,
-      last_seen_at: context.session_last_seen_at,
+    tenant: { id: tenant.id as string, name: tenant.name as string },
+    user: {
+      id: "account-owner",
+      apartment_id: "admin",
+      is_admin: 1,
+      tenant_id: tenant.id as string,
+      house: null,
+      is_active: 1,
     },
-    user,
-    tenant,
   };
 };
 
@@ -301,61 +275,6 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
   return days;
 };
 
-const handleAccessTokenLogin = async (request: Request, env: Env) => {
-  const body = await getJsonBody(request);
-  const token = body?.access_token;
-  if (!token) {
-    return errorResponse(401, "invalid_access_token");
-  }
-  const accessToken = await env.DB.prepare("SELECT * FROM access_tokens WHERE token = ?").bind(token).first();
-  if (accessToken) {
-    try {
-      await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
-        .bind(token)
-        .run();
-    } catch {
-      // Bakåtkompatibilitet för preview-databaser skapade före last_used_at-kolumnen.
-    }
-    const user = await getUser(env.DB, accessToken.user_id as string);
-    if (!user) {
-      return errorResponse(401, "invalid_access_token");
-    }
-    const sessionToken = crypto.randomUUID();
-    const expiresAt = addDays(new Date(), SESSION_TTL_DAYS).toISOString();
-    await env.DB.prepare(
-      `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
-    ).bind(sessionToken, accessToken.tenant_id, user.id, user.is_admin, expiresAt).run();
-    const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
-    return json(
-      {
-        booking_url: `/user/${token}`,
-        user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
-      },
-      { headers }
-    );
-  }
-
-  const tenant = await env.DB.prepare("SELECT * FROM tenants WHERE account_owner_token = ?").bind(token).first();
-  if (!tenant) {
-    return errorResponse(401, "invalid_access_token");
-  }
-  const sessionToken = crypto.randomUUID();
-  const expiresAt = addDays(new Date(), SESSION_TTL_DAYS).toISOString();
-  await env.DB.prepare(
-    `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
-     VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
-  ).bind(sessionToken, tenant.id, "account-owner", expiresAt).run();
-  const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
-  return json(
-    {
-      booking_url: `/admin/${token}`,
-      user: { id: "account-owner", apartment_id: "admin", is_admin: true },
-    },
-    { headers }
-  );
-};
-
 const handleRfidLogin = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
   const uid = body?.uid;
@@ -370,12 +289,6 @@ const handleRfidLogin = async (request: Request, env: Env) => {
   if (!user) {
     return errorResponse(401, "invalid_rfid");
   }
-  const sessionToken = crypto.randomUUID();
-  const expiresAt = addDays(new Date(), SESSION_TTL_DAYS).toISOString();
-  await env.DB.prepare(
-    `INSERT INTO sessions (token, tenant_id, user_id, is_admin, created_at, last_seen_at, expires_at)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
-  ).bind(sessionToken, tag.tenant_id, user.id, user.is_admin, expiresAt).run();
 
   const existingAccessToken = await env.DB.prepare(
     "SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1"
@@ -393,13 +306,11 @@ const handleRfidLogin = async (request: Request, env: Env) => {
       .run();
   }
 
-  const headers = new Headers({ "Set-Cookie": buildSessionCookie(sessionToken) });
   return json(
     {
       booking_url: `/user/${accessToken}`,
       user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
-    },
-    { headers }
+    }
   );
 };
 
@@ -985,7 +896,6 @@ export const router = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");
 
-  if (request.method === "POST" && path === "/api/access-token-login") return handleAccessTokenLogin(request, env);
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
 
