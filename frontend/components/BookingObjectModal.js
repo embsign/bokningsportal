@@ -1,5 +1,17 @@
 import { createElement } from "../hooks/dom.js";
 
+const helpButton = (help) =>
+  createElement("button", {
+    className: "form-help",
+    text: "?",
+    attrs: {
+      type: "button",
+      title: help,
+      "aria-label": help,
+    },
+    onClick: () => window.alert(help),
+  });
+
 const field = ({ label, help, input }) =>
   createElement("label", {
     className: "form-field form-row-inline",
@@ -8,7 +20,7 @@ const field = ({ label, help, input }) =>
         className: "form-label form-label-inline",
         children: [
           createElement("span", { text: label }),
-          help ? createElement("span", { className: "form-help", text: "?", attrs: { title: help } }) : null,
+          help ? helpButton(help) : null,
         ].filter(Boolean),
       }),
       createElement("div", { className: "form-input-inline", children: [input] }),
@@ -23,7 +35,7 @@ const fieldGroup = ({ label, help, children }) =>
         className: "form-label form-label-inline",
         children: [
           createElement("span", { text: label }),
-          help ? createElement("span", { className: "form-help", text: "?", attrs: { title: help } }) : null,
+          help ? helpButton(help) : null,
         ].filter(Boolean),
       }),
       createElement("div", { className: "form-input-inline", children }),
