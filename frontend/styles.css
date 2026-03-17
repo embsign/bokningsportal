@@ -1128,11 +1128,22 @@ body {
   z-index: 50;
 }
 
+.modal-overlay-scrollable {
+  align-items: flex-start;
+  overflow-y: auto;
+}
+
 .modal {
   width: min(720px, 100%);
   padding: 28px;
   display: grid;
   gap: 20px;
+}
+
+.booking-object-modal {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .modal-title {
