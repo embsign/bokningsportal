@@ -242,6 +242,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
   minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
   const maxDate = new Date();
   maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
+  const minMs = minDate.getTime();
+  const maxMs = maxDate.getTime();
   const days = [];
   for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
     const date = new Date(startDate);
@@ -249,7 +251,6 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     const dateString = formatDate(date);
     const label = date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "numeric" });
     const slots = [];
-    const dayDisabled = date < minDate || date > maxDate;
     for (let hour = 8; hour < 20; hour += slotMinutes / 60) {
       const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, 0, 0));
       const end = new Date(start);
@@ -257,7 +258,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
       const startMs = start.getTime();
       const endMs = end.getTime();
       let status: "available" | "booked" | "mine" | "disabled" = "available";
-      if (startMs < nowMs || dayDisabled) {
+      const outsideWindow = startMs < minMs || startMs > maxMs;
+      if (startMs < nowMs || outsideWindow) {
         status = "disabled";
       }
       const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
