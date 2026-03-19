@@ -9,7 +9,7 @@ export const BookingSummary = ({ summary }) => {
     ["Plats/Resurs", summary.resource],
     ["Datum", summary.date],
     ["Tid", summary.time],
-    ["Varaktighet", summary.duration],
+    ["Längd", summary.duration],
     ["Debitering", summary.price],
   ];
 

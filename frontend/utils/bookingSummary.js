@@ -8,6 +8,13 @@ const getTimeLabel = ({ service, timeslot }) => {
   return "Välj tid";
 };
 
+const getPriceLabel = (service) => {
+  if (!service.priceText) {
+    return "Ingen debitering";
+  }
+  return service.priceText.replace(/^Debiteras:\s*/, "");
+};
+
 export const createBookingSummary = ({ service, date, timeslot }) => {
   if (!service || !date) {
     return null;
@@ -24,7 +31,7 @@ export const createBookingSummary = ({ service, date, timeslot }) => {
     date: dateLabel,
     time: getTimeLabel({ service, timeslot }),
     duration: service.duration,
-    price: service.priceText || "Ingen debitering",
+    price: getPriceLabel(service),
     resource: service.name,
   };
 };
