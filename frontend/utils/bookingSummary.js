@@ -3,7 +3,7 @@ const getTimeLabel = ({ service, timeslot }) => {
     return timeslot.label;
   }
   if (service.bookingType === "full-day") {
-    return "12:00-12:00";
+    return `${service.fullDayStartTime || "12:00"}-${service.fullDayEndTime || "12:00"}`;
   }
   return "Välj tid";
 };

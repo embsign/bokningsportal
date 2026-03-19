@@ -127,6 +127,8 @@ if (routePath.startsWith("/admin/")) {
       name: "",
       type: "Tidspass",
       slotDuration: "",
+      fullDayStartTime: "12:00",
+      fullDayEndTime: "12:00",
       windowMin: "",
       windowMax: "",
       maxBookings: "",
@@ -154,6 +156,8 @@ if (routePath.startsWith("/admin/")) {
             name: item.name,
             type: item.type,
             slotDuration: item.slotDuration,
+            fullDayStartTime: item.fullDayStartTime || "12:00",
+            fullDayEndTime: item.fullDayEndTime || "12:00",
             windowMin: item.windowMin,
             windowMax: item.windowMax,
             maxBookings: item.maxBookings,
@@ -172,6 +176,8 @@ if (routePath.startsWith("/admin/")) {
             name: "",
             type: "Tidspass",
             slotDuration: "",
+            fullDayStartTime: "12:00",
+            fullDayEndTime: "12:00",
             windowMin: "",
             windowMax: "",
             maxBookings: "",
@@ -677,6 +683,27 @@ const formatDayLabel = (date) =>
 
 const formatDateLabel = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
 
+const normalizeClockTime = (value) => (/^\d{2}:\d{2}$/.test(value || "") ? value : "12:00");
+
+const getFullDayTimeLabel = (service) =>
+  `${normalizeClockTime(service?.fullDayStartTime)}-${normalizeClockTime(service?.fullDayEndTime)}`;
+
+const buildFullDayDateRange = (date, service) => {
+  const startTime = normalizeClockTime(service?.fullDayStartTime);
+  const endTime = normalizeClockTime(service?.fullDayEndTime);
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+  const start = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute, 0, 0));
+  const end = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute, 0, 0));
+  if (endHour < startHour || (endHour === startHour && endMinute <= startMinute)) {
+    end.setUTCDate(end.getUTCDate() + 1);
+  }
+  return {
+    startTime: start.toISOString(),
+    endTime: end.toISOString(),
+  };
+};
+
 const buildCancelBooking = ({ date, timeLabel, serviceName, sourceId }) => ({
   id: sourceId,
   serviceName,
@@ -916,7 +943,7 @@ const loadWeekAvailability = async (service, weekStart) => {
             cancelModalOpen: true,
             cancelBooking: buildCancelBooking({
               date: day.date,
-              timeLabel: "Heldag",
+              timeLabel: getFullDayTimeLabel(state.selectedService),
               serviceName: state.selectedService?.name,
               sourceId: day.id,
             }),
@@ -1084,10 +1111,9 @@ const loadWeekAvailability = async (service, weekStart) => {
             startTime = currentState.selectedSlot.startTime;
             endTime = currentState.selectedSlot.endTime;
           } else if (currentState.selectedDate?.date) {
-            const date = currentState.selectedDate.date;
-            const day = date.toISOString().slice(0, 10);
-            startTime = `${day}T00:00:00.000Z`;
-            endTime = `${day}T23:59:59.000Z`;
+            const range = buildFullDayDateRange(currentState.selectedDate.date, currentState.selectedService);
+            startTime = range.startTime;
+            endTime = range.endTime;
           }
           await createBooking({
             booking_object_id: currentState.selectedService.id,
