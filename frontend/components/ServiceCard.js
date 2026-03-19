@@ -13,7 +13,7 @@ export const ServiceCard = ({ service, isSelected, onSelect }) => {
       createElement("div", { className: "service-title", text: service.name }),
       createElement("div", { className: "service-pill", text: service.duration }),
       createElement("div", { className: "service-meta", text: service.description }),
-      createElement("div", { className: "service-meta", text: `Nästa: ${service.nextAvailable}` }),
+      createElement("div", { className: "service-meta", text: `Nästa lediga tid: ${service.nextAvailable}` }),
       price,
     ],
   });

@@ -55,7 +55,7 @@ export const ServiceSelection = ({
   const bookingsSection = createElement("div", {
     className: "bookings-section",
     children: [
-      createElement("div", { className: "section-title", text: "Aktuella bokningar" }),
+      createElement("div", { className: "section-title", text: "Dina bokningar" }),
       bookings?.length
         ? createElement("div", {
             className: "bookings-grid",
