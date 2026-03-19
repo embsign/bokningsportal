@@ -392,12 +392,18 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
   const rows = await env.DB
-    .prepare("SELECT * FROM bookings WHERE user_id = ? AND cancelled_at IS NULL ORDER BY start_time ASC")
+    .prepare(
+      `SELECT b.id, b.start_time, b.end_time, bo.name AS booking_object_name
+       FROM bookings b
+       JOIN booking_objects bo ON bo.id = b.booking_object_id
+       WHERE b.user_id = ? AND b.cancelled_at IS NULL
+       ORDER BY b.start_time ASC`
+    )
     .bind(auth.user.id)
     .all();
   const bookings = rows.results.map((row: any) => ({
     id: row.id,
-    service_name: row.booking_object_id,
+    service_name: row.booking_object_name,
     date: (row.start_time as string).slice(0, 10),
     time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
     status: "mine",
