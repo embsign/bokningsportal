@@ -1,3 +1,13 @@
+const getTimeLabel = ({ service, timeslot }) => {
+  if (timeslot?.label) {
+    return timeslot.label;
+  }
+  if (service.bookingType === "full-day") {
+    return "12:00-12:00";
+  }
+  return "Välj tid";
+};
+
 export const createBookingSummary = ({ service, date, timeslot }) => {
   if (!service || !date) {
     return null;
@@ -12,7 +22,7 @@ export const createBookingSummary = ({ service, date, timeslot }) => {
   return {
     service: service.name,
     date: dateLabel,
-    time: timeslot?.label || (service.bookingType === "full-day" ? "Heldag" : "Välj tid"),
+    time: getTimeLabel({ service, timeslot }),
     duration: service.duration,
     price: service.priceText || "Ingen debitering",
     resource: service.name,
