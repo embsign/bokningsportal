@@ -19,6 +19,17 @@ export const createElement = (tag, options = {}, children = []) => {
   if (attrs) {
     Object.entries(attrs).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
+        if (typeof value === "boolean") {
+          if (value) {
+            element.setAttribute(key, "");
+          } else {
+            element.removeAttribute(key);
+          }
+          if (key in element) {
+            element[key] = value;
+          }
+          return;
+        }
         element.setAttribute(key, value);
       }
     });

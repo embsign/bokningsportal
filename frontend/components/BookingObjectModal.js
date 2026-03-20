@@ -1,5 +1,17 @@
 import { createElement } from "../hooks/dom.js";
 
+const helpButton = (help) =>
+  createElement("button", {
+    className: "form-help",
+    text: "?",
+    attrs: {
+      type: "button",
+      title: help,
+      "aria-label": help,
+    },
+    onClick: () => window.alert(help),
+  });
+
 const field = ({ label, help, input }) =>
   createElement("label", {
     className: "form-field form-row-inline",
@@ -8,7 +20,7 @@ const field = ({ label, help, input }) =>
         className: "form-label form-label-inline",
         children: [
           createElement("span", { text: label }),
-          help ? createElement("span", { className: "form-help", text: "?", attrs: { title: help } }) : null,
+          help ? helpButton(help) : null,
         ].filter(Boolean),
       }),
       createElement("div", { className: "form-input-inline", children: [input] }),
@@ -23,7 +35,7 @@ const fieldGroup = ({ label, help, children }) =>
         className: "form-label form-label-inline",
         children: [
           createElement("span", { text: label }),
-          help ? createElement("span", { className: "form-help", text: "?", attrs: { title: help } }) : null,
+          help ? helpButton(help) : null,
         ].filter(Boolean),
       }),
       createElement("div", { className: "form-input-inline", children }),
@@ -166,10 +178,10 @@ export const BookingObjectModal = ({
   };
 
   const modal = createElement("div", {
-    className: "modal-overlay",
+    className: "modal-overlay modal-overlay-scrollable",
     children: [
       createElement("div", {
-        className: "modal card",
+        className: "modal card booking-object-modal",
         children: [
           createElement("div", { className: "modal-title", text: title }),
           createElement("div", {
@@ -186,7 +198,7 @@ export const BookingObjectModal = ({
               }),
               field({
                 label: "Typ",
-                help: "Välj om objektet bokas som tidspass eller heldag.",
+                help: "Välj om objektet bokas som tidspass eller dygn.",
                 input: createElement("div", {
                   className: "radio-group",
                   children: [
@@ -212,17 +224,52 @@ export const BookingObjectModal = ({
                           attrs: {
                             type: "radio",
                             name: "booking-type",
-                            value: "Heldag",
-                            checked: form.type === "Heldag" ? "checked" : null,
+                            value: "Dygn",
+                            checked: form.type === "Dygn" ? "checked" : null,
                           },
-                          onChange: () => onChange("type", "Heldag"),
+                          onChange: () => onChange("type", "Dygn"),
                         }),
-                        createElement("span", { text: "Heldag" }),
+                        createElement("span", { text: "Dygn" }),
                       ],
                     }),
                   ],
                 }),
               }),
+              form.type === "Dygn"
+                ? fieldGroup({
+                    label: "Dygnstid",
+                    help: "Ange när dygnet börjar och slutar, t.ex. 15:00-11:00.",
+                    children: [
+                      createElement("div", {
+                        className: "form-stack form-group",
+                        children: [
+                          createElement("label", {
+                            className: "form-subfield",
+                            children: [
+                              createElement("span", { text: "Från" }),
+                              createElement("input", {
+                                className: "input",
+                                attrs: { type: "time", value: form.fullDayStartTime || "12:00" },
+                                onInput: (event) => onChange("fullDayStartTime", event.target.value),
+                              }),
+                            ],
+                          }),
+                          createElement("label", {
+                            className: "form-subfield",
+                            children: [
+                              createElement("span", { text: "Till" }),
+                              createElement("input", {
+                                className: "input",
+                                attrs: { type: "time", value: form.fullDayEndTime || "12:00" },
+                                onInput: (event) => onChange("fullDayEndTime", event.target.value),
+                              }),
+                            ],
+                          }),
+                        ],
+                      }),
+                    ],
+                  })
+                : null,
               field({
                 label: "Bokningslängd (minuter)",
                 help: "Ange längd utan enhet.",
@@ -230,7 +277,7 @@ export const BookingObjectModal = ({
                   className: "input",
                   attrs: {
                     value: form.slotDuration || "",
-                    disabled: form.type === "Heldag" ? "disabled" : null,
+                    disabled: form.type === "Dygn" ? "disabled" : null,
                   },
                   onInput: (event) => onChange("slotDuration", event.target.value),
                 }),

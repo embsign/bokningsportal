@@ -1,6 +1,7 @@
 import { apiRequest } from "./client.js";
 
 const toKr = (value) => (value ? String(Math.round(value / 100)) : "0");
+const normalizeClockTime = (value) => (/^\d{2}:\d{2}$/.test(value || "") ? value : "12:00");
 const toCents = (value) => {
   const parsed = Number(value);
   if (Number.isNaN(parsed)) {
@@ -14,9 +15,17 @@ export const getBookingObjects = async () => {
   return booking_objects.map((obj) => ({
     id: obj.id,
     name: obj.name,
-    type: obj.booking_type === "full-day" ? "Heldag" : "Tidspass",
+    type: obj.booking_type === "full-day" ? "Dygn" : "Tidspass",
     status: obj.is_active ? "Aktiv" : "Inaktiv",
     slotDuration: obj.slot_duration_minutes ? String(obj.slot_duration_minutes) : "",
+    slotDisplay:
+      obj.booking_type === "full-day"
+        ? `${normalizeClockTime(obj.full_day_start_time)}-${normalizeClockTime(obj.full_day_end_time)}`
+        : obj.slot_duration_minutes
+          ? String(obj.slot_duration_minutes)
+          : "",
+    fullDayStartTime: normalizeClockTime(obj.full_day_start_time),
+    fullDayEndTime: normalizeClockTime(obj.full_day_end_time),
     windowMin: String(obj.window_min_days),
     windowMax: String(obj.window_max_days),
     maxBookings: obj.max_bookings_override ? String(obj.max_bookings_override) : "",
@@ -37,8 +46,10 @@ export const createBookingObject = (payload) =>
     method: "POST",
     body: JSON.stringify({
       ...payload,
-      booking_type: payload.type === "Heldag" ? "full-day" : "time-slot",
-      slot_duration_minutes: payload.slotDuration ? Number(payload.slotDuration) : null,
+      booking_type: payload.type === "Dygn" ? "full-day" : "time-slot",
+      slot_duration_minutes: payload.type === "Dygn" ? null : payload.slotDuration ? Number(payload.slotDuration) : null,
+      full_day_start_time: normalizeClockTime(payload.fullDayStartTime),
+      full_day_end_time: normalizeClockTime(payload.fullDayEndTime),
       window_min_days: Number(payload.windowMin || 0),
       window_max_days: Number(payload.windowMax || 0),
       price_weekday_cents: toCents(payload.priceWeekday),
@@ -54,8 +65,10 @@ export const updateBookingObject = (id, payload) =>
     method: "PUT",
     body: JSON.stringify({
       ...payload,
-      booking_type: payload.type === "Heldag" ? "full-day" : "time-slot",
-      slot_duration_minutes: payload.slotDuration ? Number(payload.slotDuration) : null,
+      booking_type: payload.type === "Dygn" ? "full-day" : "time-slot",
+      slot_duration_minutes: payload.type === "Dygn" ? null : payload.slotDuration ? Number(payload.slotDuration) : null,
+      full_day_start_time: normalizeClockTime(payload.fullDayStartTime),
+      full_day_end_time: normalizeClockTime(payload.fullDayEndTime),
       window_min_days: Number(payload.windowMin || 0),
       window_max_days: Number(payload.windowMax || 0),
       price_weekday_cents: toCents(payload.priceWeekday),

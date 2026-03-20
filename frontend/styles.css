@@ -386,10 +386,17 @@ body {
   height: 18px;
   border-radius: 999px;
   background: var(--surface-alt);
+  border: 1px solid var(--border);
   display: grid;
   place-items: center;
   font-size: 12px;
   color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.form-help:hover {
+  background: #e7ebf4;
 }
 
 .form-row {
@@ -1128,11 +1135,22 @@ body {
   z-index: 50;
 }
 
+.modal-overlay-scrollable {
+  align-items: flex-start;
+  overflow-y: auto;
+}
+
 .modal {
   width: min(720px, 100%);
   padding: 28px;
   display: grid;
   gap: 20px;
+}
+
+.booking-object-modal {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .modal-title {

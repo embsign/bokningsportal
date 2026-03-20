@@ -29,6 +29,39 @@ const parseDate = (value: string) => {
   return new Date(Date.UTC(year, month - 1, day));
 };
 
+const isValidClockTime = (value: string | null | undefined) => Boolean(value && /^\d{2}:\d{2}$/.test(value));
+
+const normalizeClockTime = (value: string | null | undefined, fallback = "12:00") =>
+  isValidClockTime(value) ? (value as string) : fallback;
+
+const getMinutesFromClockTime = (value: string) => {
+  const [hours, minutes] = value.split(":").map((part) => Number(part));
+  return hours * 60 + minutes;
+};
+
+const getFullDayTimeConfig = (bookingObject: any) => {
+  const startTime = normalizeClockTime(bookingObject?.full_day_start_time);
+  const endTime = normalizeClockTime(bookingObject?.full_day_end_time);
+  return {
+    startTime,
+    endTime,
+    startMinutes: getMinutesFromClockTime(startTime),
+    endMinutes: getMinutesFromClockTime(endTime),
+  };
+};
+
+const buildFullDayRange = (date: Date, bookingObject: any) => {
+  const config = getFullDayTimeConfig(bookingObject);
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0));
+  start.setUTCMinutes(config.startMinutes);
+  const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0));
+  end.setUTCMinutes(config.endMinutes);
+  if (config.endMinutes <= config.startMinutes) {
+    end.setUTCDate(end.getUTCDate() + 1);
+  }
+  return { start, end, ...config };
+};
+
 const getJsonBody = async (request: Request) => {
   try {
     return await request.json();
@@ -173,33 +206,33 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
   if (!bookingObject) return null;
 
   const [year, monthIndex] = month.split("-").map((part) => Number(part));
-  const start = new Date(Date.UTC(year, monthIndex - 1, 1));
-  const end = new Date(Date.UTC(year, monthIndex, 1));
+  const firstDate = new Date(Date.UTC(year, monthIndex - 1, 1));
+  const lastDate = new Date(Date.UTC(year, monthIndex, 0));
+  const rangeStart = buildFullDayRange(firstDate, bookingObject).start;
+  const rangeEnd = buildFullDayRange(lastDate, bookingObject).end;
 
   const bookings = await db
     .prepare(
-      `SELECT user_id, start_time
+      `SELECT user_id, start_time, end_time
        FROM bookings
        WHERE booking_object_id = ?
          AND cancelled_at IS NULL
-         AND start_time >= ?
-         AND start_time < ?`
+         AND NOT (end_time <= ? OR start_time >= ?)`
     )
-    .bind(bookingObjectId, start.toISOString(), end.toISOString())
+    .bind(bookingObjectId, rangeStart.toISOString(), rangeEnd.toISOString())
     .all();
-  const bookingByDate = new Map<string, any>();
-  for (const row of bookings.results) {
-    const day = (row.start_time as string).slice(0, 10);
-    if (!bookingByDate.has(day)) {
-      bookingByDate.set(day, row);
-    }
-  }
+  const overlaps = bookings.results.map((row: any) => ({
+    userId: row.user_id as string,
+    startMs: new Date(row.start_time as string).getTime(),
+    endMs: new Date(row.end_time as string).getTime(),
+  }));
 
   const days: { date: string; status: string }[] = [];
   const today = new Date();
   for (let day = 1; day <= new Date(year, monthIndex, 0).getDate(); day += 1) {
     const date = new Date(Date.UTC(year, monthIndex - 1, day));
     const dateString = formatDate(date);
+    const candidate = buildFullDayRange(date, bookingObject);
     let status = "available";
     const minDate = new Date();
     minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
@@ -208,9 +241,9 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     if (date < today || date < minDate || date > maxDate) {
       status = "disabled";
     }
-    const booking = bookingByDate.get(dateString);
-    if (booking) {
-      status = booking.user_id === user.id ? "mine" : "booked";
+    const overlap = overlaps.find((booking) => booking.startMs < candidate.end.getTime() && booking.endMs > candidate.start.getTime());
+    if (overlap) {
+      status = overlap.userId === user.id ? "mine" : "booked";
     }
     days.push({ date: dateString, status });
   }
@@ -242,6 +275,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
   minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
   const maxDate = new Date();
   maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
+  const minMs = minDate.getTime();
+  const maxMs = maxDate.getTime();
   const days = [];
   for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
     const date = new Date(startDate);
@@ -249,7 +284,6 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     const dateString = formatDate(date);
     const label = date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "numeric" });
     const slots = [];
-    const dayDisabled = date < minDate || date > maxDate;
     for (let hour = 8; hour < 20; hour += slotMinutes / 60) {
       const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, 0, 0));
       const end = new Date(start);
@@ -257,7 +291,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
       const startMs = start.getTime();
       const endMs = end.getTime();
       let status: "available" | "booked" | "mine" | "disabled" = "available";
-      if (startMs < nowMs || dayDisabled) {
+      const outsideWindow = startMs < minMs || startMs > maxMs;
+      if (startMs < nowMs || outsideWindow) {
         status = "disabled";
       }
       const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
@@ -379,6 +414,8 @@ const handleServices = async (request: Request, env: Env) => {
       description: obj.description || "",
       booking_type: obj.booking_type,
       slot_duration_minutes: obj.slot_duration_minutes,
+      full_day_start_time: normalizeClockTime(obj.full_day_start_time),
+      full_day_end_time: normalizeClockTime(obj.full_day_end_time),
       next_available: formatDate(new Date()),
       price_weekday_cents: obj.price_weekday_cents,
       price_weekend_cents: obj.price_weekend_cents,
@@ -390,12 +427,18 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
   const rows = await env.DB
-    .prepare("SELECT * FROM bookings WHERE user_id = ? AND cancelled_at IS NULL ORDER BY start_time ASC")
+    .prepare(
+      `SELECT b.id, b.start_time, b.end_time, bo.name AS booking_object_name
+       FROM bookings b
+       JOIN booking_objects bo ON bo.id = b.booking_object_id
+       WHERE b.user_id = ? AND b.cancelled_at IS NULL
+       ORDER BY b.start_time ASC`
+    )
     .bind(auth.user.id)
     .all();
   const bookings = rows.results.map((row: any) => ({
     id: row.id,
-    service_name: row.booking_object_id,
+    service_name: row.booking_object_name,
     date: (row.start_time as string).slice(0, 10),
     time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
     status: "mine",
@@ -619,10 +662,10 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
   const id = `obj-${crypto.randomUUID()}`;
   await env.DB.prepare(
     `INSERT INTO booking_objects (
-      id, tenant_id, name, description, booking_type, slot_duration_minutes,
+      id, tenant_id, name, description, booking_type, slot_duration_minutes, full_day_start_time, full_day_end_time,
       window_min_days, window_max_days, price_weekday_cents, price_weekend_cents,
       is_active, group_id, max_bookings_override
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id,
     auth.tenant.id,
@@ -630,6 +673,8 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
     body.description || null,
     body.booking_type,
     body.slot_duration_minutes || null,
+    normalizeClockTime(body.full_day_start_time),
+    normalizeClockTime(body.full_day_end_time),
     body.window_min_days || 0,
     body.window_max_days || 30,
     body.price_weekday_cents || 0,
@@ -663,7 +708,7 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
   if (!body) return errorResponse(400, "invalid_payload");
   await env.DB.prepare(
     `UPDATE booking_objects SET
-      name = ?, description = ?, booking_type = ?, slot_duration_minutes = ?,
+      name = ?, description = ?, booking_type = ?, slot_duration_minutes = ?, full_day_start_time = ?, full_day_end_time = ?,
       window_min_days = ?, window_max_days = ?, price_weekday_cents = ?, price_weekend_cents = ?,
       is_active = ?, group_id = ?, max_bookings_override = ?
      WHERE id = ?`
@@ -672,6 +717,8 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
     body.description || null,
     body.booking_type,
     body.slot_duration_minutes || null,
+    normalizeClockTime(body.full_day_start_time),
+    normalizeClockTime(body.full_day_end_time),
     body.window_min_days || 0,
     body.window_max_days || 30,
     body.price_weekday_cents || 0,
