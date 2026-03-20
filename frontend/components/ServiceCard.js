@@ -10,9 +10,10 @@ export const ServiceCard = ({ service, isSelected, onSelect }) => {
     className: `service-card ${isSelected ? "active" : ""}`.trim(),
     onClick: onSelect,
     children: [
-      createElement("div", { className: "service-title", text: service.name }),
       createElement("div", { className: "service-pill", text: service.duration }),
-      createElement("div", { className: "service-meta", text: `Nästa lediga tid: ${service.nextAvailable}` }),
+      createElement("div", { className: "service-title", text: service.name }),
+      createElement("div", { className: "service-meta", text: service.description }),
+      createElement("div", { className: "service-meta", text: `Nästa: ${service.nextAvailable}` }),
       price,
     ],
   });

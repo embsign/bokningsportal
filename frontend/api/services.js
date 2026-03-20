@@ -1,7 +1,5 @@
 import { apiRequest } from "./client.js";
 
-const normalizeClockTime = (value) => (/^\d{2}:\d{2}$/.test(value || "") ? value : "12:00");
-
 const formatDuration = (service) => {
   if (service.booking_type === "full-day") {
     return "1 dygn";
@@ -31,8 +29,6 @@ export const getServices = async () => {
     priceText: formatPriceText(service),
     bookingType: service.booking_type,
     slotDuration: service.slot_duration_minutes || "",
-    fullDayStartTime: normalizeClockTime(service.full_day_start_time),
-    fullDayEndTime: normalizeClockTime(service.full_day_end_time),
     priceWeekday: service.price_weekday_cents || 0,
     priceWeekend: service.price_weekend_cents || 0,
   }));

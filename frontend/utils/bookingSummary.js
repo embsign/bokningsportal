@@ -1,20 +1,3 @@
-const getTimeLabel = ({ service, timeslot }) => {
-  if (timeslot?.label) {
-    return timeslot.label;
-  }
-  if (service.bookingType === "full-day") {
-    return `${service.fullDayStartTime || "12:00"}-${service.fullDayEndTime || "12:00"}`;
-  }
-  return "Välj tid";
-};
-
-const getPriceLabel = (service) => {
-  if (!service.priceText) {
-    return "Ingen debitering";
-  }
-  return service.priceText.replace(/^Debiteras:\s*/, "");
-};
-
 export const createBookingSummary = ({ service, date, timeslot }) => {
   if (!service || !date) {
     return null;
@@ -29,9 +12,9 @@ export const createBookingSummary = ({ service, date, timeslot }) => {
   return {
     service: service.name,
     date: dateLabel,
-    time: getTimeLabel({ service, timeslot }),
+    time: timeslot?.label || (service.bookingType === "full-day" ? "Heldag" : "Välj tid"),
     duration: service.duration,
-    price: getPriceLabel(service),
+    price: service.priceText || "Ingen debitering",
     resource: service.name,
   };
 };

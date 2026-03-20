@@ -6,11 +6,12 @@ export const BookingSummary = ({ summary }) => {
   }
 
   const rows = [
-    ["Plats/Resurs", summary.resource],
+    ["Service", summary.service],
     ["Datum", summary.date],
     ["Tid", summary.time],
-    ["Längd", summary.duration],
+    ["Varaktighet", summary.duration],
     ["Debitering", summary.price],
+    ["Plats/Resurs", summary.resource],
   ];
 
   return createElement("div", {
