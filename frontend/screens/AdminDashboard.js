@@ -82,7 +82,7 @@ export const AdminDashboard = ({
             children: [
               createElement("td", { text: item.name }),
               createElement("td", { text: item.type }),
-              createElement("td", { text: item.slotDuration }),
+              createElement("td", { text: item.slotDisplay || item.slotDuration }),
               createElement("td", { text: `${item.windowMin}–${item.windowMax}` }),
               createElement("td", { text: item.maxBookings }),
               createElement("td", { text: `${item.priceWeekday} / ${item.priceWeekend}` }),
