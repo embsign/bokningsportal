@@ -542,6 +542,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  background: #fff7bf;
 }
 
 .header-left,
@@ -573,10 +574,10 @@ body {
   font-size: 16px;
   font-weight: 600;
   padding: 10px 16px;
-  color: #fff;
-  background: var(--primary);
-  border: none;
-  box-shadow: 0 8px 18px rgba(59, 99, 247, 0.25);
+  color: #b91c1c;
+  background: #fff;
+  border: 1px solid #dc2626;
+  box-shadow: none;
   border-radius: 12px;
 }
 
@@ -641,8 +642,14 @@ body {
 }
 
 .ghost-button {
-  background: transparent;
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid #dc2626;
+  color: #b91c1c;
+}
+
+.header-back:hover,
+.ghost-button:hover {
+  background: #fef2f2;
 }
 
 .step-indicator {
