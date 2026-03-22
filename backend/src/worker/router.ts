@@ -59,6 +59,15 @@ const getWindowBoundaries = (bookingObject: any, nowUtc: Date) => {
   };
 };
 
+const maybeDelayAvailability = async (env: Env) => {
+  const raw = env.DEBUG_AVAILABILITY_DELAY_MS;
+  const delayMs = Number(raw);
+  if (!Number.isFinite(delayMs) || delayMs <= 0) {
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 8000)));
+};
+
 const getFullDayTimeConfig = (bookingObject: any) => {
   const startTime = normalizeClockTime(bookingObject?.full_day_start_time);
   const endTime = normalizeClockTime(bookingObject?.full_day_end_time);
@@ -527,6 +536,7 @@ const handleAvailabilityMonth = async (request: Request, env: Env, url: URL) => 
   const bookingObjectId = url.searchParams.get("booking_object_id");
   const month = url.searchParams.get("month");
   if (!bookingObjectId || !month) return errorResponse(400, "invalid_payload");
+  await maybeDelayAvailability(env);
   const nowUtc = getUtcNowFromEnv(env);
   const days = await buildMonthAvailability(env.DB, auth.user, bookingObjectId, month, nowUtc);
   if (!days) return errorResponse(404, "not_found");
@@ -539,6 +549,7 @@ const handleAvailabilityWeek = async (request: Request, env: Env, url: URL) => {
   const bookingObjectId = url.searchParams.get("booking_object_id");
   const weekStart = url.searchParams.get("week_start");
   if (!bookingObjectId || !weekStart) return errorResponse(400, "invalid_payload");
+  await maybeDelayAvailability(env);
   const nowUtc = getUtcNowFromEnv(env);
   const days = await buildWeekAvailability(env.DB, auth.user, bookingObjectId, weekStart, nowUtc);
   if (!days) return errorResponse(404, "not_found");

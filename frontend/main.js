@@ -711,8 +711,10 @@ const store = createStore({
   sessionError: null,
   sessionLoading: true,
   availabilityMonthKey: null,
+  availabilityMonthRequestKey: null,
   availabilityMonth: [],
   availabilityWeekKey: null,
+  availabilityWeekRequestKey: null,
   availabilityWeek: [],
   availabilityLoading: false,
   dataLoading: false,
@@ -917,33 +919,51 @@ const initUser = async () => {
 
 const loadMonthAvailability = async (service, year, monthIndex) => {
   const key = `${service.id}-${year}-${monthIndex}`;
-  store.setState({ availabilityLoading: true, uiStates: { ...store.getState().uiStates, date: "loading" } });
+  store.setState((prev) => ({
+    availabilityLoading: true,
+    availabilityMonthRequestKey: key,
+    uiStates: { ...prev.uiStates, date: "loading" },
+  }));
   try {
     const days = await getMonthAvailability(service.id, year, monthIndex);
     store.setState({
       availabilityMonthKey: key,
+      availabilityMonthRequestKey: null,
       availabilityMonth: days,
       availabilityLoading: false,
       uiStates: { ...store.getState().uiStates, date: days.length ? "normal" : "empty" },
     });
   } catch (error) {
-    store.setState({ availabilityLoading: false, uiStates: { ...store.getState().uiStates, date: "error" } });
+    store.setState({
+      availabilityLoading: false,
+      availabilityMonthRequestKey: null,
+      uiStates: { ...store.getState().uiStates, date: "error" },
+    });
   }
 };
 
 const loadWeekAvailability = async (service, weekStart) => {
   const key = `${service.id}-${weekStart.toISOString().slice(0, 10)}`;
-  store.setState({ availabilityLoading: true, uiStates: { ...store.getState().uiStates, time: "loading" } });
+  store.setState((prev) => ({
+    availabilityLoading: true,
+    availabilityWeekRequestKey: key,
+    uiStates: { ...prev.uiStates, time: "loading" },
+  }));
   try {
     const days = await getWeekAvailability(service.id, weekStart);
     store.setState({
       availabilityWeekKey: key,
+      availabilityWeekRequestKey: null,
       availabilityWeek: days,
       availabilityLoading: false,
       uiStates: { ...store.getState().uiStates, time: days.length ? "normal" : "empty" },
     });
   } catch (error) {
-    store.setState({ availabilityLoading: false, uiStates: { ...store.getState().uiStates, time: "error" } });
+    store.setState({
+      availabilityLoading: false,
+      availabilityWeekRequestKey: null,
+      uiStates: { ...store.getState().uiStates, time: "error" },
+    });
   }
 };
 
@@ -957,7 +977,9 @@ const loadWeekAvailability = async (service, weekStart) => {
       monthCursor: initialMonth,
       weekCursor: initialWeek,
       availabilityMonthKey: null,
+      availabilityMonthRequestKey: null,
       availabilityWeekKey: null,
+      availabilityWeekRequestKey: null,
       availabilityMonth: [],
       availabilityWeek: [],
       step: 2,
@@ -1008,7 +1030,9 @@ const loadWeekAvailability = async (service, weekStart) => {
           monthCursor: initialMonth,
           weekCursor: initialWeek,
           availabilityMonthKey: null,
+          availabilityMonthRequestKey: null,
           availabilityWeekKey: null,
+          availabilityWeekRequestKey: null,
           availabilityMonth: [],
           availabilityWeek: [],
           step: 2,
@@ -1056,10 +1080,12 @@ const loadWeekAvailability = async (service, weekStart) => {
   if (state.step === 2 && state.selectedService?.bookingType === "full-day") {
     const { year, monthIndex } = state.monthCursor;
     const monthKey = `${state.selectedService.id}-${year}-${monthIndex}`;
-    if (state.availabilityMonthKey !== monthKey && !state.availabilityLoading) {
+    const isMonthDataCurrent = state.availabilityMonthKey === monthKey;
+    const isMonthRequestInFlight = state.availabilityMonthRequestKey === monthKey;
+    if (!isMonthDataCurrent && !isMonthRequestInFlight) {
       loadMonthAvailability(state.selectedService, year, monthIndex);
     }
-    const days = (state.availabilityMonth || []).map((day) =>
+    const days = (isMonthDataCurrent ? state.availabilityMonth || [] : []).map((day) =>
       state.cancelledDayIds.includes(day.id) ? { ...day, status: "available" } : day
     );
     const visibleDays = isMobile ? days.filter((day) => day.status !== "disabled") : days;
@@ -1106,7 +1132,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       canPrev: canMoveMonth(year, monthIndex - 1, state.selectedService),
       canNext: canMoveMonth(year, monthIndex + 1, state.selectedService),
-      state: state.uiStates.date,
+      state: isMonthDataCurrent ? state.uiStates.date : "loading",
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
@@ -1132,10 +1158,12 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   if (state.step === 2 && state.selectedService?.bookingType !== "full-day") {
     const weekKey = `${state.selectedService.id}-${state.weekCursor.toISOString().slice(0, 10)}`;
-    if (state.availabilityWeekKey !== weekKey && !state.availabilityLoading) {
+    const isWeekDataCurrent = state.availabilityWeekKey === weekKey;
+    const isWeekRequestInFlight = state.availabilityWeekRequestKey === weekKey;
+    if (!isWeekDataCurrent && !isWeekRequestInFlight) {
       loadWeekAvailability(state.selectedService, state.weekCursor);
     }
-    const weekSlots = (state.availabilityWeek || []).map((day) => ({
+    const weekSlots = (isWeekDataCurrent ? state.availabilityWeek || [] : []).map((day) => ({
       ...day,
       slots: day.slots.map((slot) =>
         state.cancelledSlotIds.includes(slot.id) ? { ...slot, status: "available" } : slot
@@ -1189,7 +1217,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       canPrev: canMoveWeek(prevWeekCandidate, state.selectedService),
       canNext: canMoveWeek(nextWeekCandidate, state.selectedService),
-      state: state.uiStates.time,
+      state: isWeekDataCurrent ? state.uiStates.time : "loading",
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
