@@ -1136,20 +1136,22 @@ body {
   object-fit: contain;
 }
 
-.calendar-icon-button {
+.calendar-inline-link {
   min-width: 0;
-  padding: 12px 16px;
-  border-radius: 14px;
+  padding: 0;
+  color: var(--primary);
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 28px;
   line-height: 1.2;
+  cursor: pointer;
 }
 
-.calendar-icon-button[disabled] {
-  opacity: 0.5;
-  cursor: not-allowed;
+.calendar-inline-link:hover {
+  color: var(--primary-dark);
+  transform: translateY(-1px);
 }
 
 

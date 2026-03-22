@@ -29,6 +29,56 @@ const parseDate = (value: string) => {
   return new Date(Date.UTC(year, month - 1, day));
 };
 
+const escapeIcsText = (value: string) =>
+  String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\r?\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+
+const toIcsUtcDateTime = (isoValue: string) => {
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+};
+
+const toIcsStampNow = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+
+const buildBookingIcs = (booking: {
+  id: string;
+  startTime: string;
+  endTime: string;
+  serviceName: string;
+  apartmentId: string;
+}) => {
+  const dtStart = toIcsUtcDateTime(booking.startTime);
+  const dtEnd = toIcsUtcDateTime(booking.endTime);
+  if (!dtStart || !dtEnd) {
+    return null;
+  }
+  const uid = `${booking.id}@brf-bokningsportal`;
+  const summary = `Bokning: ${booking.serviceName}`;
+  const description = `Lägenhet ${booking.apartmentId}`;
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//BRF Bokningsportal//SE",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${toIcsStampNow()}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${escapeIcsText(summary)}`,
+    `DESCRIPTION:${escapeIcsText(description)}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+    "",
+  ].join("\r\n");
+};
+
 const isValidClockTime = (value: string | null | undefined) => Boolean(value && /^\d{2}:\d{2}$/.test(value));
 
 const normalizeClockTime = (value: string | null | undefined, fallback = "12:00") =>
@@ -530,6 +580,57 @@ const handleCancelBooking = async (request: Request, env: Env, bookingId: string
   return new Response(null, { status: 204 });
 };
 
+const handleCalendarDownload = async (request: Request, env: Env, url: URL) => {
+  const auth = await requireAuth(request, env);
+  if ("error" in auth) return auth.error;
+  const bookingId = url.searchParams.get("booking_id");
+  if (!bookingId) {
+    return errorResponse(400, "invalid_payload");
+  }
+  const booking = (await env.DB
+    .prepare(
+      `SELECT
+         b.id,
+         b.start_time,
+         b.end_time,
+         b.user_id,
+         b.cancelled_at,
+         bo.name AS booking_object_name,
+         u.apartment_id AS booked_user_apartment_id
+       FROM bookings b
+       JOIN booking_objects bo ON bo.id = b.booking_object_id
+       JOIN users u ON u.id = b.user_id
+       WHERE b.id = ? AND b.tenant_id = ?`
+    )
+    .bind(bookingId, auth.tenant.id)
+    .first()) as any;
+  if (!booking || booking.cancelled_at) {
+    return errorResponse(404, "not_found");
+  }
+  if (auth.user.is_admin !== 1 && booking.user_id !== auth.user.id) {
+    return errorResponse(403, "forbidden");
+  }
+  const ics = buildBookingIcs({
+    id: booking.id as string,
+    startTime: booking.start_time as string,
+    endTime: booking.end_time as string,
+    serviceName: booking.booking_object_name as string,
+    apartmentId: booking.booked_user_apartment_id as string,
+  });
+  if (!ics) {
+    return errorResponse(500, "calendar_generation_failed");
+  }
+  const fileName = `bokning-${booking.id}.ics`;
+  return new Response(ics, {
+    status: 200,
+    headers: {
+      "content-type": "text/calendar; charset=utf-8",
+      "content-disposition": `attachment; filename="${fileName}"`,
+      "cache-control": "no-store",
+    },
+  });
+};
+
 const handleAvailabilityMonth = async (request: Request, env: Env, url: URL) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
@@ -982,6 +1083,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
   if (request.method === "GET" && path === "/api/services") return handleServices(request, env);
   if (request.method === "GET" && path === "/api/bookings/current") return handleCurrentBookings(request, env);
+  if (request.method === "GET" && path === "/api/calendar") return handleCalendarDownload(request, env, url);
   if (request.method === "POST" && path === "/api/bookings") return handleCreateBooking(request, env);
   if (request.method === "DELETE" && path.startsWith("/api/bookings/")) {
     return handleCancelBooking(request, env, path.split("/").pop() || "");

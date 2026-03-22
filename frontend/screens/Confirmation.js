@@ -1,7 +1,7 @@
 import { createElement } from "../hooks/dom.js";
 import { BookingSummary } from "../components/BookingSummary.js";
 
-const calendarAction = ({ isKioskMode, calendarQrImageUrl, calendarDownloadUrl, onDownloadCalendar }) => {
+const calendarAction = ({ isKioskMode, calendarQrImageUrl, calendarDownloadUrl }) => {
   if (!calendarDownloadUrl) {
     return null;
   }
@@ -31,11 +31,16 @@ const calendarAction = ({ isKioskMode, calendarQrImageUrl, calendarDownloadUrl, 
       createElement("div", {
         className: "calendar-download-actions",
         children: [
-          createElement("button", {
-            className: "primary-button calendar-download-icon-button",
-            text: "📅",
-            attrs: { title: "Lägg till i kalender", "aria-label": "Lägg till i kalender" },
-            onClick: onDownloadCalendar,
+          createElement("a", {
+            className: "calendar-inline-link",
+            text: "📆",
+            attrs: {
+              href: calendarDownloadUrl,
+              title: "Ladda ner kalenderfil",
+              "aria-label": "Ladda ner kalenderfil",
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
           }),
         ],
       }),
@@ -50,7 +55,6 @@ export const Confirmation = ({
   isKioskMode,
   calendarQrImageUrl,
   calendarDownloadUrl,
-  onDownloadCalendar,
   onBack,
   onConfirm,
   onAcknowledge,
@@ -68,7 +72,6 @@ export const Confirmation = ({
       isKioskMode,
       calendarQrImageUrl,
       calendarDownloadUrl,
-      onDownloadCalendar,
     });
   } else {
     content = BookingSummary({ summary });

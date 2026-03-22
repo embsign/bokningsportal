@@ -21,6 +21,8 @@ const getCalendarFileName = (eventData) => {
   return `bokning-${datePart}.ics`;
 };
 
+const sanitizeFileToken = (value) => String(value || "").replace(/[^a-zA-Z0-9_-]/g, "");
+
 export const buildCalendarIcs = (eventData) => {
   if (!eventData?.title || !eventData?.startTime || !eventData?.endTime) {
     return null;
@@ -69,16 +71,11 @@ export const downloadCalendarEvent = (eventData) => {
 };
 
 export const buildCalendarDownloadPageUrl = (eventData) => {
-  if (!eventData?.title || !eventData?.startTime || !eventData?.endTime) {
+  if (!eventData?.bookingId) {
     return "";
   }
-  const url = new URL("/calendar/add", window.location.origin);
-  url.searchParams.set("title", eventData.title);
-  url.searchParams.set("start", eventData.startTime);
-  url.searchParams.set("end", eventData.endTime);
-  if (eventData.description) {
-    url.searchParams.set("description", eventData.description);
-  }
+  const url = new URL("/api/calendar", window.location.origin);
+  url.searchParams.set("booking_id", sanitizeFileToken(eventData.bookingId));
   return url.toString();
 };
 
@@ -90,11 +87,11 @@ export const buildCalendarQrImageUrl = (calendarPageUrl) => {
 };
 
 export const buildCalendarQrFromEvent = (eventData) => {
-  const ics = buildCalendarIcs(eventData);
-  if (!ics) {
+  const calendarFileUrl = buildCalendarDownloadPageUrl(eventData);
+  if (!calendarFileUrl) {
     return "";
   }
-  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(ics)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(calendarFileUrl)}`;
 };
 
 export const parseCalendarEventFromUrl = (url) => {
