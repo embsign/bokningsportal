@@ -12,7 +12,7 @@ import { ReportModal } from "./components/ReportModal.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import {
   buildCalendarDownloadPageUrl,
-  buildCalendarQrImageUrl,
+  buildCalendarQrFromEvent,
   downloadCalendarEvent,
   parseCalendarEventFromUrl,
 } from "./utils/calendarExport.js";
@@ -694,6 +694,7 @@ if (routePath.startsWith("/calendar/add")) {
 
 const today = new Date();
 const initialMonth = { year: today.getFullYear(), monthIndex: today.getMonth() };
+const initialWeek = getWeekStart(today);
 
 const store = createStore({
   step: 1,
@@ -701,7 +702,7 @@ const store = createStore({
   selectedDate: null,
   selectedSlot: null,
   monthCursor: initialMonth,
-  weekCursor: getWeekStart(today),
+  weekCursor: initialWeek,
   confirmed: false,
   services: [],
   bookings: [],
@@ -731,22 +732,32 @@ const store = createStore({
   },
 });
 
-const canMoveMonth = (year, monthIndex) => {
+const getMaxBookableMonth = (service) => {
+  const maxDays = Number.isFinite(Number(service?.windowMax))
+    ? Math.max(0, Number(service.windowMax))
+    : 60;
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + maxDays);
+  return new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+};
+
+const canMoveMonth = (year, monthIndex, service = null) => {
   const current = new Date();
   const target = new Date(year, monthIndex, 1);
-  const max = new Date(current.getFullYear(), current.getMonth() + 2, 1);
+  const max = getMaxBookableMonth(service);
   return target >= new Date(current.getFullYear(), current.getMonth(), 1) && target <= max;
 };
 
 const canMoveWeek = (weekDate, service = null) => {
   const currentWeek = getWeekStart(new Date());
   const min = new Date(currentWeek);
-  const maxWeeksAhead = Number.isFinite(Number(service?.windowMax))
+  const maxDaysAhead = Number.isFinite(Number(service?.windowMax))
     ? Math.max(0, Number(service.windowMax))
     : 21;
-  const max = new Date(currentWeek);
-  max.setDate(max.getDate() + maxWeeksAhead * 7);
-  return weekDate >= min && weekDate <= max;
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + maxDaysAhead);
+  const maxWeek = getWeekStart(maxDate);
+  return weekDate >= min && weekDate <= maxWeek;
 };
 
 const getWeekLabel = (weekStart) => `Vecka ${getWeekNumber(weekStart)}`;
@@ -943,6 +954,8 @@ const loadWeekAvailability = async (service, weekStart) => {
   if (state.step === 1 && state.services.length === 1 && !state.selectedService) {
     store.setState({
       selectedService: state.services[0],
+      monthCursor: initialMonth,
+      weekCursor: initialWeek,
       availabilityMonthKey: null,
       availabilityWeekKey: null,
       availabilityMonth: [],
@@ -977,14 +990,23 @@ const loadWeekAvailability = async (service, weekStart) => {
   let footer;
 
   if (state.step === 1) {
+    const resetCalendarCursorToToday = () =>
+      store.setState({
+        monthCursor: initialMonth,
+        weekCursor: initialWeek,
+      });
+
     screen = ServiceSelection({
       services: state.services,
       selectedService: state.selectedService,
-      onSelect: (service) =>
+      onSelect: (service) => {
+        resetCalendarCursorToToday();
         store.setState({
           selectedService: service,
           selectedDate: null,
           selectedSlot: null,
+          monthCursor: initialMonth,
+          weekCursor: initialWeek,
           availabilityMonthKey: null,
           availabilityWeekKey: null,
           availabilityMonth: [],
@@ -992,7 +1014,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           step: 2,
           confirmed: false,
           confirmationCalendarEvent: null,
-        }),
+        });
+      },
       bookings: state.bookings,
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
@@ -1081,8 +1104,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           store.setState({ monthCursor: { year: nextMonth.getFullYear(), monthIndex: nextMonth.getMonth() } });
         }
       },
-      canPrev: canMoveMonth(year, monthIndex - 1),
-      canNext: canMoveMonth(year, monthIndex + 1),
+      canPrev: canMoveMonth(year, monthIndex - 1, state.selectedService),
+      canNext: canMoveMonth(year, monthIndex + 1, state.selectedService),
       state: state.uiStates.date,
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
@@ -1121,6 +1144,11 @@ const loadWeekAvailability = async (service, weekStart) => {
     const visibleSlots = isMobile
       ? weekSlots.filter((day) => day.slots.some((slot) => slot.status !== "disabled"))
       : weekSlots;
+    const prevWeekCandidate = new Date(state.weekCursor);
+    prevWeekCandidate.setDate(prevWeekCandidate.getDate() - 7);
+    const nextWeekCandidate = new Date(state.weekCursor);
+    nextWeekCandidate.setDate(nextWeekCandidate.getDate() + 7);
+
     screen = TimeSelection({
       weekLabel: getWeekLabel(state.weekCursor),
       weekSlots: visibleSlots,
@@ -1150,21 +1178,17 @@ const loadWeekAvailability = async (service, weekStart) => {
         });
       },
       onPrev: () => {
-        const prevWeek = new Date(state.weekCursor);
-        prevWeek.setDate(prevWeek.getDate() - 7);
-        if (canMoveWeek(prevWeek)) {
-          store.setState({ weekCursor: prevWeek });
+        if (canMoveWeek(prevWeekCandidate, state.selectedService)) {
+          store.setState({ weekCursor: new Date(prevWeekCandidate) });
         }
       },
       onNext: () => {
-        const nextWeek = new Date(state.weekCursor);
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        if (canMoveWeek(nextWeek)) {
-          store.setState({ weekCursor: nextWeek });
+        if (canMoveWeek(nextWeekCandidate, state.selectedService)) {
+          store.setState({ weekCursor: new Date(nextWeekCandidate) });
         }
       },
-      canPrev: canMoveWeek(new Date(state.weekCursor.getFullYear(), state.weekCursor.getMonth(), state.weekCursor.getDate() - 7)),
-      canNext: canMoveWeek(new Date(state.weekCursor.getFullYear(), state.weekCursor.getMonth(), state.weekCursor.getDate() + 7)),
+      canPrev: canMoveWeek(prevWeekCandidate, state.selectedService),
+      canNext: canMoveWeek(nextWeekCandidate, state.selectedService),
       state: state.uiStates.time,
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
@@ -1198,7 +1222,7 @@ const loadWeekAvailability = async (service, weekStart) => {
 
     const calendarEvent = state.confirmationCalendarEvent;
     const calendarPageUrl = buildCalendarDownloadPageUrl(calendarEvent);
-    const calendarQrImageUrl = buildCalendarQrImageUrl(calendarPageUrl);
+    const calendarQrImageUrl = buildCalendarQrFromEvent(calendarEvent);
 
     screen = Confirmation({
       summary,

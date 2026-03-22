@@ -698,7 +698,7 @@ body {
 .screen {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .screen-header {
@@ -902,6 +902,7 @@ body {
 
 .calendar {
   padding: 24px;
+  min-height: 500px;
 }
 
 .calendar-header {
@@ -1105,10 +1106,11 @@ body {
 .timeslot-card {
   display: grid;
   gap: 18px;
+  min-height: 500px;
 }
 
 .screen-status-slot {
-  min-height: 22px;
+  min-height: 0;
 }
 
 .inline-loading {

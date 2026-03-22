@@ -11,4 +11,5 @@ export type D1Database = {
 
 export interface Env {
   DB: D1Database;
+  FORCE_NOW_UTC?: string;
 }

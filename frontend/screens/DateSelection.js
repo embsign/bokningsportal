@@ -44,10 +44,10 @@ export const DateSelection = ({
     ],
   });
 
-  const hasDays = days.length > 0;
+  const hasRenderableDays = days.some((day) => day.status !== "outside");
 
   let content;
-  if (state === "loading" && !hasDays) {
+  if (state === "loading" && !hasRenderableDays) {
     content = createElement("div", {
       className: "card calendar calendar-panel",
       children: [
@@ -55,9 +55,9 @@ export const DateSelection = ({
         createElement("div", { className: "skeleton skeleton-row", attrs: { style: "height: 240px; margin-top: 16px;" } }),
       ],
     });
-  } else if (state === "error" && !hasDays) {
+  } else if (state === "error" && !hasRenderableDays) {
     content = createElement("div", { className: "error-state", text: "Kunde inte ladda datum." });
-  } else if (!hasDays) {
+  } else if (!hasRenderableDays) {
     content = createElement("div", { className: "empty-state", text: "Inga lediga datum hittades." });
   } else {
     content = Calendar({
@@ -75,7 +75,7 @@ export const DateSelection = ({
   const statusSlot = createElement("div", {
     className: "screen-status-slot",
     children:
-      state === "loading" && hasDays
+      state === "loading" && hasRenderableDays
         ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
         : [],
   });

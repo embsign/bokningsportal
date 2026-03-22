@@ -39,6 +39,26 @@ const getMinutesFromClockTime = (value: string) => {
   return hours * 60 + minutes;
 };
 
+const getUtcNowFromEnv = (env: Env) => {
+  const forced = env.FORCE_NOW_UTC;
+  if (!forced) {
+    return new Date();
+  }
+  const parsed = new Date(forced);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+const getWindowBoundaries = (bookingObject: any, nowUtc: Date) => {
+  const minDate = new Date(nowUtc);
+  minDate.setUTCDate(minDate.getUTCDate() + (bookingObject.window_min_days as number));
+  const maxDate = new Date(nowUtc);
+  maxDate.setUTCDate(maxDate.getUTCDate() + (bookingObject.window_max_days as number));
+  return {
+    minMs: minDate.getTime(),
+    maxMs: maxDate.getTime(),
+  };
+};
+
 const getFullDayTimeConfig = (bookingObject: any) => {
   const startTime = normalizeClockTime(bookingObject?.full_day_start_time);
   const endTime = normalizeClockTime(bookingObject?.full_day_end_time);
@@ -201,7 +221,7 @@ const canUserAccessBookingObject = async (db: D1Database, user: any, bookingObje
   return canUserAccessWithPermissions(permissions.results, user, groups);
 };
 
-const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string) => {
+const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string, nowUtc: Date) => {
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
 
@@ -228,17 +248,17 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
   }));
 
   const days: { date: string; status: string }[] = [];
-  const today = new Date();
+  const nowMs = nowUtc.getTime();
+  const { minMs, maxMs } = getWindowBoundaries(bookingObject, nowUtc);
   for (let day = 1; day <= new Date(year, monthIndex, 0).getDate(); day += 1) {
     const date = new Date(Date.UTC(year, monthIndex - 1, day));
     const dateString = formatDate(date);
     const candidate = buildFullDayRange(date, bookingObject);
     let status = "available";
-    const minDate = new Date();
-    minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
-    const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
-    if (date < today || date < minDate || date > maxDate) {
+    const startMs = candidate.start.getTime();
+    const endMs = candidate.end.getTime();
+    const outsideWindow = startMs < minMs || endMs > maxMs;
+    if (endMs <= nowMs || outsideWindow) {
       status = "disabled";
     }
     const overlap = overlaps.find((booking) => booking.startMs < candidate.end.getTime() && booking.endMs > candidate.start.getTime());
@@ -250,7 +270,7 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
   return days;
 };
 
-const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId: string, weekStart: string) => {
+const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId: string, weekStart: string, nowUtc: Date) => {
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
   const startDate = parseDate(weekStart);
@@ -270,13 +290,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     endMs: new Date(row.end_time as string).getTime(),
   }));
   const slotMinutes = (bookingObject.slot_duration_minutes as number) || 60;
-  const nowMs = Date.now();
-  const minDate = new Date();
-  minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
-  const maxDate = new Date();
-  maxDate.setDate(maxDate.getDate() + (bookingObject.window_max_days as number));
-  const minMs = minDate.getTime();
-  const maxMs = maxDate.getTime();
+  const nowMs = nowUtc.getTime();
+  const { minMs, maxMs } = getWindowBoundaries(bookingObject, nowUtc);
   const days = [];
   for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
     const date = new Date(startDate);
@@ -291,8 +306,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
       const startMs = start.getTime();
       const endMs = end.getTime();
       let status: "available" | "booked" | "mine" | "disabled" = "available";
-      const outsideWindow = startMs < minMs || startMs > maxMs;
-      if (startMs < nowMs || outsideWindow) {
+      const outsideWindow = startMs < minMs || endMs > maxMs;
+      if (endMs <= nowMs || outsideWindow) {
         status = "disabled";
       }
       const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
@@ -416,6 +431,8 @@ const handleServices = async (request: Request, env: Env) => {
       slot_duration_minutes: obj.slot_duration_minutes,
       full_day_start_time: normalizeClockTime(obj.full_day_start_time),
       full_day_end_time: normalizeClockTime(obj.full_day_end_time),
+      window_min_days: obj.window_min_days,
+      window_max_days: obj.window_max_days,
       next_available: formatDate(new Date()),
       price_weekday_cents: obj.price_weekday_cents,
       price_weekend_cents: obj.price_weekend_cents,
@@ -510,7 +527,8 @@ const handleAvailabilityMonth = async (request: Request, env: Env, url: URL) => 
   const bookingObjectId = url.searchParams.get("booking_object_id");
   const month = url.searchParams.get("month");
   if (!bookingObjectId || !month) return errorResponse(400, "invalid_payload");
-  const days = await buildMonthAvailability(env.DB, auth.user, bookingObjectId, month);
+  const nowUtc = getUtcNowFromEnv(env);
+  const days = await buildMonthAvailability(env.DB, auth.user, bookingObjectId, month, nowUtc);
   if (!days) return errorResponse(404, "not_found");
   return json({ days });
 };
@@ -521,7 +539,8 @@ const handleAvailabilityWeek = async (request: Request, env: Env, url: URL) => {
   const bookingObjectId = url.searchParams.get("booking_object_id");
   const weekStart = url.searchParams.get("week_start");
   if (!bookingObjectId || !weekStart) return errorResponse(400, "invalid_payload");
-  const days = await buildWeekAvailability(env.DB, auth.user, bookingObjectId, weekStart);
+  const nowUtc = getUtcNowFromEnv(env);
+  const days = await buildWeekAvailability(env.DB, auth.user, bookingObjectId, weekStart, nowUtc);
   if (!days) return errorResponse(404, "not_found");
   return json({ days });
 };

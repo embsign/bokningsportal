@@ -63,10 +63,11 @@ export const TimeSelection = ({
     ],
   });
 
+  const isLoading = state === "loading";
   const hasSlots = weekSlots.length > 0;
 
   let bodyContent;
-  if (state === "loading" && hasSlots) {
+  if (isLoading && hasSlots) {
     const columns = weekSlots.map((day, index) =>
       createElement("div", {
         className: "timeslot-column",
@@ -80,7 +81,7 @@ export const TimeSelection = ({
       })
     );
     bodyContent = createElement("div", { className: "timeslot-grid", children: columns });
-  } else if (state === "loading") {
+  } else if (isLoading) {
     bodyContent = createElement("div", {
       className: "timeslot-grid",
       children: Array.from({ length: 7 }).map((_, index) =>
@@ -128,7 +129,7 @@ export const TimeSelection = ({
   const statusSlot = createElement("div", {
     className: "screen-status-slot",
     children:
-      state === "loading" && hasSlots
+      isLoading && hasSlots
         ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
         : [],
   });

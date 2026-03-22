@@ -89,6 +89,14 @@ export const buildCalendarQrImageUrl = (calendarPageUrl) => {
   return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(calendarPageUrl)}`;
 };
 
+export const buildCalendarQrFromEvent = (eventData) => {
+  const ics = buildCalendarIcs(eventData);
+  if (!ics) {
+    return "";
+  }
+  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(ics)}`;
+};
+
 export const parseCalendarEventFromUrl = (url) => {
   const title = url.searchParams.get("title") || "";
   const startTime = url.searchParams.get("start") || "";
