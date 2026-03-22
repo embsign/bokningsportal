@@ -31,7 +31,15 @@ export const initDb = async (db: D1Database) => {
       .bind("full_day_start_time")
       .first();
     if (!fullDayStartColumn) {
-      throw new Error("booking_objects saknar kolumnen full_day_start_time efter schema-init");
+      await db.exec("ALTER TABLE booking_objects ADD COLUMN full_day_start_time TEXT NOT NULL DEFAULT '12:00';");
+    }
+
+    const fullDayEndColumn = await db
+      .prepare("SELECT name FROM pragma_table_info('booking_objects') WHERE name = ?")
+      .bind("full_day_end_time")
+      .first();
+    if (!fullDayEndColumn) {
+      await db.exec("ALTER TABLE booking_objects ADD COLUMN full_day_end_time TEXT NOT NULL DEFAULT '12:00';");
     }
 
     const demoTenantExists = await db.prepare("SELECT id FROM tenants WHERE id = ?").bind("demo-brf").first();
