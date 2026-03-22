@@ -1230,10 +1230,6 @@ body {
   gap: 20px;
 }
 
-.modal-footer.modal-footer-align-end {
-  justify-content: flex-end;
-}
-
 .booking-object-modal {
   width: min(920px, 100%);
   max-height: calc(100vh - 48px);
@@ -1249,6 +1245,10 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 16px;
+}
+
+.modal-footer.modal-footer-align-end {
+  justify-content: flex-end;
 }
 
 .empty-state,
