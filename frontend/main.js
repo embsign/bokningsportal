@@ -926,18 +926,28 @@ const loadMonthAvailability = async (service, year, monthIndex) => {
   }));
   try {
     const days = await getMonthAvailability(service.id, year, monthIndex);
-    store.setState({
-      availabilityMonthKey: key,
-      availabilityMonthRequestKey: null,
-      availabilityMonth: days,
-      availabilityLoading: false,
-      uiStates: { ...store.getState().uiStates, date: days.length ? "normal" : "empty" },
+    store.setState((prev) => {
+      if (prev.availabilityMonthRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityMonthKey: key,
+        availabilityMonthRequestKey: null,
+        availabilityMonth: days,
+        availabilityLoading: false,
+        uiStates: { ...prev.uiStates, date: days.length ? "normal" : "empty" },
+      };
     });
   } catch (error) {
-    store.setState({
-      availabilityLoading: false,
-      availabilityMonthRequestKey: null,
-      uiStates: { ...store.getState().uiStates, date: "error" },
+    store.setState((prev) => {
+      if (prev.availabilityMonthRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityLoading: false,
+        availabilityMonthRequestKey: null,
+        uiStates: { ...prev.uiStates, date: "error" },
+      };
     });
   }
 };
@@ -951,18 +961,28 @@ const loadWeekAvailability = async (service, weekStart) => {
   }));
   try {
     const days = await getWeekAvailability(service.id, weekStart);
-    store.setState({
-      availabilityWeekKey: key,
-      availabilityWeekRequestKey: null,
-      availabilityWeek: days,
-      availabilityLoading: false,
-      uiStates: { ...store.getState().uiStates, time: days.length ? "normal" : "empty" },
+    store.setState((prev) => {
+      if (prev.availabilityWeekRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityWeekKey: key,
+        availabilityWeekRequestKey: null,
+        availabilityWeek: days,
+        availabilityLoading: false,
+        uiStates: { ...prev.uiStates, time: days.length ? "normal" : "empty" },
+      };
     });
   } catch (error) {
-    store.setState({
-      availabilityLoading: false,
-      availabilityWeekRequestKey: null,
-      uiStates: { ...store.getState().uiStates, time: "error" },
+    store.setState((prev) => {
+      if (prev.availabilityWeekRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityLoading: false,
+        availabilityWeekRequestKey: null,
+        uiStates: { ...prev.uiStates, time: "error" },
+      };
     });
   }
 };
@@ -1010,6 +1030,8 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   let screen;
   let footer;
+  let pendingMonthLoad = null;
+  let pendingWeekLoad = null;
 
   if (state.step === 1) {
     const resetCalendarCursorToToday = () =>
@@ -1083,7 +1105,11 @@ const loadWeekAvailability = async (service, weekStart) => {
     const isMonthDataCurrent = state.availabilityMonthKey === monthKey;
     const isMonthRequestInFlight = state.availabilityMonthRequestKey === monthKey;
     if (!isMonthDataCurrent && !isMonthRequestInFlight) {
-      loadMonthAvailability(state.selectedService, year, monthIndex);
+      pendingMonthLoad = {
+        service: state.selectedService,
+        year,
+        monthIndex,
+      };
     }
     const days = (isMonthDataCurrent ? state.availabilityMonth || [] : []).map((day) =>
       state.cancelledDayIds.includes(day.id) ? { ...day, status: "available" } : day
@@ -1161,7 +1187,10 @@ const loadWeekAvailability = async (service, weekStart) => {
     const isWeekDataCurrent = state.availabilityWeekKey === weekKey;
     const isWeekRequestInFlight = state.availabilityWeekRequestKey === weekKey;
     if (!isWeekDataCurrent && !isWeekRequestInFlight) {
-      loadWeekAvailability(state.selectedService, state.weekCursor);
+      pendingWeekLoad = {
+        service: state.selectedService,
+        weekStart: new Date(state.weekCursor),
+      };
     }
     const weekSlots = (isWeekDataCurrent ? state.availabilityWeek || [] : []).map((day) => ({
       ...day,
@@ -1344,6 +1373,42 @@ const loadWeekAvailability = async (service, weekStart) => {
     shell.append(footer);
   }
     app.append(shell);
+
+  if (pendingMonthLoad) {
+    queueMicrotask(() => {
+      const latest = store.getState();
+      if (latest.step !== 2 || latest.selectedService?.bookingType !== "full-day" || !latest.selectedService) {
+        return;
+      }
+      const { service, year, monthIndex } = pendingMonthLoad;
+      if (!latest.selectedService || latest.selectedService.id !== service.id) {
+        return;
+      }
+      const key = `${service.id}-${year}-${monthIndex}`;
+      if (latest.availabilityMonthKey === key || latest.availabilityMonthRequestKey === key) {
+        return;
+      }
+      loadMonthAvailability(service, year, monthIndex);
+    });
+  }
+
+  if (pendingWeekLoad) {
+    queueMicrotask(() => {
+      const latest = store.getState();
+      if (latest.step !== 2 || latest.selectedService?.bookingType === "full-day" || !latest.selectedService) {
+        return;
+      }
+      const { service, weekStart } = pendingWeekLoad;
+      if (latest.selectedService.id !== service.id) {
+        return;
+      }
+      const key = `${service.id}-${weekStart.toISOString().slice(0, 10)}`;
+      if (latest.availabilityWeekKey === key || latest.availabilityWeekRequestKey === key) {
+        return;
+      }
+      loadWeekAvailability(service, weekStart);
+    });
+  }
   };
 
   store.subscribe(render);
