@@ -581,8 +581,6 @@ const handleCancelBooking = async (request: Request, env: Env, bookingId: string
 };
 
 const handleCalendarDownload = async (request: Request, env: Env, url: URL) => {
-  const auth = await requireAuth(request, env);
-  if ("error" in auth) return auth.error;
   const bookingId = url.searchParams.get("booking_id");
   if (!bookingId) {
     return errorResponse(400, "invalid_payload");
@@ -593,22 +591,18 @@ const handleCalendarDownload = async (request: Request, env: Env, url: URL) => {
          b.id,
          b.start_time,
          b.end_time,
-         b.user_id,
          b.cancelled_at,
          bo.name AS booking_object_name,
          u.apartment_id AS booked_user_apartment_id
        FROM bookings b
        JOIN booking_objects bo ON bo.id = b.booking_object_id
        JOIN users u ON u.id = b.user_id
-       WHERE b.id = ? AND b.tenant_id = ?`
+       WHERE b.id = ?`
     )
-    .bind(bookingId, auth.tenant.id)
+    .bind(bookingId)
     .first()) as any;
   if (!booking || booking.cancelled_at) {
     return errorResponse(404, "not_found");
-  }
-  if (auth.user.is_admin !== 1 && booking.user_id !== auth.user.id) {
-    return errorResponse(403, "forbidden");
   }
   const ics = buildBookingIcs({
     id: booking.id as string,
