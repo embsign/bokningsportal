@@ -1230,7 +1230,7 @@ body {
   gap: 20px;
 }
 
-.modal-footer-align-end {
+.modal-footer.modal-footer-align-end {
   justify-content: flex-end;
 }
 
