@@ -1,6 +1,5 @@
 import migration001 from "../../../../db/migrations/001_initial_schema.sql";
 import migration002 from "../../../../db/migrations/002_indexes.sql";
-import migration003 from "../../../../db/migrations/003_full_day_times.sql";
 import seedSql from "../../../../db/seed.sql";
 import { D1Database } from "../types.js";
 
@@ -32,7 +31,7 @@ export const initDb = async (db: D1Database) => {
       .bind("full_day_start_time")
       .first();
     if (!fullDayStartColumn) {
-      await db.exec(migration003);
+      throw new Error("booking_objects saknar kolumnen full_day_start_time efter schema-init");
     }
 
     const demoTenantExists = await db.prepare("SELECT id FROM tenants WHERE id = ?").bind("demo-brf").first();
