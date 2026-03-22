@@ -67,21 +67,7 @@ export const TimeSelection = ({
   const hasSlots = weekSlots.length > 0;
 
   let bodyContent;
-  if (isLoading && hasSlots) {
-    const columns = weekSlots.map((day, index) =>
-      createElement("div", {
-        className: "timeslot-column",
-        children: [
-          createElement("div", {
-            className: `timeslot-header ${index === 6 ? "weekday-sunday" : ""}`.trim(),
-            text: day.label,
-          }),
-          ...day.slots.map(() => createElement("div", { className: "skeleton timeslot-skeleton-item" })),
-        ],
-      })
-    );
-    bodyContent = createElement("div", { className: "timeslot-grid", children: columns });
-  } else if (isLoading) {
+  if (isLoading) {
     bodyContent = createElement("div", {
       className: "timeslot-grid",
       children: Array.from({ length: 7 }).map((_, index) =>
@@ -129,7 +115,7 @@ export const TimeSelection = ({
   const statusSlot = createElement("div", {
     className: "screen-status-slot",
     children:
-      isLoading && hasSlots
+      isLoading
         ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
         : [],
   });

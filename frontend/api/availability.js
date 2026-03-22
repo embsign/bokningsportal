@@ -1,6 +1,13 @@
 import { apiRequest } from "./client.js";
 
 const pad = (value) => String(value).padStart(2, "0");
+
+/** Local calendar date Y-M-D — must match week_start in API requests and week cache keys in main.js */
+export const formatWeekStartLocalString = (weekStart) =>
+  `${weekStart.getFullYear()}-${pad(weekStart.getMonth() + 1)}-${pad(weekStart.getDate())}`;
+
+export const weekAvailabilityStateKey = (serviceId, weekStart) =>
+  `${serviceId}-${formatWeekStartLocalString(weekStart)}`;
 const dayNames = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
 
 export const getMonthLabel = (year, monthIndex) => {
@@ -51,7 +58,7 @@ export const getMonthAvailability = async (bookingObjectId, year, monthIndex) =>
 };
 
 export const getWeekAvailability = async (bookingObjectId, weekStart) => {
-  const weekStartStr = `${weekStart.getFullYear()}-${pad(weekStart.getMonth() + 1)}-${pad(weekStart.getDate())}`;
+  const weekStartStr = formatWeekStartLocalString(weekStart);
   const { days } = await apiRequest(
     `/availability/week?booking_object_id=${encodeURIComponent(bookingObjectId)}&week_start=${weekStartStr}`
   );

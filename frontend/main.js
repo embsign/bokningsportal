@@ -20,7 +20,13 @@ import { getSession } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { getServices } from "./api/services.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
-import { getMonthAvailability, getMonthLabel, getWeekAvailability, getWeekStart } from "./api/availability.js";
+import {
+  getMonthAvailability,
+  getMonthLabel,
+  getWeekAvailability,
+  getWeekStart,
+  weekAvailabilityStateKey,
+} from "./api/availability.js";
 import {
   getBookingGroups,
   getBookingObjects,
@@ -953,7 +959,7 @@ const loadMonthAvailability = async (service, year, monthIndex) => {
 };
 
 const loadWeekAvailability = async (service, weekStart) => {
-  const key = `${service.id}-${weekStart.toISOString().slice(0, 10)}`;
+  const key = weekAvailabilityStateKey(service.id, weekStart);
   store.setState((prev) => ({
     availabilityLoading: true,
     availabilityWeekRequestKey: key,
@@ -1183,7 +1189,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   }
 
   if (state.step === 2 && state.selectedService?.bookingType !== "full-day") {
-    const weekKey = `${state.selectedService.id}-${state.weekCursor.toISOString().slice(0, 10)}`;
+    const weekKey = weekAvailabilityStateKey(state.selectedService.id, state.weekCursor);
     const isWeekDataCurrent = state.availabilityWeekKey === weekKey;
     const isWeekRequestInFlight = state.availabilityWeekRequestKey === weekKey;
     if (!isWeekDataCurrent && !isWeekRequestInFlight) {
@@ -1236,12 +1242,22 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onPrev: () => {
         if (canMoveWeek(prevWeekCandidate, state.selectedService)) {
-          store.setState({ weekCursor: new Date(prevWeekCandidate) });
+          store.setState({
+            weekCursor: new Date(prevWeekCandidate),
+            availabilityWeek: [],
+            availabilityWeekKey: null,
+            availabilityWeekRequestKey: null,
+          });
         }
       },
       onNext: () => {
         if (canMoveWeek(nextWeekCandidate, state.selectedService)) {
-          store.setState({ weekCursor: new Date(nextWeekCandidate) });
+          store.setState({
+            weekCursor: new Date(nextWeekCandidate),
+            availabilityWeek: [],
+            availabilityWeekKey: null,
+            availabilityWeekRequestKey: null,
+          });
         }
       },
       canPrev: canMoveWeek(prevWeekCandidate, state.selectedService),
@@ -1402,7 +1418,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       if (latest.selectedService.id !== service.id) {
         return;
       }
-      const key = `${service.id}-${weekStart.toISOString().slice(0, 10)}`;
+      const key = weekAvailabilityStateKey(service.id, weekStart);
       if (latest.availabilityWeekKey === key || latest.availabilityWeekRequestKey === key) {
         return;
       }
