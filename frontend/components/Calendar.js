@@ -30,6 +30,9 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
   );
 
   const dayCards = days.map((day) => {
+    if (day.status === "outside") {
+      return createElement("div", { className: "day-card outside", attrs: { "aria-hidden": "true" } });
+    }
     const isSelected = selectedDateId === day.id;
     const className = [
       "day-card",

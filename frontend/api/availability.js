@@ -36,8 +36,8 @@ export const getMonthAvailability = async (bookingObjectId, year, monthIndex) =>
     const date = new Date(startDay);
     date.setDate(startDay.getDate() + i);
     const dateString = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    const status =
-      date.getMonth() !== monthIndex ? "disabled" : byDate.get(dateString) || "available";
+    const isOutsideMonth = date.getMonth() !== monthIndex;
+    const status = isOutsideMonth ? "outside" : byDate.get(dateString) || "available";
     calendarDays.push({
       id: dateString,
       date,

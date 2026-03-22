@@ -10,6 +10,12 @@ import { UserPickerModal } from "./components/UserPickerModal.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
+import {
+  buildCalendarDownloadPageUrl,
+  buildCalendarQrImageUrl,
+  downloadCalendarEvent,
+  parseCalendarEventFromUrl,
+} from "./utils/calendarExport.js";
 import { getSession } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { getServices } from "./api/services.js";
@@ -46,7 +52,45 @@ const logout = () => {
   window.location.assign("/");
 };
 
-if (routePath.startsWith("/admin/")) {
+const renderCalendarDownloadScreen = () => {
+  clearElement(app);
+  const shell = createElement("div", { className: "app-shell" });
+  const url = new URL(window.location.href);
+  const eventData = parseCalendarEventFromUrl(url);
+  const autoDownloaded = eventData ? downloadCalendarEvent(eventData) : false;
+  shell.append(
+    createElement("div", {
+      className: "card calendar-download-card",
+      children: eventData
+        ? [
+            createElement("div", { className: "modal-title", text: "Kalenderfil klar" }),
+            createElement("div", {
+              className: "screen-subtitle",
+              text: autoDownloaded
+                ? "Nedladdning av kalenderfilen startades automatiskt."
+                : "Kunde inte starta automatisk nedladdning.",
+            }),
+            createElement("button", {
+              className: "primary-button",
+              text: "Ladda ner igen",
+              onClick: () => downloadCalendarEvent(eventData),
+            }),
+          ]
+        : [
+            createElement("div", { className: "modal-title", text: "Ogiltig kalenderlänk" }),
+            createElement("div", {
+              className: "screen-subtitle",
+              text: "Länken saknar bokningsinformation.",
+            }),
+          ],
+    })
+  );
+  app.append(shell);
+};
+
+if (routePath.startsWith("/calendar/add")) {
+  renderCalendarDownloadScreen();
+} else if (routePath.startsWith("/admin/")) {
   const buildRegexEffect = (samples, regexSource) => {
     if (!regexSource) {
       return samples.map((original) => ({ original, value: "—" }));
@@ -268,6 +312,21 @@ if (routePath.startsWith("/admin/")) {
 
   const renderAdmin = () => {
     const state = adminStore.getState();
+    const activeElement = state.modalOpen ? document.activeElement : null;
+    const modalFocusSnapshot =
+      activeElement && activeElement.getAttribute?.("data-focus-key")
+        ? {
+            key: activeElement.getAttribute("data-focus-key"),
+            start:
+              typeof activeElement.selectionStart === "number"
+                ? activeElement.selectionStart
+                : null,
+            end:
+              typeof activeElement.selectionEnd === "number"
+                ? activeElement.selectionEnd
+                : null,
+          }
+        : null;
     clearElement(app);
     const shell = createElement("div", { className: "app-shell" });
     initAdmin();
@@ -598,6 +657,20 @@ if (routePath.startsWith("/admin/")) {
     );
     app.append(shell);
 
+    if (modalFocusSnapshot && !state.groupModalOpen) {
+      const target = app.querySelector(`[data-focus-key="${modalFocusSnapshot.key}"]`);
+      if (target) {
+        target.focus();
+        if (
+          typeof modalFocusSnapshot.start === "number" &&
+          typeof modalFocusSnapshot.end === "number" &&
+          typeof target.setSelectionRange === "function"
+        ) {
+          target.setSelectionRange(modalFocusSnapshot.start, modalFocusSnapshot.end);
+        }
+      }
+    }
+
     if (state.groupModalOpen) {
       const input = app.querySelector('[data-autofocus="group-name"]');
       if (input) {
@@ -649,6 +722,7 @@ const store = createStore({
   qrWarningOpen: false,
   qrGenerated: false,
   qrModalOpen: false,
+  confirmationCalendarEvent: null,
   uiStates: {
     service: "loading",
     date: "normal",
@@ -664,12 +738,14 @@ const canMoveMonth = (year, monthIndex) => {
   return target >= new Date(current.getFullYear(), current.getMonth(), 1) && target <= max;
 };
 
-const canMoveWeek = (weekDate) => {
+const canMoveWeek = (weekDate, service = null) => {
   const currentWeek = getWeekStart(new Date());
   const min = new Date(currentWeek);
-  min.setDate(min.getDate() - 21);
+  const maxWeeksAhead = Number.isFinite(Number(service?.windowMax))
+    ? Math.max(0, Number(service.windowMax))
+    : 21;
   const max = new Date(currentWeek);
-  max.setDate(max.getDate() + 21);
+  max.setDate(max.getDate() + maxWeeksAhead * 7);
   return weekDate >= min && weekDate <= max;
 };
 
@@ -712,6 +788,37 @@ const buildCancelBooking = ({ date, timeLabel, serviceName, sourceId }) => ({
   timeLabel,
   status: "mine",
 });
+
+const buildBookingRangeForState = (state) => {
+  if (state.selectedSlot?.startTime && state.selectedSlot?.endTime) {
+    return {
+      startTime: state.selectedSlot.startTime,
+      endTime: state.selectedSlot.endTime,
+      timeLabel: state.selectedSlot.label,
+    };
+  }
+  if (state.selectedDate?.date) {
+    const range = buildFullDayDateRange(state.selectedDate.date, state.selectedService);
+    return {
+      startTime: range.startTime,
+      endTime: range.endTime,
+      timeLabel: getFullDayTimeLabel(state.selectedService),
+    };
+  }
+  return null;
+};
+
+const buildConfirmationCalendarEvent = (state, range) => {
+  if (!state.selectedService || !state.selectedDate?.date || !range?.startTime || !range?.endTime) {
+    return null;
+  }
+  return {
+    title: `Bokning: ${state.selectedService.name}`,
+    startTime: range.startTime,
+    endTime: range.endTime,
+    description: `${formatDayLabel(state.selectedDate.date)} ${formatDateLabel(state.selectedDate.date)} ${range.timeLabel}`,
+  };
+};
 
 const markMonthDayAsMine = (days, selectedDayId) =>
   (days || []).map((day) => (day.id === selectedDayId ? { ...day, status: "mine" } : day));
@@ -884,6 +991,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           availabilityWeek: [],
           step: 2,
           confirmed: false,
+          confirmationCalendarEvent: null,
         }),
       bookings: state.bookings,
       cancelModalOpen: state.cancelModalOpen,
@@ -958,6 +1066,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           selectedSlot: null,
           step: 3,
           confirmed: false,
+          confirmationCalendarEvent: null,
         });
       },
       onPrev: () => {
@@ -1036,6 +1145,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           selectedSlot: slot,
           selectedDate: { id: slot.id, date: slot.date },
           step: 3,
+          confirmed: false,
+          confirmationCalendarEvent: null,
         });
       },
       onPrev: () => {
@@ -1085,10 +1196,23 @@ const loadWeekAvailability = async (service, weekStart) => {
       timeslot: state.selectedSlot,
     });
 
+    const calendarEvent = state.confirmationCalendarEvent;
+    const calendarPageUrl = buildCalendarDownloadPageUrl(calendarEvent);
+    const calendarQrImageUrl = buildCalendarQrImageUrl(calendarPageUrl);
+
     screen = Confirmation({
       summary,
       state: state.uiStates.confirmation,
       confirmed: state.confirmed,
+      isKioskMode: !isMobile,
+      calendarQrImageUrl,
+      calendarDownloadUrl: calendarPageUrl,
+      onDownloadCalendar: () => {
+        if (!calendarEvent) {
+          return;
+        }
+        downloadCalendarEvent(calendarEvent);
+      },
       onBack: () => store.setState({ step: 2 }),
       onAcknowledge: () =>
         store.setState({
@@ -1096,6 +1220,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           confirmed: false,
           selectedDate: null,
           selectedSlot: null,
+          confirmationCalendarEvent: null,
           uiStates: { ...store.getState().uiStates, confirmation: "normal" },
         }),
       onConfirm: async () => {
@@ -1105,23 +1230,23 @@ const loadWeekAvailability = async (service, weekStart) => {
         store.setState((prev) => ({ uiStates: { ...prev.uiStates, confirmation: "loading" } }));
         try {
           const currentState = store.getState();
-          let startTime = null;
-          let endTime = null;
-          if (currentState.selectedSlot?.startTime && currentState.selectedSlot?.endTime) {
-            startTime = currentState.selectedSlot.startTime;
-            endTime = currentState.selectedSlot.endTime;
-          } else if (currentState.selectedDate?.date) {
-            const range = buildFullDayDateRange(currentState.selectedDate.date, currentState.selectedService);
-            startTime = range.startTime;
-            endTime = range.endTime;
+          const bookingRange = buildBookingRangeForState(currentState);
+          if (!bookingRange) {
+            store.setState((prev) => ({
+              confirmed: false,
+              uiStates: { ...prev.uiStates, confirmation: "error" },
+            }));
+            return;
           }
           await createBooking({
             booking_object_id: currentState.selectedService.id,
-            start_time: startTime,
-            end_time: endTime,
+            start_time: bookingRange.startTime,
+            end_time: bookingRange.endTime,
           });
+          const calendarEventData = buildConfirmationCalendarEvent(currentState, bookingRange);
           store.setState((prev) => ({
             confirmed: true,
+            confirmationCalendarEvent: calendarEventData,
             availabilityMonth:
               prev.selectedService?.bookingType === "full-day"
                 ? markMonthDayAsMine(prev.availabilityMonth, prev.selectedDate?.id)
@@ -1149,6 +1274,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           }
           store.setState((prev) => ({
             confirmed: false,
+            confirmationCalendarEvent: null,
             uiStates: { ...prev.uiStates, confirmation: "error" },
           }));
         }

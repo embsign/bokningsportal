@@ -192,7 +192,7 @@ export const BookingObjectModal = ({
                 help: "Visningsnamn för bokningsobjektet.",
                 input: createElement("input", {
                   className: "input",
-                  attrs: { value: form.name || "" },
+                  attrs: { value: form.name || "", "data-focus-key": "name" },
                   onInput: (event) => onChange("name", event.target.value),
                 }),
               }),
@@ -249,7 +249,11 @@ export const BookingObjectModal = ({
                               createElement("span", { text: "Från" }),
                               createElement("input", {
                                 className: "input",
-                                attrs: { type: "time", value: form.fullDayStartTime || "12:00" },
+                                attrs: {
+                                  type: "time",
+                                  value: form.fullDayStartTime || "12:00",
+                                  "data-focus-key": "fullDayStartTime",
+                                },
                                 onInput: (event) => onChange("fullDayStartTime", event.target.value),
                               }),
                             ],
@@ -260,7 +264,11 @@ export const BookingObjectModal = ({
                               createElement("span", { text: "Till" }),
                               createElement("input", {
                                 className: "input",
-                                attrs: { type: "time", value: form.fullDayEndTime || "12:00" },
+                                attrs: {
+                                  type: "time",
+                                  value: form.fullDayEndTime || "12:00",
+                                  "data-focus-key": "fullDayEndTime",
+                                },
                                 onInput: (event) => onChange("fullDayEndTime", event.target.value),
                               }),
                             ],
@@ -278,6 +286,7 @@ export const BookingObjectModal = ({
                   attrs: {
                     value: form.slotDuration || "",
                     disabled: form.type === "Dygn" ? "disabled" : null,
+                    "data-focus-key": "slotDuration",
                   },
                   onInput: (event) => onChange("slotDuration", event.target.value),
                 }),
@@ -295,7 +304,7 @@ export const BookingObjectModal = ({
                           createElement("span", { text: "Minsta tid innan bokning (dagar)" }),
                           createElement("input", {
                             className: "input",
-                            attrs: { value: form.windowMin || "" },
+                            attrs: { value: form.windowMin || "", "data-focus-key": "windowMin" },
                             onInput: (event) => onChange("windowMin", event.target.value),
                           }),
                         ],
@@ -306,7 +315,7 @@ export const BookingObjectModal = ({
                           createElement("span", { text: "Maximal framförhållning (dagar)" }),
                           createElement("input", {
                             className: "input",
-                            attrs: { value: form.windowMax || "" },
+                            attrs: { value: form.windowMax || "", "data-focus-key": "windowMax" },
                             onInput: (event) => onChange("windowMax", event.target.value),
                           }),
                         ],
@@ -323,7 +332,7 @@ export const BookingObjectModal = ({
                   children: [
                     createElement("input", {
                       className: "input input-sm",
-                      attrs: { value: form.maxBookings || "" },
+                      attrs: { value: form.maxBookings || "", "data-focus-key": "maxBookings" },
                       onInput: (event) => {
                         const value = event.target.value;
                         onChange("maxBookings", value);
@@ -332,6 +341,7 @@ export const BookingObjectModal = ({
                     }),
                     createElement("select", {
                       className: "input",
+                      attrs: { "data-focus-key": "groupId" },
                       onChange: (event) => {
                         const value = event.target.value;
                         if (value === "create") {
@@ -370,7 +380,7 @@ export const BookingObjectModal = ({
                           createElement("span", { text: "Pris per bokning på vardag (kr)" }),
                           createElement("input", {
                             className: "input",
-                            attrs: { value: form.priceWeekday || "" },
+                            attrs: { value: form.priceWeekday || "", "data-focus-key": "priceWeekday" },
                             onInput: (event) => onChange("priceWeekday", event.target.value),
                           }),
                         ],
@@ -381,7 +391,7 @@ export const BookingObjectModal = ({
                           createElement("span", { text: "Pris per bokning på helg (kr)" }),
                           createElement("input", {
                             className: "input",
-                            attrs: { value: form.priceWeekend || "" },
+                            attrs: { value: form.priceWeekend || "", "data-focus-key": "priceWeekend" },
                             onInput: (event) => onChange("priceWeekend", event.target.value),
                           }),
                         ],
