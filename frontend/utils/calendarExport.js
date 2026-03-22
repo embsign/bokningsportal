@@ -1,3 +1,5 @@
+import { getApiBase } from "../api/client.js";
+
 const escapeIcsText = (value) =>
   String(value || "")
     .replace(/\\/g, "\\\\")
@@ -74,7 +76,8 @@ export const buildCalendarDownloadPageUrl = (eventData) => {
   if (!eventData?.bookingId) {
     return "";
   }
-  const url = new URL("/api/calendar", window.location.origin);
+  const apiBase = getApiBase();
+  const url = new URL(`${apiBase}/calendar`, window.location.origin);
   url.searchParams.set("booking_id", sanitizeFileToken(eventData.bookingId));
   return url.toString();
 };

@@ -27,7 +27,7 @@ const isLocalApiBase = (value) => {
   }
 };
 
-const getApiBase = () => {
+export const getApiBase = () => {
   if (typeof window !== "undefined" && window.API_BASE) {
     return window.API_BASE.replace(/\/$/, "");
   }
