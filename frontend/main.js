@@ -1605,13 +1605,43 @@ const loadWeekAvailability = async (service, weekStart) => {
         className: "landing-section",
         children: [
           createElement("div", {
-            className: "landing-container landing-open-source",
+            className: "landing-container landing-screen-layout",
             children: [
-              createElement("h2", { className: "landing-section-title", text: "Minimal administration" }),
-              createElement("p", {
-                className: "landing-section-subtitle",
-                text:
-                  "Boende loggar in med hjälp av en unik QR-kod. Denna distribueras antingen manuellt till alla boende - eller om man använder en digital bokningstavla så kan varje boende själv administrera sitt konto genom att logga in med sin RFID-tagg.",
+              createElement("div", {
+                className: "landing-screen-copy",
+                children: [
+                  createElement("h2", {
+                    className: "landing-section-title",
+                    text: "Minimal administration",
+                  }),
+                  createElement("p", {
+                    className: "landing-section-subtitle",
+                    text:
+                      "Boende loggar in med hjälp av en unik QR-kod. Denna distribueras antingen manuellt till alla boende - eller om man använder en digital bokningstavla så kan varje boende själv administrera sitt konto genom att logga in med sin RFID-tagg.",
+                  }),
+                  createElement("div", {
+                    className: "landing-inline-note",
+                    text: "QR-koden intill är till ett demo-konto",
+                  }),
+                ],
+              }),
+              createElement("div", {
+                className: "landing-photo-placeholder",
+                children: [
+                  createElement("div", {
+                    className: "landing-photo-placeholder-copy",
+                    children: [
+                      createElement("div", {
+                        className: "landing-photo-placeholder-title",
+                        text: "Foto placeholder",
+                      }),
+                      createElement("div", {
+                        className: "landing-photo-placeholder-text",
+                        text: "Bokningstavla i trapphus - lägg in foto här när det är redo",
+                      }),
+                    ],
+                  }),
+                ],
               }),
             ],
           }),
