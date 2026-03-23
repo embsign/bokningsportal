@@ -1419,7 +1419,7 @@ body {
 }
 
 .landing-top-banner {
-  background: #eef6f8;
+  background: #60b5c3;
   border-bottom: 1px solid #60b5c3;
 }
 
@@ -1530,7 +1530,7 @@ body {
 }
 
 .landing-button-secondary:hover {
-  background: #eef6f8;
+  background: #60b5c3;
 }
 
 .landing-inline-note {
@@ -1544,7 +1544,7 @@ body {
 }
 
 .landing-section-muted {
-  background: #f4fafb;
+  background: #60b5c3;
 }
 
 .landing-section-title {
@@ -1603,7 +1603,7 @@ body {
   min-height: 360px;
   border: 2px dashed #60b5c3;
   border-radius: 20px;
-  background: #e8f4f7;
+  background: #60b5c3;
   display: grid;
   place-items: center;
   padding: 28px;
@@ -1651,7 +1651,7 @@ body {
 
 .landing-final-cta {
   border: 2px solid #60b5c3;
-  background: #e8f4f7;
+  background: #60b5c3;
   border-radius: 20px;
   padding: 48px 32px;
   display: grid;
