@@ -584,7 +584,7 @@ body {
   width: 42px;
   height: 42px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #4f7cff, #7e88ff);
+  background: #60b5c3;
   display: grid;
   place-items: center;
   color: white;
@@ -1267,9 +1267,8 @@ body {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #f0f2f8 25%, #e4e8f0 37%, #f0f2f8 63%);
-  background-size: 400% 100%;
-  animation: shimmer 1.4s ease infinite;
+  background: #e4edf1;
+  animation: none;
   border-radius: 12px;
 }
 
