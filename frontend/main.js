@@ -1523,7 +1523,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         ],
       }),
       createElement("section", {
-        className: "landing-section landing-section-muted",
+        className: "landing-section",
         children: [
           sectionDivider(),
           createElement("div", {
@@ -1602,7 +1602,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         ],
       }),
       createElement("section", {
-        className: "landing-section landing-section-muted",
+        className: "landing-section",
         children: [
           sectionDivider(),
           createElement("div", {
