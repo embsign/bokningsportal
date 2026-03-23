@@ -1389,29 +1389,299 @@ const loadWeekAvailability = async (service, weekStart) => {
   render();
 } else {
   clearElement(app);
-  const shell = createElement("div", { className: "app-shell" });
-  shell.append(
-    Header({ apartmentId: "Välkommen", onHelp: openHelp, onLogout: logout }),
-    createElement("div", {
-      className: "card",
-      children: [
-        createElement("div", { className: "screen-title", text: "BRF Bokningsportal" }),
-        createElement("div", {
-          className: "screen-subtitle",
-          text:
-            "Gå till /#/user/{UUID-token} för boende eller /#/admin/{UUID-token} för admin (hash används utan backend).",
-        }),
-        createElement("div", { className: "section-title", text: "Testa demon" }),
-        createElement("div", {
-          className: "footer-actions",
-          children: [
-            createElement("a", { className: "primary-button", attrs: { href: "/admin/admin-demo-token" }, text: "Admin-demo" }),
-            createElement("a", { className: "secondary-button", attrs: { href: "/user/user-demo-token-anna" }, text: "Anna Andersson" }),
-            createElement("a", { className: "secondary-button", attrs: { href: "/user/user-demo-token-erik" }, text: "Erik Eriksson" }),
-          ],
-        }),
-      ],
-    })
-  );
-  app.append(shell);
+  const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
+
+  const createLandingButton = (text, href, variant = "secondary") =>
+    createElement("a", {
+      className: `landing-button landing-button-${variant}`,
+      text,
+      attrs: {
+        href,
+      },
+    });
+
+  const landing = createElement("div", {
+    className: "landing-page",
+    children: [
+      createElement("div", {
+        className: "landing-top-banner",
+        children: [
+          createElement("div", {
+            className: "landing-container landing-banner-inner",
+            children: [
+              createElement("span", { className: "landing-banner-icon", text: "⌁" }),
+              createElement("div", {
+                className: "landing-banner-copy",
+                children: [
+                  createElement("div", {
+                    className: "landing-banner-title",
+                    text: "Är du boende? Bokning sker via din personliga QR-kod.",
+                  }),
+                  createElement("div", {
+                    className: "landing-banner-note",
+                    text: "QR-koden får du från styrelsen eller via bokningstavlan.",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-hero",
+        children: [
+          createElement("div", {
+            className: "landing-container landing-hero-copy",
+            children: [
+              createElement("h1", {
+                className: "landing-title",
+                text: "Gratis bokningssystem för BRF - klart på 2 minuter",
+              }),
+              createElement("p", {
+                className: "landing-subtitle",
+                text:
+                  "Open source. Ingen bindningstid. Fungerar på mobil, dator eller bokningsskärm i trapphuset.",
+              }),
+              createElement("div", {
+                className: "landing-actions",
+                children: [
+                  createLandingButton("Skapa er bokningssida", primaryCtaHref, "primary"),
+                  createLandingButton("Testa demo direkt", "#demo", "secondary"),
+                ],
+              }),
+              createElement("div", {
+                className: "landing-inline-note",
+                text: "Sätts upp automatiskt • Ingen installation krävs",
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-trust-strip",
+        children: [
+          createElement("div", {
+            className: "landing-container landing-trust-grid",
+            children: [
+              createElement("div", { className: "landing-trust-item", text: "100% gratis" }),
+              createElement("div", { className: "landing-trust-item", text: "Open source" }),
+              createElement("div", { className: "landing-trust-item", text: "Fungerar med bokningsskärm (RFID)" }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-section",
+        children: [
+          createElement("div", {
+            className: "landing-container",
+            children: [
+              createElement("h2", { className: "landing-section-title", text: "Så fungerar det" }),
+              createElement("div", {
+                className: "landing-steps",
+                children: [
+                  createElement("article", {
+                    className: "landing-step",
+                    children: [
+                      createElement("span", { className: "landing-step-index", text: "1" }),
+                      createElement("h3", { className: "landing-step-title", text: "Ange namn på BRF" }),
+                    ],
+                  }),
+                  createElement("article", {
+                    className: "landing-step",
+                    children: [
+                      createElement("span", { className: "landing-step-index", text: "2" }),
+                      createElement("h3", {
+                        className: "landing-step-title",
+                        text: "Välj vad som ska bokas (t.ex. tvättstuga, lokal)",
+                      }),
+                    ],
+                  }),
+                  createElement("article", {
+                    className: "landing-step",
+                    children: [
+                      createElement("span", { className: "landing-step-index", text: "3" }),
+                      createElement("h3", {
+                        className: "landing-step-title",
+                        text: "Få allt uppsatt automatiskt via email",
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-section landing-section-muted",
+        attrs: { id: "demo" },
+        children: [
+          createElement("div", {
+            className: "landing-container",
+            children: [
+              createElement("h2", { className: "landing-section-title", text: "Testa systemet direkt" }),
+              createElement("p", {
+                className: "landing-section-subtitle",
+                text: "Utforska bokningssystemet som boende eller administratör - utan att skapa konto.",
+              }),
+              createElement("div", {
+                className: "landing-demo-grid",
+                children: [
+                  createElement("article", {
+                    className: "landing-demo-card",
+                    children: [
+                      createElement("h3", { className: "landing-card-title", text: "Boende - användare 1" }),
+                      createElement("p", {
+                        className: "landing-card-text",
+                        text: "Se hur en boende bokar tvättstuga eller lokal.",
+                      }),
+                      createLandingButton("Logga in som användare", "/user/user-demo-token-anna", "secondary"),
+                    ],
+                  }),
+                  createElement("article", {
+                    className: "landing-demo-card",
+                    children: [
+                      createElement("h3", { className: "landing-card-title", text: "Boende - användare 2" }),
+                      createElement("p", {
+                        className: "landing-card-text",
+                        text: "Testa flera användare och se bokningar i praktiken.",
+                      }),
+                      createLandingButton("Logga in som användare", "/user/user-demo-token-erik", "secondary"),
+                    ],
+                  }),
+                  createElement("article", {
+                    className: "landing-demo-card",
+                    children: [
+                      createElement("h3", { className: "landing-card-title", text: "Administratör" }),
+                      createElement("p", {
+                        className: "landing-card-text",
+                        text: "Hantera bokningsobjekt, inställningar och översikt.",
+                      }),
+                      createLandingButton("Logga in som admin", "/admin/admin-demo-token", "secondary"),
+                    ],
+                  }),
+                ],
+              }),
+              createElement("div", {
+                className: "landing-inline-note",
+                text: "Ingen registrering krävs • Testa direkt i webbläsaren",
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-section",
+        children: [
+          createElement("div", {
+            className: "landing-container landing-screen-layout",
+            children: [
+              createElement("div", {
+                children: [
+                  createElement("h2", {
+                    className: "landing-section-title",
+                    text: "Använd som bokningsskärm i trapphuset",
+                  }),
+                  createElement("p", {
+                    className: "landing-section-subtitle",
+                    text:
+                      "Systemet fungerar direkt på en surfplatta med extern RFID-läsare eller på en dedikerad bokningsskärm.",
+                  }),
+                  createElement("ul", {
+                    className: "landing-list",
+                    children: [
+                      createElement("li", { text: "Fungerar med surfplatta + extern RFID-läsare" }),
+                      createElement("li", { text: "Stöd för 18\" skärm med inbyggd RFID" }),
+                      createElement("li", { text: "Kan köras via WiFi, nätverk (PoE) eller 4G-router" }),
+                      createElement("li", { text: "Ingen server eller lokal installation krävs" }),
+                    ],
+                  }),
+                  createElement("div", {
+                    className: "landing-inline-note",
+                    text: "Färdig bokningsskärm från ca 6 000 kr inkl. moms",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-section landing-section-muted",
+        children: [
+          createElement("div", {
+            className: "landing-container",
+            children: [
+              createElement("h2", { className: "landing-section-title", text: "Funktioner" }),
+              createElement("div", {
+                className: "landing-features-grid",
+                children: [
+                  createElement("div", { className: "landing-feature", text: "Bokningskalender" }),
+                  createElement("div", { className: "landing-feature", text: "Adminvy för styrelsen" }),
+                  createElement("div", { className: "landing-feature", text: "Automatiska inställningar" }),
+                  createElement("div", { className: "landing-feature", text: "Email-notiser" }),
+                  createElement("div", { className: "landing-feature", text: "Fungerar på alla enheter" }),
+                  createElement("div", { className: "landing-feature", text: "Snabb uppstart utan teknisk kunskap" }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-section",
+        children: [
+          createElement("div", {
+            className: "landing-container landing-open-source",
+            children: [
+              createElement("h2", { className: "landing-section-title", text: "Byggt som open source" }),
+              createElement("p", {
+                className: "landing-section-subtitle",
+                text:
+                  "Koden är fri att använda, granska och anpassa. Perfekt för föreningar som vill ha full kontroll och transparens.",
+              }),
+            ],
+          }),
+        ],
+      }),
+
+      createElement("section", {
+        className: "landing-section",
+        attrs: { id: "kom-igang" },
+        children: [
+          createElement("div", {
+            className: "landing-container",
+            children: [
+              createElement("div", {
+                className: "landing-final-cta",
+                children: [
+                  createElement("h2", { className: "landing-section-title", text: "Kom igång på 2 minuter" }),
+                  createElement("p", {
+                    className: "landing-section-subtitle",
+                    text: "Skapa er bokningssida och börja boka direkt",
+                  }),
+                  createElement("div", {
+                    className: "landing-actions landing-actions-center",
+                    children: [
+                      createLandingButton("Skapa er bokningssida", primaryCtaHref, "primary"),
+                      createLandingButton("Testa demo direkt", "#demo", "secondary"),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+  app.append(landing);
 }
