@@ -1630,17 +1630,22 @@ const loadWeekAvailability = async (service, weekStart) => {
                 ],
               }),
               createElement("div", {
-                className: "landing-qr-card",
+                className: "landing-photo-placeholder",
                 children: [
-                  createElement("img", {
-                    className: "landing-qr-image",
-                    attrs: {
-                      src: annaDemoQrImageUrl,
-                      alt: "QR-kod till demo-användare 1",
-                      loading: "lazy",
-                    },
+                  createElement("div", {
+                    className: "landing-photo-placeholder-copy",
+                    children: [
+                      createElement("img", {
+                        className: "landing-qr-image",
+                        attrs: {
+                          src: annaDemoQrImageUrl,
+                          alt: "QR-kod till demo-användare 1",
+                          loading: "lazy",
+                        },
+                      }),
+                    ],
                   }),
-                ],
+                ]
               }),
             ],
           }),
