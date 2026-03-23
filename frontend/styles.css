@@ -608,8 +608,9 @@ body {
 .meta-pill {
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(143, 232, 245, 0.12);
-  border: 1px solid rgba(143, 232, 245, 0.45);
+  background: rgba(232, 119, 34, 0.08);
+  border: 1px solid #e87722;
+  color: #e87722;
   font-weight: 500;
 }
 
