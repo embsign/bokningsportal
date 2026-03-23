@@ -1460,7 +1460,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       }),
 
       createElement("section", {
-        className: "landing-section landing-section-muted",
+        className: "landing-section",
         attrs: { id: "demo" },
         children: [
           createElement("div", {
@@ -1519,7 +1519,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       }),
 
       createElement("section", {
-        className: "landing-section",
+        className: "landing-section landing-section-muted",
         children: [
           createElement("div", {
             className: "landing-container landing-screen-layout",
@@ -1575,7 +1575,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       }),
 
       createElement("section", {
-        className: "landing-section landing-section-muted",
+        className: "landing-section",
         children: [
           createElement("div", {
             className: "landing-container",
@@ -1598,7 +1598,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       }),
 
       createElement("section", {
-        className: "landing-section",
+        className: "landing-section landing-section-muted",
         children: [
           createElement("div", {
             className: "landing-container landing-open-source",
