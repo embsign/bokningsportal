@@ -1390,7 +1390,7 @@ const loadWeekAvailability = async (service, weekStart) => {
 } else {
   clearElement(app);
   const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
-  const sectionDivider = () => createElement("hr", { className: "landing-section-divider" });
+  const sectionDivider = () => createElement("div", { className: "landing-section-divider", attrs: { "aria-hidden": "true" } });
 
   const createLandingButton = (text, href, variant = "secondary") =>
     createElement("a", {
@@ -1465,6 +1465,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         className: "landing-section",
         attrs: { id: "demo" },
         children: [
+          sectionDivider(),
           createElement("div", {
             className: "landing-container",
             children: [
@@ -1524,6 +1525,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       createElement("section", {
         className: "landing-section landing-section-muted",
         children: [
+          sectionDivider(),
           createElement("div", {
             className: "landing-container landing-screen-layout",
             children: [
@@ -1581,6 +1583,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       createElement("section", {
         className: "landing-section",
         children: [
+          sectionDivider(),
           createElement("div", {
             className: "landing-container",
             children: [
@@ -1605,6 +1608,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       createElement("section", {
         className: "landing-section landing-section-muted",
         children: [
+          sectionDivider(),
           createElement("div", {
             className: "landing-container landing-open-source",
             children: [
@@ -1624,6 +1628,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         className: "landing-section",
         attrs: { id: "kom-igang" },
         children: [
+          sectionDivider(),
           createElement("div", {
             className: "landing-container",
             children: [

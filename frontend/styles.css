@@ -1552,7 +1552,7 @@ body {
 .landing-section-divider,
 .landing-divider {
   width: 80%;
-  margin: 0 auto;
+  margin: 0 auto 18px;
   border: 0;
   border-top: 1px solid #ef813e;
 }
