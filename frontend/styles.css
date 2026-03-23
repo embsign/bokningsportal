@@ -2,18 +2,18 @@
 
 :root {
   color-scheme: light;
-  --bg: #f6f7fb;
-  --surface: #ffffff;
-  --surface-alt: #f0f2f8;
-  --text: #0f172a;
-  --muted: #5b6478;
-  --border: #e4e8f0;
-  --primary: #3b63f7;
-  --primary-dark: #2d4fe1;
+  --bg: #7fd9df;
+  --surface: #72d1d9;
+  --surface-alt: #97e6ea;
+  --text: #101c33;
+  --muted: #1c3154;
+  --border: #2f567d;
+  --primary: #45d3e4;
+  --primary-dark: #101c33;
   --success: #1f9d6a;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  --shadow: 0 16px 40px rgba(16, 28, 51, 0.18);
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 10px;
@@ -150,9 +150,9 @@ body {
 
 .admin-btn-edit {
   background: var(--primary) !important;
-  color: #fff !important;
-  border: none !important;
-  box-shadow: 0 8px 18px rgba(59, 99, 247, 0.2);
+  color: #101c33 !important;
+  border: 1px solid #2f567d !important;
+  box-shadow: 0 8px 18px rgba(16, 28, 51, 0.16);
 }
 
 .admin-btn-add {
@@ -328,7 +328,7 @@ body {
 .pill {
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(59, 99, 247, 0.12);
+  background: rgba(16, 28, 51, 0.12);
   color: var(--primary);
   font-size: 11px;
   font-weight: 600;
@@ -396,7 +396,7 @@ body {
 }
 
 .form-help:hover {
-  background: #e7ebf4;
+  background: #7fd9df;
 }
 
 .form-row {
@@ -633,9 +633,9 @@ body {
 
 .primary-button {
   background: var(--primary);
-  color: #fff;
-  border: none;
-  box-shadow: 0 12px 22px rgba(59, 99, 247, 0.25);
+  color: #101c33;
+  border: 1px solid #2f567d;
+  box-shadow: 0 12px 22px rgba(16, 28, 51, 0.16);
 }
 
 
@@ -685,7 +685,7 @@ body {
 }
 
 .step.active {
-  background: rgba(59, 99, 247, 0.14);
+  background: rgba(16, 28, 51, 0.16);
   color: var(--primary);
 }
 
@@ -700,7 +700,7 @@ body {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: #fff;
+  background: rgba(16, 28, 51, 0.14);
   color: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -872,7 +872,7 @@ body {
   height: 220px;
   border-radius: 20px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: #97e6ea;
   object-fit: contain;
 }
 
@@ -903,7 +903,7 @@ body {
 
 .service-pill {
   align-self: flex-start;
-  background: rgba(59, 99, 247, 0.1);
+  background: rgba(16, 28, 51, 0.12);
   color: var(--primary);
   padding: 6px 12px;
   border-radius: 999px;
@@ -983,8 +983,8 @@ body {
 
 
 .day-card.disabled {
-  background: #f4f5f9;
-  color: #9aa3b2;
+  background: #9be8ed;
+  color: #48647f;
   cursor: not-allowed;
 }
 
@@ -1105,8 +1105,8 @@ body {
 }
 
 .timeslot-button.disabled {
-  background: #f4f5f9;
-  color: #9aa3b2;
+  background: #9be8ed;
+  color: #48647f;
   cursor: not-allowed;
 }
 
@@ -1143,7 +1143,7 @@ body {
   height: 220px;
   border-radius: 20px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: #97e6ea;
   object-fit: contain;
 }
 
@@ -1225,7 +1225,7 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.35);
+  background: rgba(16, 28, 51, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1274,11 +1274,11 @@ body {
   font-size: 16px;
   border-radius: var(--radius-md);
   border: 1px dashed var(--border);
-  background: #f9f9fc;
+  background: #97e6ea;
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #f0f2f8 25%, #e4e8f0 37%, #f0f2f8 63%);
+  background: linear-gradient(90deg, #72d1d9 25%, #97e6ea 37%, #72d1d9 63%);
   background-size: 400% 100%;
   animation: shimmer 1.4s ease infinite;
   border-radius: 12px;
