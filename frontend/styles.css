@@ -542,7 +542,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  background: #fff7bf;
+  background: #101c33;
+  border-color: #101c33;
 }
 
 .header-left,
@@ -568,15 +569,16 @@ body {
   gap: 14px;
   font-weight: 600;
   font-size: 20px;
+  color: #d7f7ff;
 }
 
 .header-back {
   font-size: 16px;
   font-weight: 600;
   padding: 10px 16px;
-  color: #b91c1c;
-  background: #fff;
-  border: 1px solid #dc2626;
+  color: #8fe8f5;
+  background: transparent;
+  border: 1px solid #8fe8f5;
   box-shadow: none;
   border-radius: 12px;
 }
@@ -585,10 +587,10 @@ body {
   width: 42px;
   height: 42px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #4f7cff, #7e88ff);
+  background: linear-gradient(135deg, #45d3e4, #8fe8f5);
   display: grid;
   place-items: center;
-  color: white;
+  color: #101c33;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -597,14 +599,15 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  color: var(--muted);
+  color: #c6eef7;
   font-size: 15px;
 }
 
 .meta-pill {
   padding: 8px 14px;
   border-radius: 999px;
-  background: var(--surface-alt);
+  background: rgba(143, 232, 245, 0.12);
+  border: 1px solid rgba(143, 232, 245, 0.45);
   font-weight: 500;
 }
 
@@ -650,14 +653,15 @@ body {
 }
 
 .ghost-button {
-  background: #fff;
-  border: 1px solid #dc2626;
-  color: #b91c1c;
+  background: transparent;
+  border: 1px solid #8fe8f5;
+  color: #8fe8f5;
 }
 
 .header-back:hover,
 .ghost-button:hover {
-  background: #fef2f2;
+  background: rgba(143, 232, 245, 0.14);
+  color: #d7f7ff;
 }
 
 .step-indicator {
