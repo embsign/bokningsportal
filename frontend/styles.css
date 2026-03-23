@@ -3,11 +3,11 @@
 :root {
   color-scheme: light;
   --bg: #ffffff;
-  --surface: #72d1d9;
-  --surface-alt: #97e6ea;
+  --surface: #ffffff;
+  --surface-alt: #ffffff;
   --text: #101c33;
   --muted: #1c3154;
-  --border: #2f567d;
+  --border: #45d3e4;
   --primary: #45d3e4;
   --primary-dark: #101c33;
   --success: #1f9d6a;
