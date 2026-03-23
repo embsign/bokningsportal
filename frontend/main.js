@@ -1467,7 +1467,6 @@ const loadWeekAvailability = async (service, weekStart) => {
         className: "landing-section",
         attrs: { id: "demo" },
         children: [
-          sectionDivider(),
           createElement("div", {
             className: "landing-container",
             children: [
