@@ -1561,15 +1561,20 @@ const loadWeekAvailability = async (service, weekStart) => {
                 ],
               }),
               createElement("div", {
-                className: "landing-qr-card",
+                className: "landing-photo-placeholder",
                 children: [
-                  createElement("img", {
-                    className: "landing-qr-image",
-                    attrs: {
-                      src: annaDemoQrImageUrl,
-                      alt: "QR-kod till demo-användare 1",
-                      loading: "lazy",
-                    },
+                  createElement("div", {
+                    className: "landing-photo-placeholder-copy",
+                    children: [
+                      createElement("div", {
+                        className: "landing-photo-placeholder-title",
+                        text: "Foto placeholder",
+                      }),
+                      createElement("div", {
+                        className: "landing-photo-placeholder-text",
+                        text: "Bokningstavla i trapphus - lägg in foto här när det är redo",
+                      }),
+                    ],
                   }),
                 ],
               }),
@@ -1625,20 +1630,24 @@ const loadWeekAvailability = async (service, weekStart) => {
                 ],
               }),
               createElement("div", {
-                className: "landing-photo-placeholder",
+                className: "landing-qr-card",
                 children: [
+                  createElement("img", {
+                    className: "landing-qr-image",
+                    attrs: {
+                      src: annaDemoQrImageUrl,
+                      alt: "QR-kod till demo-användare 1",
+                      loading: "lazy",
+                    },
+                  }),
+                  createElement("a", {
+                    className: "landing-qr-link",
+                    attrs: { href: "/user/user-demo-token-anna" },
+                    text: "Öppna demo som användare 1",
+                  }),
                   createElement("div", {
-                    className: "landing-photo-placeholder-copy",
-                    children: [
-                      createElement("div", {
-                        className: "landing-photo-placeholder-title",
-                        text: "Foto placeholder",
-                      }),
-                      createElement("div", {
-                        className: "landing-photo-placeholder-text",
-                        text: "Bokningstavla i trapphus - lägg in foto här när det är redo",
-                      }),
-                    ],
+                    className: "landing-photo-placeholder-text",
+                    text: "/user/user-demo-token-anna",
                   }),
                 ],
               }),
