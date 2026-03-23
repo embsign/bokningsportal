@@ -1521,10 +1521,10 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
       createElement("section", {
         className: "landing-section",
         children: [
-          sectionDivider(),
           createElement("div", {
             className: "landing-container landing-screen-layout",
             children: [
@@ -1577,10 +1577,10 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
       createElement("section", {
         className: "landing-section",
         children: [
-          sectionDivider(),
           createElement("div", {
             className: "landing-container",
             children: [
@@ -1600,10 +1600,10 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
       createElement("section", {
         className: "landing-section",
         children: [
-          sectionDivider(),
           createElement("div", {
             className: "landing-container landing-open-source",
             children: [
@@ -1617,11 +1617,11 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
       createElement("section", {
         className: "landing-section",
         attrs: { id: "kom-igang" },
         children: [
-          sectionDivider(),
           createElement("div", {
             className: "landing-container",
             children: [
