@@ -1390,6 +1390,10 @@ const loadWeekAvailability = async (service, weekStart) => {
 } else {
   clearElement(app);
   const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
+  const annaDemoUrl = `${window.location.origin}/user/user-demo-token-anna`;
+  const annaDemoQrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
+    annaDemoUrl
+  )}`;
   const sectionDivider = () =>
     createElement("div", {
       className: "landing-container",
@@ -1557,20 +1561,24 @@ const loadWeekAvailability = async (service, weekStart) => {
                 ],
               }),
               createElement("div", {
-                className: "landing-photo-placeholder",
+                className: "landing-qr-card",
                 children: [
+                  createElement("img", {
+                    className: "landing-qr-image",
+                    attrs: {
+                      src: annaDemoQrImageUrl,
+                      alt: "QR-kod till demo-användare 1",
+                      loading: "lazy",
+                    },
+                  }),
+                  createElement("a", {
+                    className: "landing-qr-link",
+                    attrs: { href: "/user/user-demo-token-anna" },
+                    text: "Öppna demo som användare 1",
+                  }),
                   createElement("div", {
-                    className: "landing-photo-placeholder-copy",
-                    children: [
-                      createElement("div", {
-                        className: "landing-photo-placeholder-title",
-                        text: "Foto placeholder",
-                      }),
-                      createElement("div", {
-                        className: "landing-photo-placeholder-text",
-                        text: "Bokningstavla i trapphus - lägg in foto här när det är redo",
-                      }),
-                    ],
+                    className: "landing-photo-placeholder-text",
+                    text: "/user/user-demo-token-anna",
                   }),
                 ],
               }),

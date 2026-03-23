@@ -1632,6 +1632,28 @@ body {
   gap: 8px;
 }
 
+.landing-qr-card {
+  width: min(320px, 100%);
+  background: #ffffff;
+  border: 1px solid #d5e8ec;
+  border-radius: 16px;
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  text-align: center;
+}
+
+.landing-qr-image {
+  display: block;
+  width: 220px;
+  height: 220px;
+  border: 1px solid #d5e8ec;
+  border-radius: 14px;
+  background: #ffffff;
+  object-fit: contain;
+}
+
 .landing-photo-placeholder-title {
   margin: 0;
   font-family: "Poppins", "Inter", system-ui, -apple-system, sans-serif;
