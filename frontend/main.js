@@ -1390,6 +1390,7 @@ const loadWeekAvailability = async (service, weekStart) => {
 } else {
   clearElement(app);
   const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
+  const sectionDivider = () => createElement("hr", { className: "landing-section-divider" });
 
   const createLandingButton = (text, href, variant = "secondary") =>
     createElement("a", {
@@ -1458,6 +1459,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
 
       createElement("section", {
         className: "landing-section",
@@ -1517,6 +1519,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
 
       createElement("section", {
         className: "landing-section landing-section-muted",
@@ -1573,6 +1576,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
 
       createElement("section", {
         className: "landing-section",
@@ -1596,6 +1600,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
 
       createElement("section", {
         className: "landing-section landing-section-muted",
@@ -1613,6 +1618,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
+      sectionDivider(),
 
       createElement("section", {
         className: "landing-section",
