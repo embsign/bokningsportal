@@ -1460,6 +1460,11 @@ body {
   color: #ef813e;
 }
 
+.landing-top-banner .landing-banner-title,
+.landing-top-banner .landing-banner-note {
+  color: #ef813e !important;
+}
+
 .landing-hero {
   background: #60b5c3;
   padding: 92px 0 84px;
