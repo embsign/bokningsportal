@@ -1,7 +1,65 @@
 import { createElement } from "../hooks/dom.js";
 import { BookingSummary } from "../components/BookingSummary.js";
 
-export const Confirmation = ({ summary, state, confirmed, onBack, onConfirm, onAcknowledge, confirmDisabled }) => {
+const calendarAction = ({ isKioskMode, calendarQrImageUrl, calendarDownloadUrl }) => {
+  if (!calendarDownloadUrl) {
+    return null;
+  }
+
+  if (isKioskMode && calendarQrImageUrl) {
+    return createElement("div", {
+      className: "booking-complete-content confirmation-calendar-action",
+      children: [
+        createElement("div", {
+          className: "screen-subtitle",
+          text: "Skanna QR-koden för att lägga till bokningen i din mobilkalender.",
+        }),
+        createElement("img", {
+          className: "confirmation-qr-image",
+          attrs: {
+            src: calendarQrImageUrl,
+            alt: "QR-kod för kalenderfil",
+          },
+        }),
+      ],
+    });
+  }
+
+  return createElement("div", {
+    className: "booking-complete-content confirmation-calendar-action",
+    children: [
+      createElement("div", {
+        className: "calendar-download-actions",
+        children: [
+          createElement("a", {
+            className: "calendar-inline-link",
+            text: "📆",
+            attrs: {
+              href: calendarDownloadUrl,
+              title: "Ladda ner kalenderfil",
+              "aria-label": "Ladda ner kalenderfil",
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
+          }),
+        ],
+      }),
+    ],
+  });
+};
+
+export const Confirmation = ({
+  summary,
+  state,
+  confirmed,
+  isKioskMode,
+  calendarQrImageUrl,
+  calendarDownloadUrl,
+  onBack,
+  onConfirm,
+  onAcknowledge,
+  confirmDisabled,
+}) => {
   let content;
   if (state === "loading") {
     content = createElement("div", { className: "skeleton skeleton-card" });
@@ -9,13 +67,19 @@ export const Confirmation = ({ summary, state, confirmed, onBack, onConfirm, onA
     content = createElement("div", { className: "error-state", text: "Kunde inte skapa bokningen." });
   } else if (!summary) {
     content = createElement("div", { className: "empty-state", text: "Ingen bokning att bekräfta." });
+  } else if (confirmed) {
+    content = calendarAction({
+      isKioskMode,
+      calendarQrImageUrl,
+      calendarDownloadUrl,
+    });
   } else {
     content = BookingSummary({ summary });
   }
 
   const footer = confirmed
     ? createElement("div", {
-        className: "modal-footer",
+        className: "modal-footer modal-footer-align-end",
         children: [
           createElement("button", {
             className: "primary-button",

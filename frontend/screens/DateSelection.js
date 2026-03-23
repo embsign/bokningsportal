@@ -44,18 +44,20 @@ export const DateSelection = ({
     ],
   });
 
+  const hasRenderableDays = days.some((day) => day.status !== "outside");
+
   let content;
-  if (state === "loading") {
+  if (state === "loading" && !hasRenderableDays) {
     content = createElement("div", {
-      className: "card calendar",
+      className: "card calendar calendar-panel",
       children: [
         createElement("div", { className: "skeleton skeleton-row" }),
         createElement("div", { className: "skeleton skeleton-row", attrs: { style: "height: 240px; margin-top: 16px;" } }),
       ],
     });
-  } else if (state === "error") {
+  } else if (state === "error" && !hasRenderableDays) {
     content = createElement("div", { className: "error-state", text: "Kunde inte ladda datum." });
-  } else if (!days.length) {
+  } else if (!hasRenderableDays) {
     content = createElement("div", { className: "empty-state", text: "Inga lediga datum hittades." });
   } else {
     content = Calendar({
@@ -70,6 +72,14 @@ export const DateSelection = ({
     });
   }
 
+  const statusSlot = createElement("div", {
+    className: "screen-status-slot",
+    children:
+      state === "loading" && hasRenderableDays
+        ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
+        : [],
+  });
+
   const cancelModal = cancelModalOpen
     ? CancelBookingModal({
         booking: cancelBooking,
@@ -80,6 +90,6 @@ export const DateSelection = ({
 
   return createElement("section", {
     className: "screen",
-    children: [header, content, legend(), cancelModal].filter(Boolean),
+    children: [header, statusSlot, content, legend(), cancelModal].filter(Boolean),
   });
 };

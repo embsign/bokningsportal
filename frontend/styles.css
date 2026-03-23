@@ -641,6 +641,14 @@ body {
   border: 1px solid var(--border);
 }
 
+.ghost-button[disabled],
+.primary-button[disabled],
+.secondary-button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .ghost-button {
   background: #fff;
   border: 1px solid #dc2626;
@@ -697,7 +705,7 @@ body {
 .screen {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .screen-header {
@@ -854,6 +862,16 @@ body {
   justify-self: center;
 }
 
+.qr-image {
+  display: block;
+  width: 220px;
+  height: 220px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: #fff;
+  object-fit: contain;
+}
+
 .service-card {
   padding: 20px;
   border-radius: var(--radius-md);
@@ -891,6 +909,7 @@ body {
 
 .calendar {
   padding: 24px;
+  min-height: 500px;
 }
 
 .calendar-header {
@@ -963,6 +982,11 @@ body {
   background: #f4f5f9;
   color: #9aa3b2;
   cursor: not-allowed;
+}
+
+.day-card.outside {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .day-card.booked {
@@ -1082,11 +1106,74 @@ body {
   cursor: not-allowed;
 }
 
+.timeslot-skeleton-item {
+  min-height: 68px;
+}
+
+.timeslot-card {
+  display: grid;
+  gap: 18px;
+  min-height: 500px;
+}
+
+.screen-status-slot {
+  min-height: 0;
+}
+
+.inline-loading {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.confirmation-calendar-action {
+  padding: 8px 0;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+
+.confirmation-qr-image {
+  display: block;
+  width: 220px;
+  height: 220px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: #fff;
+  object-fit: contain;
+}
+
+.calendar-inline-link {
+  min-width: 0;
+  padding: 0;
+  color: var(--primary);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.calendar-inline-link:hover {
+  color: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
 
 .booking-summary {
   padding: 24px;
   display: grid;
   gap: 14px;
+}
+
+.calendar-download-card {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  display: grid;
+  gap: 16px;
 }
 
 .summary-row {
@@ -1169,6 +1256,10 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 16px;
+}
+
+.modal-footer.modal-footer-align-end {
+  justify-content: flex-end;
 }
 
 .empty-state,

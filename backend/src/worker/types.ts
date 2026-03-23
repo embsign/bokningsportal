@@ -11,4 +11,6 @@ export type D1Database = {
 
 export interface Env {
   DB: D1Database;
+  FORCE_NOW_UTC?: string;
+  DEBUG_AVAILABILITY_DELAY_MS?: string;
 }
