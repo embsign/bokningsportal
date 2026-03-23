@@ -1583,7 +1583,7 @@ body {
 .landing-demo-card {
   border: 1px solid #d5e8ec;
   border-radius: 16px;
-  background: #ffffff;
+  background: #60b5c3;
   padding: 24px;
   display: grid;
   gap: 14px;
@@ -1656,7 +1656,7 @@ body {
   border: 1px solid #d5e8ec;
   border-radius: 12px;
   padding: 16px 18px;
-  background: #ffffff;
+  background: #60b5c3;
   font-weight: 500;
   box-shadow: 0 8px 18px rgba(17, 28, 58, 0.05);
 }
