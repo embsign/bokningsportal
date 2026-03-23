@@ -1460,64 +1460,6 @@ const loadWeekAvailability = async (service, weekStart) => {
       }),
 
       createElement("section", {
-        className: "landing-trust-strip",
-        children: [
-          createElement("div", {
-            className: "landing-container landing-trust-grid",
-            children: [
-              createElement("div", { className: "landing-trust-item", text: "100% gratis" }),
-              createElement("div", { className: "landing-trust-item", text: "Open source" }),
-              createElement("div", { className: "landing-trust-item", text: "Fungerar med bokningsskärm (RFID)" }),
-            ],
-          }),
-        ],
-      }),
-
-      createElement("section", {
-        className: "landing-section",
-        children: [
-          createElement("div", {
-            className: "landing-container",
-            children: [
-              createElement("h2", { className: "landing-section-title", text: "Så fungerar det" }),
-              createElement("div", {
-                className: "landing-steps",
-                children: [
-                  createElement("article", {
-                    className: "landing-step",
-                    children: [
-                      createElement("span", { className: "landing-step-index", text: "1" }),
-                      createElement("h3", { className: "landing-step-title", text: "Ange namn på BRF" }),
-                    ],
-                  }),
-                  createElement("article", {
-                    className: "landing-step",
-                    children: [
-                      createElement("span", { className: "landing-step-index", text: "2" }),
-                      createElement("h3", {
-                        className: "landing-step-title",
-                        text: "Välj vad som ska bokas (t.ex. tvättstuga, lokal)",
-                      }),
-                    ],
-                  }),
-                  createElement("article", {
-                    className: "landing-step",
-                    children: [
-                      createElement("span", { className: "landing-step-index", text: "3" }),
-                      createElement("h3", {
-                        className: "landing-step-title",
-                        text: "Få allt uppsatt automatiskt via email",
-                      }),
-                    ],
-                  }),
-                ],
-              }),
-            ],
-          }),
-        ],
-      }),
-
-      createElement("section", {
         className: "landing-section landing-section-muted",
         attrs: { id: "demo" },
         children: [
@@ -1583,28 +1525,20 @@ const loadWeekAvailability = async (service, weekStart) => {
             className: "landing-container landing-screen-layout",
             children: [
               createElement("div", {
+                className: "landing-photo-placeholder",
                 children: [
-                  createElement("h2", {
-                    className: "landing-section-title",
-                    text: "Använd som bokningsskärm i trapphuset",
-                  }),
-                  createElement("p", {
-                    className: "landing-section-subtitle",
-                    text:
-                      "Systemet fungerar direkt på en surfplatta med extern RFID-läsare eller på en dedikerad bokningsskärm.",
-                  }),
-                  createElement("ul", {
-                    className: "landing-list",
-                    children: [
-                      createElement("li", { text: "Fungerar med surfplatta + extern RFID-läsare" }),
-                      createElement("li", { text: "Stöd för 18\" skärm med inbyggd RFID" }),
-                      createElement("li", { text: "Kan köras via WiFi, nätverk (PoE) eller 4G-router" }),
-                      createElement("li", { text: "Ingen server eller lokal installation krävs" }),
-                    ],
-                  }),
                   createElement("div", {
-                    className: "landing-inline-note",
-                    text: "Färdig bokningsskärm från ca 6 000 kr inkl. moms",
+                    className: "landing-photo-placeholder-copy",
+                    children: [
+                      createElement("div", {
+                        className: "landing-photo-placeholder-title",
+                        text: "Foto placeholder",
+                      }),
+                      createElement("div", {
+                        className: "landing-photo-placeholder-text",
+                        text: "Bokningstavla i trapphus - lägg in foto här när det är redo",
+                      }),
+                    ],
                   }),
                 ],
               }),
