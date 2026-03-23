@@ -1419,8 +1419,8 @@ body {
 }
 
 .landing-top-banner {
-  background: #60b5c3;
-  border-bottom: 1px solid #60b5c3;
+  background: #111c3a;
+  border-bottom: 1px solid #ef813e;
 }
 
 .landing-banner-inner {
@@ -1437,7 +1437,7 @@ body {
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: #60b5c3;
+  background: #ef813e;
   color: #111c3a;
   font-size: 14px;
   flex: 0 0 auto;
@@ -1452,11 +1452,12 @@ body {
   font-size: 14px;
   font-weight: 700;
   font-family: "Poppins", "Inter", system-ui, -apple-system, sans-serif;
+  color: #ef813e;
 }
 
 .landing-banner-note {
   font-size: 12px;
-  color: #3f5770;
+  color: #ef813e;
 }
 
 .landing-hero {
