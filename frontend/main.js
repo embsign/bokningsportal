@@ -1566,13 +1566,13 @@ const loadWeekAvailability = async (service, weekStart) => {
                   createElement("div", {
                     className: "landing-photo-placeholder-copy",
                     children: [
-                      createElement("div", {
-                        className: "landing-photo-placeholder-title",
-                        text: "Foto placeholder",
-                      }),
-                      createElement("div", {
-                        className: "landing-photo-placeholder-text",
-                        text: "Bokningstavla i trapphus - lägg in foto här när det är redo",
+                      createElement("img", {
+                        className: "landing-qr-image",
+                        attrs: {
+                          src: "/img/screen.png",
+                          alt: "Digital bokningstavla",
+                          loading: "lazy",
+                        },
                       }),
                     ],
                   }),
