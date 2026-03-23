@@ -1525,6 +1525,33 @@ const loadWeekAvailability = async (service, weekStart) => {
             className: "landing-container landing-screen-layout",
             children: [
               createElement("div", {
+                className: "landing-screen-copy",
+                children: [
+                  createElement("h2", {
+                    className: "landing-section-title",
+                    text: "Använd som bokningsskärm i trapphuset",
+                  }),
+                  createElement("p", {
+                    className: "landing-section-subtitle",
+                    text:
+                      "Systemet fungerar direkt på en surfplatta med extern RFID-läsare eller på en dedikerad bokningsskärm.",
+                  }),
+                  createElement("ul", {
+                    className: "landing-list",
+                    children: [
+                      createElement("li", { text: "Fungerar med surfplatta + extern RFID-läsare" }),
+                      createElement("li", { text: "Stöd för 18\" skärm med inbyggd RFID" }),
+                      createElement("li", { text: "Kan köras via WiFi, nätverk (PoE) eller 4G-router" }),
+                      createElement("li", { text: "Ingen server eller lokal installation krävs" }),
+                    ],
+                  }),
+                  createElement("div", {
+                    className: "landing-inline-note",
+                    text: "Färdig bokningsskärm från ca 6 000 kr inkl. moms",
+                  }),
+                ],
+              }),
+              createElement("div", {
                 className: "landing-photo-placeholder",
                 children: [
                   createElement("div", {
