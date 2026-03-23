@@ -785,8 +785,8 @@ body {
 }
 
 .booking-card.mine {
-  border-color: var(--border);
-  background: var(--surface);
+  border-color: #45d3e4;
+  background: #ffffff;
 }
 
 .booking-card-date {
