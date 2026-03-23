@@ -1457,7 +1457,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               }),
               createElement("div", {
                 className: "landing-inline-note",
-                text: "Sätts upp automatiskt • Ingen installation krävs",
+                text: "",
               }),
             ],
           }),
@@ -1473,7 +1473,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               createElement("h2", { className: "landing-section-title", text: "Testa systemet direkt" }),
               createElement("p", {
                 className: "landing-section-subtitle",
-                text: "Utforska bokningssystemet som boende eller administratör - utan att skapa konto.",
+                text: "Utforska bokningssystemet som boende eller administratör - utan att skapa konto. Klicka på de olika profilerna nedan för att se hur det ser ut.",
               }),
               createElement("div", {
                 className: "landing-demo-grid",
@@ -1486,7 +1486,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         className: "landing-card-text",
                         text: "Se hur en boende bokar tvättstuga eller lokal.",
                       }),
-                      createLandingButton("Logga in som användare", "/user/user-demo-token-anna", "secondary"),
+                      createLandingButton("Logga in som användare 1", "/user/user-demo-token-anna", "secondary"),
                     ],
                   }),
                   createElement("article", {
@@ -1497,7 +1497,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         className: "landing-card-text",
                         text: "Testa flera användare och se bokningar i praktiken.",
                       }),
-                      createLandingButton("Logga in som användare", "/user/user-demo-token-erik", "secondary"),
+                      createLandingButton("Logga in som användare 2", "/user/user-demo-token-erik", "secondary"),
                     ],
                   }),
                   createElement("article", {
@@ -1508,14 +1508,14 @@ const loadWeekAvailability = async (service, weekStart) => {
                         className: "landing-card-text",
                         text: "Hantera bokningsobjekt, inställningar och översikt.",
                       }),
-                      createLandingButton("Logga in som admin", "/admin/admin-demo-token", "secondary"),
+                      createLandingButton("Logga in som Administratör", "/admin/admin-demo-token", "secondary"),
                     ],
                   }),
                 ],
               }),
               createElement("div", {
                 className: "landing-inline-note",
-                text: "Ingen registrering krävs • Testa direkt i webbläsaren",
+                text: "",
               }),
             ],
           }),
@@ -1533,25 +1533,26 @@ const loadWeekAvailability = async (service, weekStart) => {
                 children: [
                   createElement("h2", {
                     className: "landing-section-title",
-                    text: "Använd som bokningsskärm i trapphuset",
+                    text: "Bokningsskärm med touch till tvättstugan",
                   }),
                   createElement("p", {
                     className: "landing-section-subtitle",
                     text:
-                      "Systemet fungerar direkt på en surfplatta med extern RFID-läsare eller på en dedikerad bokningsskärm.",
+                      "Installera en surfplatta med extern RFID-läsare vid tvättstugan - eller köp vår touchskärm med inbyggd RFID.",
                   }),
                   createElement("ul", {
                     className: "landing-list",
                     children: [
-                      createElement("li", { text: "Fungerar med surfplatta + extern RFID-läsare" }),
-                      createElement("li", { text: "Stöd för 18\" skärm med inbyggd RFID" }),
-                      createElement("li", { text: "Kan köras via WiFi, nätverk (PoE) eller 4G-router" }),
-                      createElement("li", { text: "Ingen server eller lokal installation krävs" }),
+                      createElement("li", { text: "Stor 18\" skärm" }),
+                      createElement("li", { text: "Både MiFare och RFID/EM" }),
+                      createElement("li", { text: "Power over Ethernet eller separat strömsladd" }),
+                      createElement("li", { text: "WiFi, ethernet eller 4G" }),
+                      createElement("li", { text: "Från 6,000:- inklusive moms med väggfäste" }),
                     ],
                   }),
                   createElement("div", {
                     className: "landing-inline-note",
-                    text: "Färdig bokningsskärm från ca 6 000 kr inkl. moms",
+                    text: "",
                   }),
                 ],
               }),
@@ -1589,11 +1590,10 @@ const loadWeekAvailability = async (service, weekStart) => {
                 className: "landing-features-grid",
                 children: [
                   createElement("div", { className: "landing-feature", text: "Bokningskalender" }),
-                  createElement("div", { className: "landing-feature", text: "Adminvy för styrelsen" }),
-                  createElement("div", { className: "landing-feature", text: "Automatiska inställningar" }),
-                  createElement("div", { className: "landing-feature", text: "Email-notiser" }),
-                  createElement("div", { className: "landing-feature", text: "Fungerar på alla enheter" }),
+                  createElement("div", { className: "landing-feature", text: "Heldagsbokningar, eller timpass" }),
+                  createElement("div", { className: "landing-feature", text: "Webbaserat - för mobil eller dator" }),
                   createElement("div", { className: "landing-feature", text: "Snabb uppstart utan teknisk kunskap" }),
+                  createElement("div", { className: "landing-feature", text: "Webbtjänsten tillgänglig under AGPL (öppen och fri källkod)" }),
                 ],
               }),
             ],
@@ -1607,11 +1607,11 @@ const loadWeekAvailability = async (service, weekStart) => {
           createElement("div", {
             className: "landing-container landing-open-source",
             children: [
-              createElement("h2", { className: "landing-section-title", text: "Byggt som open source" }),
+              createElement("h2", { className: "landing-section-title", text: "Minimal administration" }),
               createElement("p", {
                 className: "landing-section-subtitle",
                 text:
-                  "Koden är fri att använda, granska och anpassa. Perfekt för föreningar som vill ha full kontroll och transparens.",
+                  "Boende loggar in med hjälp av en unik QR-kod. Denna distribueras antingen manuellt till alla boende - eller om man använder en digital bokningstavla så kan varje boende själv administrera sitt konto genom att logga in med sin RFID-tagg.",
               }),
             ],
           }),
