@@ -1640,15 +1640,6 @@ const loadWeekAvailability = async (service, weekStart) => {
                       loading: "lazy",
                     },
                   }),
-                  createElement("a", {
-                    className: "landing-qr-link",
-                    attrs: { href: "/user/user-demo-token-anna" },
-                    text: "Öppna demo som användare 1",
-                  }),
-                  createElement("div", {
-                    className: "landing-photo-placeholder-text",
-                    text: "/user/user-demo-token-anna",
-                  }),
                 ],
               }),
             ],
