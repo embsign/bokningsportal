@@ -37,7 +37,7 @@ export const TimeSelection = ({
   onCloseCancel,
   onConfirmCancel,
 }) => {
-  const header = createElement("div", {
+  const nav = createElement("div", {
     className: "screen-header",
     children: [
       createElement("div", {
@@ -63,19 +63,32 @@ export const TimeSelection = ({
     ],
   });
 
-  let content;
-  if (state === "loading") {
-    content = createElement("div", {
-      className: "card calendar",
-      children: [
-        createElement("div", { className: "skeleton skeleton-row" }),
-        createElement("div", { className: "skeleton skeleton-row", attrs: { style: "height: 260px; margin-top: 16px;" } }),
-      ],
+  const isLoading = state === "loading";
+  const hasSlots = weekSlots.length > 0;
+
+  let bodyContent;
+  if (isLoading) {
+    bodyContent = createElement("div", {
+      className: "timeslot-grid",
+      children: Array.from({ length: 7 }).map((_, index) =>
+        createElement("div", {
+          className: "timeslot-column",
+          children: [
+            createElement("div", {
+              className: `timeslot-header ${index === 6 ? "weekday-sunday" : ""}`.trim(),
+              text: "—",
+            }),
+            createElement("div", { className: "skeleton timeslot-skeleton-item" }),
+            createElement("div", { className: "skeleton timeslot-skeleton-item" }),
+            createElement("div", { className: "skeleton timeslot-skeleton-item" }),
+          ],
+        })
+      ),
     });
-  } else if (state === "error") {
-    content = createElement("div", { className: "error-state", text: "Kunde inte ladda tider." });
-  } else if (!weekSlots.length) {
-    content = createElement("div", { className: "empty-state", text: "Inga lediga tider hittades." });
+  } else if (state === "error" && !hasSlots) {
+    bodyContent = createElement("div", { className: "error-state", text: "Kunde inte ladda tider." });
+  } else if (!hasSlots) {
+    bodyContent = createElement("div", { className: "empty-state", text: "Inga lediga tider hittades." });
   } else {
     const columns = weekSlots.map((day, index) =>
       createElement("div", {
@@ -96,8 +109,18 @@ export const TimeSelection = ({
       })
     );
 
-    content = createElement("div", { className: "timeslot-grid", children: columns });
+    bodyContent = createElement("div", { className: "timeslot-grid", children: columns });
   }
+
+  const statusSlot = createElement("div", {
+    className: "screen-status-slot",
+    children:
+      isLoading
+        ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
+        : [],
+  });
+
+  const content = createElement("div", { className: "calendar card timeslot-card", children: [nav, bodyContent] });
 
   const cancelModal = cancelModalOpen
     ? CancelBookingModal({
@@ -109,6 +132,6 @@ export const TimeSelection = ({
 
   return createElement("section", {
     className: "screen",
-    children: [header, content, legend(), cancelModal].filter(Boolean),
+    children: [statusSlot, content, legend(), cancelModal].filter(Boolean),
   });
 };

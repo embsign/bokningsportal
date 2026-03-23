@@ -10,11 +10,18 @@ import { UserPickerModal } from "./components/UserPickerModal.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
+import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { getSession } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { getServices } from "./api/services.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
-import { getMonthAvailability, getMonthLabel, getWeekAvailability, getWeekStart } from "./api/availability.js";
+import {
+  getMonthAvailability,
+  getMonthLabel,
+  getWeekAvailability,
+  getWeekStart,
+  weekAvailabilityStateKey,
+} from "./api/availability.js";
 import {
   getBookingGroups,
   getBookingObjects,
@@ -268,6 +275,21 @@ if (routePath.startsWith("/admin/")) {
 
   const renderAdmin = () => {
     const state = adminStore.getState();
+    const activeElement = state.modalOpen ? document.activeElement : null;
+    const modalFocusSnapshot =
+      activeElement && activeElement.getAttribute?.("data-focus-key")
+        ? {
+            key: activeElement.getAttribute("data-focus-key"),
+            start:
+              typeof activeElement.selectionStart === "number"
+                ? activeElement.selectionStart
+                : null,
+            end:
+              typeof activeElement.selectionEnd === "number"
+                ? activeElement.selectionEnd
+                : null,
+          }
+        : null;
     clearElement(app);
     const shell = createElement("div", { className: "app-shell" });
     initAdmin();
@@ -598,6 +620,20 @@ if (routePath.startsWith("/admin/")) {
     );
     app.append(shell);
 
+    if (modalFocusSnapshot && !state.groupModalOpen) {
+      const target = app.querySelector(`[data-focus-key="${modalFocusSnapshot.key}"]`);
+      if (target) {
+        target.focus();
+        if (
+          typeof modalFocusSnapshot.start === "number" &&
+          typeof modalFocusSnapshot.end === "number" &&
+          typeof target.setSelectionRange === "function"
+        ) {
+          target.setSelectionRange(modalFocusSnapshot.start, modalFocusSnapshot.end);
+        }
+      }
+    }
+
     if (state.groupModalOpen) {
       const input = app.querySelector('[data-autofocus="group-name"]');
       if (input) {
@@ -621,6 +657,7 @@ if (routePath.startsWith("/admin/")) {
 
 const today = new Date();
 const initialMonth = { year: today.getFullYear(), monthIndex: today.getMonth() };
+const initialWeek = getWeekStart(today);
 
 const store = createStore({
   step: 1,
@@ -628,7 +665,7 @@ const store = createStore({
   selectedDate: null,
   selectedSlot: null,
   monthCursor: initialMonth,
-  weekCursor: getWeekStart(today),
+  weekCursor: initialWeek,
   confirmed: false,
   services: [],
   bookings: [],
@@ -637,8 +674,10 @@ const store = createStore({
   sessionError: null,
   sessionLoading: true,
   availabilityMonthKey: null,
+  availabilityMonthRequestKey: null,
   availabilityMonth: [],
   availabilityWeekKey: null,
+  availabilityWeekRequestKey: null,
   availabilityWeek: [],
   availabilityLoading: false,
   dataLoading: false,
@@ -649,6 +688,8 @@ const store = createStore({
   qrWarningOpen: false,
   qrGenerated: false,
   qrModalOpen: false,
+  confirmationCalendarEvent: null,
+  confirmationBookingId: null,
   uiStates: {
     service: "loading",
     date: "normal",
@@ -657,20 +698,32 @@ const store = createStore({
   },
 });
 
-const canMoveMonth = (year, monthIndex) => {
+const getMaxBookableMonth = (service) => {
+  const maxDays = Number.isFinite(Number(service?.windowMax))
+    ? Math.max(0, Number(service.windowMax))
+    : 60;
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + maxDays);
+  return new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+};
+
+const canMoveMonth = (year, monthIndex, service = null) => {
   const current = new Date();
   const target = new Date(year, monthIndex, 1);
-  const max = new Date(current.getFullYear(), current.getMonth() + 2, 1);
+  const max = getMaxBookableMonth(service);
   return target >= new Date(current.getFullYear(), current.getMonth(), 1) && target <= max;
 };
 
-const canMoveWeek = (weekDate) => {
+const canMoveWeek = (weekDate, service = null) => {
   const currentWeek = getWeekStart(new Date());
   const min = new Date(currentWeek);
-  min.setDate(min.getDate() - 21);
-  const max = new Date(currentWeek);
-  max.setDate(max.getDate() + 21);
-  return weekDate >= min && weekDate <= max;
+  const maxDaysAhead = Number.isFinite(Number(service?.windowMax))
+    ? Math.max(0, Number(service.windowMax))
+    : 21;
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + maxDaysAhead);
+  const maxWeek = getWeekStart(maxDate);
+  return weekDate >= min && weekDate <= maxWeek;
 };
 
 const getWeekLabel = (weekStart) => `Vecka ${getWeekNumber(weekStart)}`;
@@ -712,6 +765,37 @@ const buildCancelBooking = ({ date, timeLabel, serviceName, sourceId }) => ({
   timeLabel,
   status: "mine",
 });
+
+const buildBookingRangeForState = (state) => {
+  if (state.selectedSlot?.startTime && state.selectedSlot?.endTime) {
+    return {
+      startTime: state.selectedSlot.startTime,
+      endTime: state.selectedSlot.endTime,
+      timeLabel: state.selectedSlot.label,
+    };
+  }
+  if (state.selectedDate?.date) {
+    const range = buildFullDayDateRange(state.selectedDate.date, state.selectedService);
+    return {
+      startTime: range.startTime,
+      endTime: range.endTime,
+      timeLabel: getFullDayTimeLabel(state.selectedService),
+    };
+  }
+  return null;
+};
+
+const buildConfirmationCalendarEvent = (state, range) => {
+  if (!state.selectedService || !state.selectedDate?.date || !range?.startTime || !range?.endTime) {
+    return null;
+  }
+  return {
+    title: `Bokning: ${state.selectedService.name}`,
+    startTime: range.startTime,
+    endTime: range.endTime,
+    description: `${formatDayLabel(state.selectedDate.date)} ${formatDateLabel(state.selectedDate.date)} ${range.timeLabel}`,
+  };
+};
 
 const markMonthDayAsMine = (days, selectedDayId) =>
   (days || []).map((day) => (day.id === selectedDayId ? { ...day, status: "mine" } : day));
@@ -799,33 +883,71 @@ const initUser = async () => {
 
 const loadMonthAvailability = async (service, year, monthIndex) => {
   const key = `${service.id}-${year}-${monthIndex}`;
-  store.setState({ availabilityLoading: true, uiStates: { ...store.getState().uiStates, date: "loading" } });
+  store.setState((prev) => ({
+    availabilityLoading: true,
+    availabilityMonthRequestKey: key,
+    uiStates: { ...prev.uiStates, date: "loading" },
+  }));
   try {
     const days = await getMonthAvailability(service.id, year, monthIndex);
-    store.setState({
-      availabilityMonthKey: key,
-      availabilityMonth: days,
-      availabilityLoading: false,
-      uiStates: { ...store.getState().uiStates, date: days.length ? "normal" : "empty" },
+    store.setState((prev) => {
+      if (prev.availabilityMonthRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityMonthKey: key,
+        availabilityMonthRequestKey: null,
+        availabilityMonth: days,
+        availabilityLoading: false,
+        uiStates: { ...prev.uiStates, date: days.length ? "normal" : "empty" },
+      };
     });
   } catch (error) {
-    store.setState({ availabilityLoading: false, uiStates: { ...store.getState().uiStates, date: "error" } });
+    store.setState((prev) => {
+      if (prev.availabilityMonthRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityLoading: false,
+        availabilityMonthRequestKey: null,
+        uiStates: { ...prev.uiStates, date: "error" },
+      };
+    });
   }
 };
 
 const loadWeekAvailability = async (service, weekStart) => {
-  const key = `${service.id}-${weekStart.toISOString().slice(0, 10)}`;
-  store.setState({ availabilityLoading: true, uiStates: { ...store.getState().uiStates, time: "loading" } });
+  const key = weekAvailabilityStateKey(service.id, weekStart);
+  store.setState((prev) => ({
+    availabilityLoading: true,
+    availabilityWeekRequestKey: key,
+    uiStates: { ...prev.uiStates, time: "loading" },
+  }));
   try {
     const days = await getWeekAvailability(service.id, weekStart);
-    store.setState({
-      availabilityWeekKey: key,
-      availabilityWeek: days,
-      availabilityLoading: false,
-      uiStates: { ...store.getState().uiStates, time: days.length ? "normal" : "empty" },
+    store.setState((prev) => {
+      if (prev.availabilityWeekRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityWeekKey: key,
+        availabilityWeekRequestKey: null,
+        availabilityWeek: days,
+        availabilityLoading: false,
+        uiStates: { ...prev.uiStates, time: days.length ? "normal" : "empty" },
+      };
     });
   } catch (error) {
-    store.setState({ availabilityLoading: false, uiStates: { ...store.getState().uiStates, time: "error" } });
+    store.setState((prev) => {
+      if (prev.availabilityWeekRequestKey !== key) {
+        return {};
+      }
+      return {
+        availabilityLoading: false,
+        availabilityWeekRequestKey: null,
+        uiStates: { ...prev.uiStates, time: "error" },
+      };
+    });
   }
 };
 
@@ -836,8 +958,12 @@ const loadWeekAvailability = async (service, weekStart) => {
   if (state.step === 1 && state.services.length === 1 && !state.selectedService) {
     store.setState({
       selectedService: state.services[0],
+      monthCursor: initialMonth,
+      weekCursor: initialWeek,
       availabilityMonthKey: null,
+      availabilityMonthRequestKey: null,
       availabilityWeekKey: null,
+      availabilityWeekRequestKey: null,
       availabilityMonth: [],
       availabilityWeek: [],
       step: 2,
@@ -868,23 +994,39 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   let screen;
   let footer;
+  let pendingMonthLoad = null;
+  let pendingWeekLoad = null;
 
   if (state.step === 1) {
+    const resetCalendarCursorToToday = () =>
+      store.setState({
+        monthCursor: initialMonth,
+        weekCursor: initialWeek,
+      });
+
     screen = ServiceSelection({
       services: state.services,
       selectedService: state.selectedService,
-      onSelect: (service) =>
+      onSelect: (service) => {
+        resetCalendarCursorToToday();
         store.setState({
           selectedService: service,
           selectedDate: null,
           selectedSlot: null,
+          monthCursor: initialMonth,
+          weekCursor: initialWeek,
           availabilityMonthKey: null,
+          availabilityMonthRequestKey: null,
           availabilityWeekKey: null,
+          availabilityWeekRequestKey: null,
           availabilityMonth: [],
           availabilityWeek: [],
           step: 2,
           confirmed: false,
-        }),
+          confirmationCalendarEvent: null,
+          confirmationBookingId: null,
+        });
+      },
       bookings: state.bookings,
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
@@ -925,10 +1067,16 @@ const loadWeekAvailability = async (service, weekStart) => {
   if (state.step === 2 && state.selectedService?.bookingType === "full-day") {
     const { year, monthIndex } = state.monthCursor;
     const monthKey = `${state.selectedService.id}-${year}-${monthIndex}`;
-    if (state.availabilityMonthKey !== monthKey && !state.availabilityLoading) {
-      loadMonthAvailability(state.selectedService, year, monthIndex);
+    const isMonthDataCurrent = state.availabilityMonthKey === monthKey;
+    const isMonthRequestInFlight = state.availabilityMonthRequestKey === monthKey;
+    if (!isMonthDataCurrent && !isMonthRequestInFlight) {
+      pendingMonthLoad = {
+        service: state.selectedService,
+        year,
+        monthIndex,
+      };
     }
-    const days = (state.availabilityMonth || []).map((day) =>
+    const days = (isMonthDataCurrent ? state.availabilityMonth || [] : []).map((day) =>
       state.cancelledDayIds.includes(day.id) ? { ...day, status: "available" } : day
     );
     const visibleDays = isMobile ? days.filter((day) => day.status !== "disabled") : days;
@@ -958,6 +1106,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           selectedSlot: null,
           step: 3,
           confirmed: false,
+          confirmationCalendarEvent: null,
+          confirmationBookingId: null,
         });
       },
       onPrev: () => {
@@ -972,9 +1122,9 @@ const loadWeekAvailability = async (service, weekStart) => {
           store.setState({ monthCursor: { year: nextMonth.getFullYear(), monthIndex: nextMonth.getMonth() } });
         }
       },
-      canPrev: canMoveMonth(year, monthIndex - 1),
-      canNext: canMoveMonth(year, monthIndex + 1),
-      state: state.uiStates.date,
+      canPrev: canMoveMonth(year, monthIndex - 1, state.selectedService),
+      canNext: canMoveMonth(year, monthIndex + 1, state.selectedService),
+      state: isMonthDataCurrent ? state.uiStates.date : "loading",
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
@@ -999,11 +1149,16 @@ const loadWeekAvailability = async (service, weekStart) => {
   }
 
   if (state.step === 2 && state.selectedService?.bookingType !== "full-day") {
-    const weekKey = `${state.selectedService.id}-${state.weekCursor.toISOString().slice(0, 10)}`;
-    if (state.availabilityWeekKey !== weekKey && !state.availabilityLoading) {
-      loadWeekAvailability(state.selectedService, state.weekCursor);
+    const weekKey = weekAvailabilityStateKey(state.selectedService.id, state.weekCursor);
+    const isWeekDataCurrent = state.availabilityWeekKey === weekKey;
+    const isWeekRequestInFlight = state.availabilityWeekRequestKey === weekKey;
+    if (!isWeekDataCurrent && !isWeekRequestInFlight) {
+      pendingWeekLoad = {
+        service: state.selectedService,
+        weekStart: new Date(state.weekCursor),
+      };
     }
-    const weekSlots = (state.availabilityWeek || []).map((day) => ({
+    const weekSlots = (isWeekDataCurrent ? state.availabilityWeek || [] : []).map((day) => ({
       ...day,
       slots: day.slots.map((slot) =>
         state.cancelledSlotIds.includes(slot.id) ? { ...slot, status: "available" } : slot
@@ -1012,6 +1167,11 @@ const loadWeekAvailability = async (service, weekStart) => {
     const visibleSlots = isMobile
       ? weekSlots.filter((day) => day.slots.some((slot) => slot.status !== "disabled"))
       : weekSlots;
+    const prevWeekCandidate = new Date(state.weekCursor);
+    prevWeekCandidate.setDate(prevWeekCandidate.getDate() - 7);
+    const nextWeekCandidate = new Date(state.weekCursor);
+    nextWeekCandidate.setDate(nextWeekCandidate.getDate() + 7);
+
     screen = TimeSelection({
       weekLabel: getWeekLabel(state.weekCursor),
       weekSlots: visibleSlots,
@@ -1036,25 +1196,34 @@ const loadWeekAvailability = async (service, weekStart) => {
           selectedSlot: slot,
           selectedDate: { id: slot.id, date: slot.date },
           step: 3,
+          confirmed: false,
+          confirmationCalendarEvent: null,
+          confirmationBookingId: null,
         });
       },
       onPrev: () => {
-        const prevWeek = new Date(state.weekCursor);
-        prevWeek.setDate(prevWeek.getDate() - 7);
-        if (canMoveWeek(prevWeek)) {
-          store.setState({ weekCursor: prevWeek });
+        if (canMoveWeek(prevWeekCandidate, state.selectedService)) {
+          store.setState({
+            weekCursor: new Date(prevWeekCandidate),
+            availabilityWeek: [],
+            availabilityWeekKey: null,
+            availabilityWeekRequestKey: null,
+          });
         }
       },
       onNext: () => {
-        const nextWeek = new Date(state.weekCursor);
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        if (canMoveWeek(nextWeek)) {
-          store.setState({ weekCursor: nextWeek });
+        if (canMoveWeek(nextWeekCandidate, state.selectedService)) {
+          store.setState({
+            weekCursor: new Date(nextWeekCandidate),
+            availabilityWeek: [],
+            availabilityWeekKey: null,
+            availabilityWeekRequestKey: null,
+          });
         }
       },
-      canPrev: canMoveWeek(new Date(state.weekCursor.getFullYear(), state.weekCursor.getMonth(), state.weekCursor.getDate() - 7)),
-      canNext: canMoveWeek(new Date(state.weekCursor.getFullYear(), state.weekCursor.getMonth(), state.weekCursor.getDate() + 7)),
-      state: state.uiStates.time,
+      canPrev: canMoveWeek(prevWeekCandidate, state.selectedService),
+      canNext: canMoveWeek(nextWeekCandidate, state.selectedService),
+      state: isWeekDataCurrent ? state.uiStates.time : "loading",
       cancelModalOpen: state.cancelModalOpen,
       cancelBooking: state.cancelBooking,
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
@@ -1085,10 +1254,17 @@ const loadWeekAvailability = async (service, weekStart) => {
       timeslot: state.selectedSlot,
     });
 
+    const calendarBookingId = state.confirmationBookingId;
+    const calendarPageUrl = buildCalendarDownloadPageUrl({ bookingId: calendarBookingId });
+    const calendarQrImageUrl = buildCalendarQrImageUrl(calendarPageUrl);
+
     screen = Confirmation({
       summary,
       state: state.uiStates.confirmation,
       confirmed: state.confirmed,
+      isKioskMode: !isMobile,
+      calendarQrImageUrl,
+      calendarDownloadUrl: calendarPageUrl,
       onBack: () => store.setState({ step: 2 }),
       onAcknowledge: () =>
         store.setState({
@@ -1096,6 +1272,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           confirmed: false,
           selectedDate: null,
           selectedSlot: null,
+          confirmationCalendarEvent: null,
+          confirmationBookingId: null,
           uiStates: { ...store.getState().uiStates, confirmation: "normal" },
         }),
       onConfirm: async () => {
@@ -1105,23 +1283,24 @@ const loadWeekAvailability = async (service, weekStart) => {
         store.setState((prev) => ({ uiStates: { ...prev.uiStates, confirmation: "loading" } }));
         try {
           const currentState = store.getState();
-          let startTime = null;
-          let endTime = null;
-          if (currentState.selectedSlot?.startTime && currentState.selectedSlot?.endTime) {
-            startTime = currentState.selectedSlot.startTime;
-            endTime = currentState.selectedSlot.endTime;
-          } else if (currentState.selectedDate?.date) {
-            const range = buildFullDayDateRange(currentState.selectedDate.date, currentState.selectedService);
-            startTime = range.startTime;
-            endTime = range.endTime;
+          const bookingRange = buildBookingRangeForState(currentState);
+          if (!bookingRange) {
+            store.setState((prev) => ({
+              confirmed: false,
+              uiStates: { ...prev.uiStates, confirmation: "error" },
+            }));
+            return;
           }
-          await createBooking({
+          const bookingResult = await createBooking({
             booking_object_id: currentState.selectedService.id,
-            start_time: startTime,
-            end_time: endTime,
+            start_time: bookingRange.startTime,
+            end_time: bookingRange.endTime,
           });
+          const calendarEventData = buildConfirmationCalendarEvent(currentState, bookingRange);
           store.setState((prev) => ({
             confirmed: true,
+            confirmationCalendarEvent: calendarEventData,
+            confirmationBookingId: bookingResult?.booking_id || null,
             availabilityMonth:
               prev.selectedService?.bookingType === "full-day"
                 ? markMonthDayAsMine(prev.availabilityMonth, prev.selectedDate?.id)
@@ -1149,6 +1328,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           }
           store.setState((prev) => ({
             confirmed: false,
+            confirmationCalendarEvent: null,
+            confirmationBookingId: null,
             uiStates: { ...prev.uiStates, confirmation: "error" },
           }));
         }
@@ -1166,6 +1347,42 @@ const loadWeekAvailability = async (service, weekStart) => {
     shell.append(footer);
   }
     app.append(shell);
+
+  if (pendingMonthLoad) {
+    queueMicrotask(() => {
+      const latest = store.getState();
+      if (latest.step !== 2 || latest.selectedService?.bookingType !== "full-day" || !latest.selectedService) {
+        return;
+      }
+      const { service, year, monthIndex } = pendingMonthLoad;
+      if (!latest.selectedService || latest.selectedService.id !== service.id) {
+        return;
+      }
+      const key = `${service.id}-${year}-${monthIndex}`;
+      if (latest.availabilityMonthKey === key || latest.availabilityMonthRequestKey === key) {
+        return;
+      }
+      loadMonthAvailability(service, year, monthIndex);
+    });
+  }
+
+  if (pendingWeekLoad) {
+    queueMicrotask(() => {
+      const latest = store.getState();
+      if (latest.step !== 2 || latest.selectedService?.bookingType === "full-day" || !latest.selectedService) {
+        return;
+      }
+      const { service, weekStart } = pendingWeekLoad;
+      if (latest.selectedService.id !== service.id) {
+        return;
+      }
+      const key = weekAvailabilityStateKey(service.id, weekStart);
+      if (latest.availabilityWeekKey === key || latest.availabilityWeekRequestKey === key) {
+        return;
+      }
+      loadWeekAvailability(service, weekStart);
+    });
+  }
   };
 
   store.subscribe(render);
