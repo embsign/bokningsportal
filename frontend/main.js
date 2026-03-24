@@ -142,7 +142,7 @@ const extractCsvGroups = (csvText, groupsField, separator) => {
   return Array.from(found).sort((a, b) => a.localeCompare(b));
 };
 
-const extractCsvColumnSamples = (csvText, field, limit = 3) => {
+const extractCsvColumnSamples = (csvText, field, limit = 5) => {
   if (!csvText || !field || field === "-") {
     return [];
   }
@@ -151,17 +151,23 @@ const extractCsvColumnSamples = (csvText, field, limit = 3) => {
   if (index === -1) {
     return [];
   }
-  const samples = [];
-  const seen = new Set();
-  rows.forEach((row) => {
-    const value = (row[index] || "").trim();
-    if (!value || seen.has(value)) {
-      return;
+  const values = rows.map((row) => (row[index] || "").trim()).filter(Boolean);
+  if (!values.length) {
+    return [];
+  }
+  const picks = new Set();
+  picks.add(0);
+  const remaining = Math.min(limit - 1, values.length - 1);
+  if (remaining > 0) {
+    const step = Math.max(1, Math.floor((values.length - 1) / remaining));
+    for (let i = 1; i <= remaining; i += 1) {
+      picks.add(Math.min(values.length - 1, i * step));
     }
-    samples.push(value);
-    seen.add(value);
-  });
-  return samples.slice(0, limit);
+  }
+  const samples = Array.from(picks)
+    .sort((a, b) => a - b)
+    .map((index) => values[index]);
+  return samples;
 };
 
 const buildGroupEffect = (samples, separator) =>
@@ -199,11 +205,7 @@ const readCsvFile = async (file) => {
     encoding = "iso-8859-1";
   }
   const encodingWarning =
-    headers.length <= 1
-      ? "Rubriker kunde inte identifieras. Testa att spara om filen som UTF-8."
-      : encoding === "iso-8859-1"
-        ? "CSV verkar inte vara UTF-8. Vi läser filen som Latin-1."
-        : "";
+    headers.length <= 1 ? "Rubriker kunde inte identifieras. Testa att spara om filen som UTF-8." : "";
   return { text, encoding, encodingWarning };
 };
 
@@ -266,9 +268,13 @@ if (routePath.startsWith("/admin/")) {
     importStep: 1,
     importFileName: "",
     importRowCount: 0,
+    groupsField: "-",
+    groupSeparator: "|",
     apartmentRegexOpen: false,
     houseRegexOpen: false,
     csvGroups: [],
+    adminSelectorOpen: false,
+    adminSelectorScrollTop: 0,
     importFocus: "",
     importFocusStart: null,
     importFocusEnd: null,
@@ -401,7 +407,7 @@ if (routePath.startsWith("/admin/")) {
         accessGroups: accessGroupsData.map((group) => group.name),
         importRules: rules,
         identityField: rules?.identity_field,
-        groupsField: rules?.groups_field,
+        groupsField: rules?.groups_field || "-",
         rfidField: rules?.rfid_field,
         activeField: rules?.active_field,
         houseField: rules?.house_field,
@@ -699,6 +705,7 @@ if (routePath.startsWith("/admin/")) {
             case "removeMissing":
             case "adminGroups":
             case "adminSelectorOpen":
+            case "adminSelectorScrollTop":
               return { [field]: value };
             default:
               return prev;
@@ -859,6 +866,13 @@ if (routePath.startsWith("/admin/")) {
           typeof state.importFocusStart === "number" ? state.importFocusStart : input.value.length;
         const end = typeof state.importFocusEnd === "number" ? state.importFocusEnd : input.value.length;
         input.setSelectionRange?.(start, end);
+      }
+    }
+
+    if (state.importOpen && state.adminSelectorOpen) {
+      const list = app.querySelector(".import-modal .selector-list");
+      if (list) {
+        list.scrollTop = state.adminSelectorScrollTop || 0;
       }
     }
   };
@@ -1673,7 +1687,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     updateChanged: true,
     removeMissing: false,
     identityField: "",
-    groupsField: "",
+    groupsField: "-",
     rfidField: "",
     activeField: "",
     houseField: "",
@@ -1685,6 +1699,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     groupSeparator: "|",
     adminGroups: [],
     adminSelectorOpen: false,
+    adminSelectorScrollTop: 0,
     importFocus: "",
     importFocusStart: null,
     importFocusEnd: null,
@@ -1784,7 +1799,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       accessGroups: accessGroupsData.map((group) => group.name),
       importRules: rules,
       identityField: rules?.identity_field,
-      groupsField: rules?.groups_field,
+      groupsField: rules?.groups_field || "-",
       rfidField: rules?.rfid_field,
       activeField: rules?.active_field,
       houseField: rules?.house_field,
@@ -2403,6 +2418,7 @@ const loadWeekAvailability = async (service, weekStart) => {
             case "removeMissing":
             case "adminGroups":
             case "adminSelectorOpen":
+            case "adminSelectorScrollTop":
             case "identityField":
             case "rfidField":
             case "activeField":
@@ -2427,6 +2443,13 @@ const loadWeekAvailability = async (service, weekStart) => {
         const end =
           typeof setupState.importFocusEnd === "number" ? setupState.importFocusEnd : input.value.length;
         input.setSelectionRange?.(start, end);
+      }
+    }
+
+    if (setupState.importOpen && setupState.adminSelectorOpen) {
+      const list = app.querySelector(".import-modal .selector-list");
+      if (list) {
+        list.scrollTop = setupState.adminSelectorScrollTop || 0;
       }
     }
   };

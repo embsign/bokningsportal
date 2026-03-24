@@ -1295,7 +1295,8 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
   const adminGroups = (rules.admin_groups || "").split("|").filter(Boolean);
   const groupSeparator = rules.group_separator || "|";
 
-  const previewRows = rows.map((row: Record<string, string>) => {
+  const previewRows = rows
+    .map((row: Record<string, string>) => {
     const identity = row[rules.identity_field] || "";
     const apartmentSource = rules.apartment_field ? row[rules.apartment_field] || "" : identity;
     const apartmentBase = apartmentSource || identity;
@@ -1305,10 +1306,16 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
     const groupsRaw = rules.groups_field ? row[rules.groups_field] || "" : "";
     const groups = groupsRaw ? groupsRaw.split(groupSeparator).map((g) => g.trim()).filter(Boolean) : [];
     const admin = groups.some((g) => adminGroups.includes(g));
-    const existing = usersByApartment.get(apartmentId);
+    if (!apartmentId && !admin) {
+      return null;
+    }
+    const existing = apartmentId ? usersByApartment.get(apartmentId) : null;
     const status = existing ? (existing.house === house ? "Oförändrad" : "Uppdateras") : "Ny";
     return { identity, apartment_id: apartmentId, house, admin, status };
-  });
+  })
+  .filter((row): row is { identity: string; apartment_id: string; house: string; admin: boolean; status: string } =>
+    Boolean(row)
+  );
 
   const seen = new Set(previewRows.map((row) => row.apartment_id));
   const removed = users.results.filter((user: any) => !seen.has(user.apartment_id));
@@ -1344,6 +1351,9 @@ const handleImportApply = async (request: Request, env: Env) => {
   let removed = 0;
 
   for (const row of data.rows as any[]) {
+    if (!row.apartment_id && !row.admin) {
+      continue;
+    }
     const existing = usersByApartment.get(row.apartment_id);
     if (!existing && body.actions.add_new) {
       const userId = `user-${crypto.randomUUID()}`;

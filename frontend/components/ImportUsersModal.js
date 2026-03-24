@@ -296,7 +296,11 @@ export const ImportUsersModal = ({
                           type: "checkbox",
                           checked: form.adminGroups?.includes(group) ? "checked" : null,
                         },
-                        onChange: () => {
+                      onChange: (event) => {
+                        const container = event.currentTarget?.closest(".selector-list");
+                        if (container) {
+                          onChange("adminSelectorScrollTop", container.scrollTop || 0);
+                        }
                           const hasValue = form.adminGroups?.includes(group);
                           const next = hasValue
                             ? form.adminGroups.filter((item) => item !== group)
