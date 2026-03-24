@@ -54,6 +54,7 @@ export const ImportUsersModal = ({
         : step === 3
           ? Boolean(form.apartmentField)
           : step < 8;
+  const isImporting = step === 8 && (form.progress || 0) > 0 && (form.progress || 0) < 100;
 
   const step1 = createElement("div", {
     className: "import-step",
@@ -586,14 +587,16 @@ export const ImportUsersModal = ({
         children: [
           content,
           adminSelectorModal,
-      footer({
-        onBack: step === 1 ? onClose : onPrev,
-            onNext,
-            onImport,
-            canNext,
-            showImport: step === 8,
-        backLabel: step === 1 ? "Avbryt" : "Tillbaka",
-          }),
+          isImporting
+            ? null
+            : footer({
+                onBack: step === 1 ? onClose : onPrev,
+                onNext,
+                onImport,
+                canNext,
+                showImport: step === 8,
+                backLabel: step === 1 ? "Avbryt" : "Tillbaka",
+              }),
         ],
       }),
     ],

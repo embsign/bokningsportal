@@ -1334,11 +1334,12 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
       : houseSource;
     const groupsRaw = rules.groups_field ? row[rules.groups_field] || "" : "";
     const groups = groupsRaw ? groupsRaw.split(groupSeparator).map((g) => g.trim()).filter(Boolean) : [];
+    const rfid = rules.rfid_field ? (row[rules.rfid_field] || "").trim() : "";
     const admin = groups.some((g) => adminGroups.includes(g));
     const activeRaw = rules.active_field ? row[rules.active_field] || "" : "";
     const active = rules.active_field ? parseActiveValue(activeRaw) : true;
     if (!apartmentId && !admin) {
-      return { identity, apartment_id: "", house, admin: false, active, status: "Ignorerad" };
+      return { identity, apartment_id: "", house, admin: false, active, groups, rfid, status: "Ignorerad" };
     }
     const resolvedApartmentId = apartmentId || deriveAdminApartmentId(identity);
     const existing = usersByApartment.get(resolvedApartmentId);
@@ -1347,7 +1348,7 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
         ? "Oförändrad"
         : "Uppdateras"
       : "Ny";
-    return { identity, apartment_id: resolvedApartmentId, house, admin, active, status };
+    return { identity, apartment_id: resolvedApartmentId, house, admin, active, groups, rfid, status };
   });
 
   const handledRows = previewRows.filter((row) => row.status !== "Ignorerad");
@@ -1381,6 +1382,26 @@ const handleImportApply = async (request: Request, env: Env) => {
   const data = await buildImportPreview(env.DB, auth.tenant.id, body.csv_text, body.rules);
   const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
   const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
+  const syncUserGroups = async (userId: string, groupNames: string[]) => {
+    await env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId).run();
+    for (const name of groupNames) {
+      const group = await createAccessGroup(env.DB, auth.tenant.id, name);
+      await env.DB.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)")
+        .bind(userId, group.id)
+        .run();
+    }
+  };
+  const syncUserRfid = async (userId: string, rfid: string) => {
+    await env.DB.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId).run();
+    if (!rfid) {
+      return;
+    }
+    await env.DB.prepare(
+      `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+    ).bind(rfid, auth.tenant.id, userId).run();
+  };
   let added = 0;
   let updated = 0;
   let removed = 0;
@@ -1395,6 +1416,8 @@ const handleImportApply = async (request: Request, env: Env) => {
       await env.DB.prepare(
         "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
       ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0).run();
+      await syncUserGroups(userId, row.groups || []);
+      await syncUserRfid(userId, row.rfid || "");
       usersByApartment.set(row.apartment_id, {
         id: userId,
         apartment_id: row.apartment_id,
@@ -1408,6 +1431,8 @@ const handleImportApply = async (request: Request, env: Env) => {
       await env.DB.prepare(
         "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
       ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id).run();
+      await syncUserGroups(existing.id, row.groups || []);
+      await syncUserRfid(existing.id, row.rfid || "");
       updated += 1;
     }
   }
