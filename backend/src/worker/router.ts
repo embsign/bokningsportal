@@ -1450,25 +1450,71 @@ const handleImportApply = async (request: Request, env: Env) => {
   const done = processedRows >= totalRows;
   const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
   const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
+  const groupRows = await env.DB
+    .prepare("SELECT id, name FROM access_groups WHERE tenant_id = ?")
+    .bind(auth.tenant.id)
+    .all();
+  const groupIdByName = new Map<string, string>(
+    (groupRows.results || []).map((row: any) => [String(row.name), String(row.id)])
+  );
+  const neededGroupNames = new Set<string>();
+  for (const row of batchRows as any[]) {
+    for (const groupName of row.groups || []) {
+      const name = String(groupName || "").trim();
+      if (name) neededGroupNames.add(name);
+    }
+  }
+  const dbAny = env.DB as any;
+  const groupCreateStatements: any[] = [];
+  for (const name of neededGroupNames) {
+    if (!groupIdByName.has(name)) {
+      const id = `group-${crypto.randomUUID()}`;
+      groupIdByName.set(name, id);
+      groupCreateStatements.push(
+        env.DB.prepare("INSERT INTO access_groups (id, tenant_id, name) VALUES (?, ?, ?)")
+          .bind(id, auth.tenant.id, name)
+      );
+    }
+  }
+  if (groupCreateStatements.length) {
+    await dbAny.batch(groupCreateStatements);
+  }
+
+  const pendingStatements: any[] = [];
+  const flushPending = async () => {
+    if (!pendingStatements.length) return;
+    const chunk = pendingStatements.splice(0, pendingStatements.length);
+    await dbAny.batch(chunk);
+  };
+  const pushStatement = async (statement: any) => {
+    pendingStatements.push(statement);
+    if (pendingStatements.length >= 200) {
+      await flushPending();
+    }
+  };
   const syncUserGroups = async (userId: string, groupNames: string[]) => {
-    await env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId).run();
-    for (const name of groupNames) {
-      const group = await createAccessGroup(env.DB, auth.tenant.id, name);
-      await env.DB.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)")
-        .bind(userId, group.id)
-        .run();
+    await pushStatement(env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId));
+    for (const name of groupNames || []) {
+      const groupId = groupIdByName.get(String(name));
+      if (!groupId) continue;
+      await pushStatement(
+        env.DB.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)")
+          .bind(userId, groupId)
+      );
     }
   };
   const syncUserRfid = async (userId: string, rfid: string) => {
-    await env.DB.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId).run();
+    await pushStatement(env.DB.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId));
     if (!rfid) {
       return;
     }
-    await env.DB.prepare(
-      `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
-       VALUES (?, ?, ?, 1)
-       ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
-    ).bind(rfid, auth.tenant.id, userId).run();
+    await pushStatement(
+      env.DB.prepare(
+        `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
+         VALUES (?, ?, ?, 1)
+         ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+      ).bind(rfid, auth.tenant.id, userId)
+    );
   };
   let added = 0;
   let updated = 0;
@@ -1478,9 +1524,11 @@ const handleImportApply = async (request: Request, env: Env) => {
     const existing = usersByApartment.get(row.apartment_id);
     if (!existing && body.actions.add_new) {
       const userId = `user-${crypto.randomUUID()}`;
-      await env.DB.prepare(
-        "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
-      ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0).run();
+      await pushStatement(
+        env.DB.prepare(
+          "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0)
+      );
       await syncUserGroups(userId, row.groups || []);
       await syncUserRfid(userId, row.rfid || "");
       usersByApartment.set(row.apartment_id, {
@@ -1493,9 +1541,11 @@ const handleImportApply = async (request: Request, env: Env) => {
       added += 1;
     }
     if (existing && row.status === "Uppdateras" && body.actions.update_existing) {
-      await env.DB.prepare(
-        "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id).run();
+      await pushStatement(
+        env.DB.prepare(
+          "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id)
+      );
       await syncUserGroups(existing.id, row.groups || []);
       await syncUserRfid(existing.id, row.rfid || "");
       updated += 1;
@@ -1506,11 +1556,12 @@ const handleImportApply = async (request: Request, env: Env) => {
     const seen = new Set(importRows.map((row: any) => row.apartment_id));
     for (const user of users.results) {
       if (!seen.has((user as any).apartment_id)) {
-        await env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(user.id).run();
+        await pushStatement(env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(user.id));
         removed += 1;
       }
     }
   }
+  await flushPending();
 
   return json({
     status: "ok",

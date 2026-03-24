@@ -837,14 +837,6 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
-    if (state.importStep === 8 && state.isImporting && (state.importProgress || 0) < 95) {
-      setTimeout(() => {
-        adminStore.setState((prev) => ({
-          importProgress: Math.min((prev.importProgress || 0) + 10, 95),
-        }));
-      }, 400);
-    }
-
     shell.append(
       Header({
         apartmentId: state.adminUser?.association || "—",
@@ -1984,14 +1976,6 @@ const loadWeekAvailability = async (service, weekStart) => {
   const renderSetup = () => {
     clearElement(app);
     const step = setupState.step || 1;
-
-    if (setupState.importStep === 8 && setupState.isImporting && (setupState.importProgress || 0) < 95) {
-      setTimeout(() => {
-        setSetupState((prev) => ({
-          importProgress: Math.min((prev.importProgress || 0) + 10, 95),
-        }));
-      }, 400);
-    }
 
     const stepHeader = createElement("div", {
       className: "modal-step",
