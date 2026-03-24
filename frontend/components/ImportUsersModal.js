@@ -78,9 +78,14 @@ export const ImportUsersModal = ({
       form.fileName
         ? createElement("div", {
             className: "state-panel",
-            text: `Vald fil: ${form.fileName} • ${form.rowCount} rader`,
+            text: `Vald fil: ${form.fileName} • ${form.rowCount} rader${
+              form.encoding ? ` • ${form.encoding}` : ""
+            }`,
           })
         : createElement("div", { className: "empty-state", text: "Ingen fil vald ännu." }),
+      form.encodingWarning
+        ? createElement("div", { className: "form-error", text: form.encodingWarning })
+        : null,
     ],
   });
 

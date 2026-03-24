@@ -127,6 +127,70 @@ const extractCsvGroups = (csvText, groupsField, separator) => {
   return Array.from(found).sort((a, b) => a.localeCompare(b));
 };
 
+const extractCsvColumnSamples = (csvText, field, limit = 3) => {
+  if (!csvText || !field || field === "-") {
+    return [];
+  }
+  const { headers, rows } = parseCsvRows(csvText);
+  const index = headers.indexOf(field);
+  if (index === -1) {
+    return [];
+  }
+  const samples = [];
+  const seen = new Set();
+  rows.forEach((row) => {
+    const value = (row[index] || "").trim();
+    if (!value || seen.has(value)) {
+      return;
+    }
+    samples.push(value);
+    seen.add(value);
+  });
+  return samples.slice(0, limit);
+};
+
+const buildGroupEffect = (samples, separator) =>
+  samples.map((original) => ({
+    original,
+    values: original
+      .split(separator || "|")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  }));
+
+const updateImportSamples = (prev, next = {}) => {
+  const csvText = next.importCsvText ?? prev.importCsvText;
+  const houseField = next.houseField ?? prev.houseField;
+  const apartmentField = next.apartmentField ?? prev.apartmentField;
+  const groupsField = next.groupsField ?? prev.groupsField;
+  const separator = next.groupSeparator ?? prev.groupSeparator;
+  return {
+    houseSamples: extractCsvColumnSamples(csvText, houseField),
+    apartmentSamples: extractCsvColumnSamples(csvText, apartmentField),
+    groupSamples: extractCsvColumnSamples(csvText, groupsField),
+  };
+};
+
+const readCsvFile = async (file) => {
+  const buffer = await file.arrayBuffer();
+  const decode = (encoding) => new TextDecoder(encoding, { fatal: false }).decode(buffer);
+  let text = decode("utf-8");
+  let { headers } = parseCsvRows(text);
+  let encoding = "utf-8";
+  if (headers.length <= 1) {
+    text = decode("iso-8859-1");
+    headers = parseCsvRows(text).headers;
+    encoding = "iso-8859-1";
+  }
+  const encodingWarning =
+    headers.length <= 1
+      ? "Rubriker kunde inte identifieras. Testa att spara om filen som UTF-8."
+      : encoding === "iso-8859-1"
+        ? "CSV verkar inte vara UTF-8. Vi läser filen som Latin-1."
+        : "";
+  return { text, encoding, encodingWarning };
+};
+
 if (routePath.startsWith("/admin/")) {
   const buildRegexEffect = (samples, regexSource) => {
     if (!regexSource) {
@@ -302,6 +366,8 @@ if (routePath.startsWith("/admin/")) {
     admin_groups: (state.adminGroups?.length ? state.adminGroups : state.importRules?.admin_groups?.split("|") || []).join("|"),
   });
 
+
+
   const loadAdminData = async () => {
     try {
       const [bookingObjectsData, bookingGroupsData, usersData, rulesData, accessGroupsData] = await Promise.all([
@@ -458,6 +524,8 @@ if (routePath.startsWith("/admin/")) {
       form: {
         fileName: state.importFileName,
         rowCount: state.importRowCount || 17,
+        encoding: state.importEncoding,
+        encodingWarning: state.importEncodingWarning,
         apartmentRegexOpen: state.apartmentRegexOpen,
         houseRegexOpen: state.houseRegexOpen,
         houseRegex: state.houseRegex || "",
@@ -475,13 +543,9 @@ if (routePath.startsWith("/admin/")) {
         adminGroupOptions: Array.from(
           new Set([...(state.accessGroups || []), ...(state.csvGroups || [])].filter(Boolean))
         ),
-        effectHouse: buildRegexEffect(houseSamples, state.houseRegex || ""),
-        effectApartment: buildRegexEffect(apartmentSamples, state.apartmentRegex || ""),
-        effectGroups: [
-          { original: "Boende|Gym Norra gaveln Hus 1", values: ["Boende", "Gym Norra gaveln Hus 1"] },
-          { original: "Boende", values: ["Boende"] },
-          { original: "Boende H6", values: ["Boende H6"] },
-        ],
+        effectHouse: buildRegexEffect(state.houseSamples || [], state.houseRegex || ""),
+        effectApartment: buildRegexEffect(state.apartmentSamples || [], state.apartmentRegex || ""),
+        effectGroups: buildGroupEffect(state.groupSamples || [], state.groupSeparator || "|"),
       },
       mapping: {
         headers: state.importHeaders?.length ? state.importHeaders : ["OrgGrupp", "Placering", "Lägenhet"],
@@ -551,12 +615,16 @@ if (routePath.startsWith("/admin/")) {
               return { importFileName: value };
             case "file":
               if (value) {
-                value.text().then((text) => {
+                readCsvFile(value).then(({ text, encoding, encodingWarning }) => {
                   const csvGroups = extractCsvGroups(text, prev.groupsField, prev.groupSeparator);
+                  const sampleUpdate = updateImportSamples(prev, { importCsvText: text });
                   adminStore.setState({
                     importCsvText: text,
                     importRowCount: text.split("\n").length,
                     csvGroups,
+                    ...sampleUpdate,
+                    importEncoding: encoding,
+                    importEncodingWarning: encodingWarning,
                   });
                   const rules = buildImportRules(adminStore.getState());
                   previewImport(text, rules).then((preview) =>
@@ -590,12 +658,16 @@ if (routePath.startsWith("/admin/")) {
               return {};
             case "groupsField": {
               const csvGroups = extractCsvGroups(prev.importCsvText, value, prev.groupSeparator);
-              return { groupsField: value, csvGroups };
+              return { groupsField: value, csvGroups, ...updateImportSamples(prev, { groupsField: value }) };
             }
             case "groupSeparator": {
               const csvGroups = extractCsvGroups(prev.importCsvText, prev.groupsField, value);
-              return { groupSeparator: value, csvGroups };
+              return { groupSeparator: value, csvGroups, ...updateImportSamples(prev, { groupSeparator: value }) };
             }
+            case "houseField":
+              return { houseField: value, ...updateImportSamples(prev, { houseField: value }) };
+            case "apartmentField":
+              return { apartmentField: value, ...updateImportSamples(prev, { apartmentField: value }) };
             case "importFocus":
             case "importFocusStart":
             case "importFocusEnd":
@@ -606,8 +678,6 @@ if (routePath.startsWith("/admin/")) {
             case "activeField":
             case "houseRegex":
             case "apartmentRegex":
-            case "houseField":
-            case "apartmentField":
             case "addNew":
             case "updateChanged":
             case "removeMissing":
@@ -1576,6 +1646,13 @@ const loadWeekAvailability = async (service, weekStart) => {
     importPreview: null,
     importProgress: 0,
     csvGroups: [],
+    houseSamples: [],
+    apartmentSamples: [],
+    groupSamples: [],
+    importEncoding: "",
+    importEncodingWarning: "",
+    importEncoding: "",
+    importEncodingWarning: "",
     addNew: true,
     updateChanged: true,
     removeMissing: false,
@@ -2155,6 +2232,8 @@ const loadWeekAvailability = async (service, weekStart) => {
       form: {
         fileName: setupState.importFileName,
         rowCount: setupState.importRowCount || 17,
+        encoding: setupState.importEncoding,
+        encodingWarning: setupState.importEncodingWarning,
         apartmentRegexOpen: setupState.apartmentRegexOpen,
         houseRegexOpen: setupState.houseRegexOpen,
         houseRegex: setupState.houseRegex || "",
@@ -2172,13 +2251,9 @@ const loadWeekAvailability = async (service, weekStart) => {
         adminGroupOptions: Array.from(
           new Set([...(setupState.accessGroups || []), ...(setupState.csvGroups || [])].filter(Boolean))
         ),
-        effectHouse: buildRegexEffect(houseSamples, setupState.houseRegex || ""),
-        effectApartment: buildRegexEffect(apartmentSamples, setupState.apartmentRegex || ""),
-        effectGroups: [
-          { original: "Boende|Gym Norra gaveln Hus 1", values: ["Boende", "Gym Norra gaveln Hus 1"] },
-          { original: "Boende", values: ["Boende"] },
-          { original: "Boende H6", values: ["Boende H6"] },
-        ],
+        effectHouse: buildRegexEffect(setupState.houseSamples || [], setupState.houseRegex || ""),
+        effectApartment: buildRegexEffect(setupState.apartmentSamples || [], setupState.apartmentRegex || ""),
+        effectGroups: buildGroupEffect(setupState.groupSamples || [], setupState.groupSeparator || "|"),
       },
       mapping: {
         headers: setupState.importHeaders?.length ? setupState.importHeaders : ["OrgGrupp", "Placering", "Lägenhet"],
@@ -2247,12 +2322,16 @@ const loadWeekAvailability = async (service, weekStart) => {
               return { importFileName: value };
             case "file":
               if (value) {
-                value.text().then((text) => {
+                readCsvFile(value).then(({ text, encoding, encodingWarning }) => {
                   const csvGroups = extractCsvGroups(text, prev.groupsField, prev.groupSeparator);
+                  const sampleUpdate = updateImportSamples(prev, { importCsvText: text });
                   setSetupState({
                     importCsvText: text,
                     importRowCount: text.split("\n").length,
                     csvGroups,
+                    ...sampleUpdate,
+                    importEncoding: encoding,
+                    importEncodingWarning: encodingWarning,
                   });
                   const rules = buildImportRules(setupState);
                   previewImport(text, rules).then((preview) =>
@@ -2286,12 +2365,16 @@ const loadWeekAvailability = async (service, weekStart) => {
               return {};
             case "groupsField": {
               const csvGroups = extractCsvGroups(prev.importCsvText, value, prev.groupSeparator);
-              return { groupsField: value, csvGroups };
+              return { groupsField: value, csvGroups, ...updateImportSamples(prev, { groupsField: value }) };
             }
             case "groupSeparator": {
               const csvGroups = extractCsvGroups(prev.importCsvText, prev.groupsField, value);
-              return { groupSeparator: value, csvGroups };
+              return { groupSeparator: value, csvGroups, ...updateImportSamples(prev, { groupSeparator: value }) };
             }
+            case "houseField":
+              return { houseField: value, ...updateImportSamples(prev, { houseField: value }) };
+            case "apartmentField":
+              return { apartmentField: value, ...updateImportSamples(prev, { apartmentField: value }) };
             case "importFocus":
             case "importFocusStart":
             case "importFocusEnd":
@@ -2307,8 +2390,6 @@ const loadWeekAvailability = async (service, weekStart) => {
             case "identityField":
             case "rfidField":
             case "activeField":
-            case "houseField":
-            case "apartmentField":
               return { [field]: value };
             default:
               return prev;
