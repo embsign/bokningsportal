@@ -54,7 +54,7 @@ export const ImportUsersModal = ({
         : step === 3
           ? Boolean(form.apartmentField)
           : step < 8;
-  const isImporting = step === 8 && (form.progress || 0) > 0 && (form.progress || 0) < 100;
+  const isImporting = Boolean(form.isImporting);
 
   const step1 = createElement("div", {
     className: "import-step",
@@ -481,7 +481,7 @@ export const ImportUsersModal = ({
   });
 
   const previewContent =
-    form.progress && form.progress < 100
+    isImporting
       ? [
           createElement("div", { className: "modal-title", text: "Importerar" }),
           createElement("div", {

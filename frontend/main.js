@@ -259,6 +259,7 @@ if (routePath.startsWith("/admin/")) {
     importHeaders: [],
     importCsvText: "",
     importLoading: false,
+    isImporting: false,
     modalOpen: false,
     modalMode: "add",
     selectorOpenKey: null,
@@ -560,6 +561,7 @@ if (routePath.startsWith("/admin/")) {
         updateChanged: state.updateChanged !== false,
         removeMissing: state.removeMissing === true,
         progress: state.importProgress || 0,
+        isImporting: state.isImporting === true,
         houseField: state.houseField || "Placering",
         apartmentField: state.apartmentField || "Lägenhet",
         groupsField: state.groupsField || "Behörighetsgrupp",
@@ -627,7 +629,7 @@ if (routePath.startsWith("/admin/")) {
       onPrev: () =>
         adminStore.setState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        adminStore.setState({ importStep: 8, importProgress: 35 });
+        adminStore.setState({ importStep: 8, importProgress: 15, isImporting: true });
         const rules = buildImportRules(adminStore.getState());
         try {
           await saveImportRules(rules);
@@ -640,8 +642,8 @@ if (routePath.startsWith("/admin/")) {
           update_existing: state.updateChanged !== false,
           remove_missing: state.removeMissing === true,
         });
-        adminStore.setState({ importProgress: 100, importOpen: false, importStep: 1 });
-        await loadAdminData();
+        adminStore.setState({ importProgress: 100, isImporting: false, importOpen: false, importStep: 1 });
+        void loadAdminData();
       },
       onChange: (field, value) =>
         adminStore.setState((prev) => {
@@ -821,10 +823,10 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
-    if (state.importStep === 8 && (state.importProgress || 0) < 100) {
+    if (state.importStep === 8 && state.isImporting && (state.importProgress || 0) < 95) {
       setTimeout(() => {
         adminStore.setState((prev) => ({
-          importProgress: Math.min((prev.importProgress || 0) + 15, 100),
+          importProgress: Math.min((prev.importProgress || 0) + 10, 95),
         }));
       }, 400);
     }
@@ -1692,6 +1694,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     importHeaders: [],
     importPreview: null,
     importProgress: 0,
+    isImporting: false,
     csvGroups: [],
     houseSamples: [],
     apartmentSamples: [],
@@ -1968,10 +1971,10 @@ const loadWeekAvailability = async (service, weekStart) => {
     clearElement(app);
     const step = setupState.step || 1;
 
-    if (setupState.importStep === 8 && (setupState.importProgress || 0) < 100) {
+    if (setupState.importStep === 8 && setupState.isImporting && (setupState.importProgress || 0) < 95) {
       setTimeout(() => {
         setSetupState((prev) => ({
-          importProgress: Math.min((prev.importProgress || 0) + 15, 100),
+          importProgress: Math.min((prev.importProgress || 0) + 10, 95),
         }));
       }, 400);
     }
@@ -2302,6 +2305,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         updateChanged: setupState.updateChanged !== false,
         removeMissing: setupState.removeMissing === true,
         progress: setupState.importProgress || 0,
+        isImporting: setupState.isImporting === true,
         houseField: setupState.houseField || "Placering",
         apartmentField: setupState.apartmentField || "Lägenhet",
         groupsField: setupState.groupsField || "Behörighetsgrupp",
@@ -2368,7 +2372,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onPrev: () => setSetupState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        setSetupState({ importStep: 8, importProgress: 35 });
+        setSetupState({ importStep: 8, importProgress: 15, isImporting: true });
         const rules = buildImportRules(setupState);
         try {
           await saveImportRules(rules);
@@ -2381,8 +2385,8 @@ const loadWeekAvailability = async (service, weekStart) => {
           update_existing: setupState.updateChanged !== false,
           remove_missing: setupState.removeMissing === true,
         });
-        setSetupState({ importProgress: 100, importOpen: false, importStep: 1 });
-        await loadSetupLists();
+        setSetupState({ importProgress: 100, isImporting: false, importOpen: false, importStep: 1 });
+        void loadSetupLists();
       },
       onChange: (field, value) =>
         setSetupState((prev) => {

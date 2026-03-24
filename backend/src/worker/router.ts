@@ -1318,6 +1318,21 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
   const { headers, rows } = parseCsv(csvText);
   const users = await db.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(tenantId).all();
   const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
+  const userGroupRows = await db
+    .prepare(
+      `SELECT uag.user_id, ag.name
+       FROM user_access_groups uag
+       JOIN access_groups ag ON ag.id = uag.group_id
+       WHERE ag.tenant_id = ?`
+    )
+    .bind(tenantId)
+    .all();
+  const groupsByUserId = new Map<string, string[]>();
+  for (const row of userGroupRows.results as any[]) {
+    const list = groupsByUserId.get(row.user_id) || [];
+    list.push(String(row.name));
+    groupsByUserId.set(String(row.user_id), list);
+  }
   const rfidRows = await db
     .prepare("SELECT user_id, uid FROM rfid_tags WHERE tenant_id = ? AND is_active = 1")
     .bind(tenantId)
@@ -1360,6 +1375,9 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
     const existing = usersByApartment.get(resolvedApartmentId);
     const currentRfid = existing ? String(rfidByUserId.get(existing.id) || "") : "";
     const nextRfid = rfid || "";
+    const currentGroups = existing ? (groupsByUserId.get(existing.id) || []).slice().sort() : [];
+    const nextGroups = (groups || []).slice().sort();
+    const groupsChanged = currentGroups.join("|") !== nextGroups.join("|");
     const rfidStatus = !existing
       ? nextRfid
         ? "Läggs till"
@@ -1371,8 +1389,13 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
           : currentRfid !== nextRfid
             ? "Byts ut"
             : "Oförändrad";
+    const rfidChanged = rfidStatus !== "Oförändrad";
     const status = existing
-      ? existing.house === house && Boolean(existing.is_admin) === admin && Boolean(existing.is_active) === active
+      ? existing.house === house &&
+        Boolean(existing.is_admin) === admin &&
+        Boolean(existing.is_active) === active &&
+        !groupsChanged &&
+        !rfidChanged
         ? "Oförändrad"
         : "Uppdateras"
       : "Ny";
