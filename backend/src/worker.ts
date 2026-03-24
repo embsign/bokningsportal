@@ -2,6 +2,8 @@ import { initDb } from "./worker/db/init.js";
 import { router } from "./worker/router.js";
 import { Env } from "./worker/types.js";
 
+const WORKER_DEBUG_MARKER = "worker-debug-2026-03-09-1";
+
 const getCorsHeaders = (request: Request) => {
   const origin = request.headers.get("origin");
   if (!origin) {
@@ -67,8 +69,21 @@ export default {
     } catch (error) {
       const message =
         error && typeof error === "object" && "message" in error ? String((error as any).message) : "unknown";
+      const name = error && typeof error === "object" && "name" in error ? String((error as any).name) : "Error";
+      const stack =
+        error && typeof error === "object" && "stack" in error ? String((error as any).stack || "") : "";
+      const stackShort = stack.split("\n").slice(0, 3).join(" | ");
       const response = new Response(
-        JSON.stringify({ detail: `internal_error:router_throw:${request.method}:${path}:${message}` }),
+        JSON.stringify({
+          detail: `internal_error:router_throw:${request.method}:${path}:${name}:${message}`,
+          debug: {
+            marker: WORKER_DEBUG_MARKER,
+            path,
+            method: request.method,
+            url: request.url,
+            stack: stackShort,
+          },
+        }),
         {
           status: 500,
           headers: { "content-type": "application/json; charset=utf-8" },
