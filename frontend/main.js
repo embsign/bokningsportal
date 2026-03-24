@@ -62,6 +62,71 @@ const logout = () => {
   window.location.assign("/");
 };
 
+const parseCsvRows = (csvText) => {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+  for (let i = 0; i < csvText.length; i += 1) {
+    const char = csvText[i];
+    if (char === '"') {
+      if (inQuotes && csvText[i + 1] === '"') {
+        value += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      row.push(value);
+      value = "";
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && csvText[i + 1] === "\n") {
+        i += 1;
+      }
+      row.push(value);
+      value = "";
+      if (row.length > 1 || row[0] !== "") {
+        rows.push(row);
+      }
+      row = [];
+      continue;
+    }
+    value += char;
+  }
+  row.push(value);
+  if (row.length > 1 || row[0] !== "") {
+    rows.push(row);
+  }
+  const headers = rows.shift() || [];
+  return { headers, rows };
+};
+
+const extractCsvGroups = (csvText, groupsField, separator) => {
+  if (!csvText || !groupsField || groupsField === "-") {
+    return [];
+  }
+  const { headers, rows } = parseCsvRows(csvText);
+  const index = headers.indexOf(groupsField);
+  if (index === -1) {
+    return [];
+  }
+  const sep = separator || "|";
+  const found = new Set();
+  rows.forEach((row) => {
+    const raw = row[index] || "";
+    raw
+      .split(sep)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .forEach((value) => found.add(value));
+  });
+  return Array.from(found).sort((a, b) => a.localeCompare(b));
+};
+
 if (routePath.startsWith("/admin/")) {
   const buildRegexEffect = (samples, regexSource) => {
     if (!regexSource) {
@@ -121,7 +186,12 @@ if (routePath.startsWith("/admin/")) {
     importStep: 1,
     importFileName: "",
     importRowCount: 0,
-    importFocus: "houseRegex",
+    apartmentRegexOpen: false,
+    houseRegexOpen: false,
+    csvGroups: [],
+    importFocus: "",
+    importFocusStart: null,
+    importFocusEnd: null,
     userPickerOpen: false,
     userQuery: "",
     editUserOpen: false,
@@ -215,10 +285,16 @@ if (routePath.startsWith("/admin/")) {
   let adminInitialized = false;
   const buildImportRules = (state) => ({
     identity_field: state.identityField || state.importRules?.identity_field || "OrgGrupp",
-    groups_field: state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
+    groups_field:
+      state.groupsField === "-"
+        ? ""
+        : state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
     rfid_field: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
     active_field: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
-    house_field: state.houseField || state.importRules?.house_field || "Placering",
+    house_field:
+      state.houseField === "-"
+        ? ""
+        : state.houseField || state.importRules?.house_field || "Placering",
     apartment_field: state.apartmentField || state.importRules?.apartment_field || "Lägenhet",
     house_regex: state.houseRegex || state.importRules?.house_regex || "",
     apartment_regex: state.apartmentRegex || state.importRules?.apartment_regex || "",
@@ -382,6 +458,8 @@ if (routePath.startsWith("/admin/")) {
       form: {
         fileName: state.importFileName,
         rowCount: state.importRowCount || 17,
+        apartmentRegexOpen: state.apartmentRegexOpen,
+        houseRegexOpen: state.houseRegexOpen,
         houseRegex: state.houseRegex || "",
         apartmentRegex: state.apartmentRegex || "",
         groupSeparator: state.groupSeparator || "|",
@@ -391,11 +469,12 @@ if (routePath.startsWith("/admin/")) {
         progress: state.importProgress || 0,
         houseField: state.houseField || "Placering",
         apartmentField: state.apartmentField || "Lägenhet",
+        groupsField: state.groupsField || "Behörighetsgrupp",
         adminGroups: state.adminGroups || [],
         adminSelectorOpen: state.adminSelectorOpen || false,
-        adminGroupOptions: state.importRules?.admin_groups
-          ? state.importRules.admin_groups.split("|").filter(Boolean)
-          : ["Styrelse", "Förvaltare", "Jour"],
+        adminGroupOptions: Array.from(
+          new Set([...(state.accessGroups || []), ...(state.csvGroups || [])].filter(Boolean))
+        ),
         effectHouse: buildRegexEffect(houseSamples, state.houseRegex || ""),
         effectApartment: buildRegexEffect(apartmentSamples, state.apartmentRegex || ""),
         effectGroups: [
@@ -420,9 +499,9 @@ if (routePath.startsWith("/admin/")) {
       },
       onClose: () => adminStore.setState({ importOpen: false, importStep: 1 }),
       onNext: async () => {
-        const nextStep = Math.min(state.importStep + 1, 5);
+        const nextStep = Math.min(state.importStep + 1, 7);
         adminStore.setState({ importStep: nextStep });
-        if (nextStep === 5 && state.importCsvText) {
+        if (nextStep === 7 && state.importCsvText) {
           const rules = buildImportRules(adminStore.getState());
           const preview = await previewImport(state.importCsvText, rules);
           adminStore.setState({
@@ -454,7 +533,7 @@ if (routePath.startsWith("/admin/")) {
       onPrev: () =>
         adminStore.setState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        adminStore.setState({ importStep: 6, importProgress: 35 });
+        adminStore.setState({ importStep: 7, importProgress: 35 });
         const rules = buildImportRules(adminStore.getState());
         await saveImportRules(rules);
         await applyImport(state.importCsvText, rules, {
@@ -473,7 +552,12 @@ if (routePath.startsWith("/admin/")) {
             case "file":
               if (value) {
                 value.text().then((text) => {
-                  adminStore.setState({ importCsvText: text, importRowCount: text.split("\n").length });
+                  const csvGroups = extractCsvGroups(text, prev.groupsField, prev.groupSeparator);
+                  adminStore.setState({
+                    importCsvText: text,
+                    importRowCount: text.split("\n").length,
+                    csvGroups,
+                  });
                   const rules = buildImportRules(adminStore.getState());
                   previewImport(text, rules).then((preview) =>
                     adminStore.setState({
@@ -504,21 +588,31 @@ if (routePath.startsWith("/admin/")) {
                 });
               }
               return {};
+            case "groupsField": {
+              const csvGroups = extractCsvGroups(prev.importCsvText, value, prev.groupSeparator);
+              return { groupsField: value, csvGroups };
+            }
+            case "groupSeparator": {
+              const csvGroups = extractCsvGroups(prev.importCsvText, prev.groupsField, value);
+              return { groupSeparator: value, csvGroups };
+            }
+            case "importFocus":
+            case "importFocusStart":
+            case "importFocusEnd":
+            case "apartmentRegexOpen":
+            case "houseRegexOpen":
             case "identityField":
-            case "groupsField":
             case "rfidField":
             case "activeField":
             case "houseRegex":
             case "apartmentRegex":
             case "houseField":
             case "apartmentField":
-            case "groupSeparator":
             case "addNew":
             case "updateChanged":
             case "removeMissing":
             case "adminGroups":
             case "adminSelectorOpen":
-            case "importFocus":
               return { [field]: value };
             default:
               return prev;
@@ -617,7 +711,7 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
-    if (state.importStep === 5 && (state.importProgress || 0) < 100) {
+    if (state.importStep === 7 && (state.importProgress || 0) < 100) {
       setTimeout(() => {
         adminStore.setState((prev) => ({
           importProgress: Math.min((prev.importProgress || 0) + 15, 100),
@@ -671,11 +765,14 @@ if (routePath.startsWith("/admin/")) {
       }
     }
 
-    if (state.importOpen && state.importStep === 3 && state.importFocus) {
+    if (state.importOpen && state.importFocus) {
       const input = app.querySelector(`[data-autofocus="${state.importFocus}"]`);
       if (input) {
         input.focus();
-        input.setSelectionRange?.(input.value.length, input.value.length);
+        const start =
+          typeof state.importFocusStart === "number" ? state.importFocusStart : input.value.length;
+        const end = typeof state.importFocusEnd === "number" ? state.importFocusEnd : input.value.length;
+        input.setSelectionRange?.(start, end);
       }
     }
   };
@@ -1478,6 +1575,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     importHeaders: [],
     importPreview: null,
     importProgress: 0,
+    csvGroups: [],
     addNew: true,
     updateChanged: true,
     removeMissing: false,
@@ -1489,9 +1587,14 @@ const loadWeekAvailability = async (service, weekStart) => {
     apartmentField: "",
     houseRegex: "",
     apartmentRegex: "",
+    apartmentRegexOpen: false,
+    houseRegexOpen: false,
     groupSeparator: "|",
     adminGroups: [],
     adminSelectorOpen: false,
+    importFocus: "",
+    importFocusStart: null,
+    importFocusEnd: null,
     importRules: null,
   };
   const setupToken = routePath.split("/")[2] || "";
@@ -1542,10 +1645,16 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   const buildImportRules = (state) => ({
     identity_field: state.identityField || state.importRules?.identity_field || "OrgGrupp",
-    groups_field: state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
+    groups_field:
+      state.groupsField === "-"
+        ? ""
+        : state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
     rfid_field: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
     active_field: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
-    house_field: state.houseField || state.importRules?.house_field || "Placering",
+    house_field:
+      state.houseField === "-"
+        ? ""
+        : state.houseField || state.importRules?.house_field || "Placering",
     apartment_field: state.apartmentField || state.importRules?.apartment_field || "Lägenhet",
     house_regex: state.houseRegex || state.importRules?.house_regex || "",
     apartment_regex: state.apartmentRegex || state.importRules?.apartment_regex || "",
@@ -2046,6 +2155,8 @@ const loadWeekAvailability = async (service, weekStart) => {
       form: {
         fileName: setupState.importFileName,
         rowCount: setupState.importRowCount || 17,
+        apartmentRegexOpen: setupState.apartmentRegexOpen,
+        houseRegexOpen: setupState.houseRegexOpen,
         houseRegex: setupState.houseRegex || "",
         apartmentRegex: setupState.apartmentRegex || "",
         groupSeparator: setupState.groupSeparator || "|",
@@ -2055,11 +2166,12 @@ const loadWeekAvailability = async (service, weekStart) => {
         progress: setupState.importProgress || 0,
         houseField: setupState.houseField || "Placering",
         apartmentField: setupState.apartmentField || "Lägenhet",
+        groupsField: setupState.groupsField || "Behörighetsgrupp",
         adminGroups: setupState.adminGroups || [],
         adminSelectorOpen: setupState.adminSelectorOpen || false,
-        adminGroupOptions: setupState.importRules?.admin_groups
-          ? setupState.importRules.admin_groups.split("|").filter(Boolean)
-          : ["Styrelse", "Förvaltare", "Jour"],
+        adminGroupOptions: Array.from(
+          new Set([...(setupState.accessGroups || []), ...(setupState.csvGroups || [])].filter(Boolean))
+        ),
         effectHouse: buildRegexEffect(houseSamples, setupState.houseRegex || ""),
         effectApartment: buildRegexEffect(apartmentSamples, setupState.apartmentRegex || ""),
         effectGroups: [
@@ -2084,9 +2196,9 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onClose: () => setSetupState({ importOpen: false, importStep: 1 }),
       onNext: async () => {
-        const next = Math.min(setupState.importStep + 1, 5);
+        const next = Math.min(setupState.importStep + 1, 7);
         setSetupState({ importStep: next });
-        if (next === 5 && setupState.importCsvText) {
+        if (next === 7 && setupState.importCsvText) {
           const rules = buildImportRules(setupState);
           const preview = await previewImport(setupState.importCsvText, rules);
           setSetupState({
@@ -2117,7 +2229,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onPrev: () => setSetupState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        setSetupState({ importStep: 6, importProgress: 35 });
+        setSetupState({ importStep: 7, importProgress: 35 });
         const rules = buildImportRules(setupState);
         await saveImportRules(rules);
         await applyImport(setupState.importCsvText, rules, {
@@ -2136,7 +2248,12 @@ const loadWeekAvailability = async (service, weekStart) => {
             case "file":
               if (value) {
                 value.text().then((text) => {
-                  setSetupState({ importCsvText: text, importRowCount: text.split("\n").length });
+                  const csvGroups = extractCsvGroups(text, prev.groupsField, prev.groupSeparator);
+                  setSetupState({
+                    importCsvText: text,
+                    importRowCount: text.split("\n").length,
+                    csvGroups,
+                  });
                   const rules = buildImportRules(setupState);
                   previewImport(text, rules).then((preview) =>
                     setSetupState({
@@ -2167,17 +2284,27 @@ const loadWeekAvailability = async (service, weekStart) => {
                 });
               }
               return {};
+            case "groupsField": {
+              const csvGroups = extractCsvGroups(prev.importCsvText, value, prev.groupSeparator);
+              return { groupsField: value, csvGroups };
+            }
+            case "groupSeparator": {
+              const csvGroups = extractCsvGroups(prev.importCsvText, prev.groupsField, value);
+              return { groupSeparator: value, csvGroups };
+            }
+            case "importFocus":
+            case "importFocusStart":
+            case "importFocusEnd":
+            case "apartmentRegexOpen":
+            case "houseRegexOpen":
             case "houseRegex":
             case "apartmentRegex":
-            case "groupSeparator":
             case "addNew":
             case "updateChanged":
             case "removeMissing":
             case "adminGroups":
             case "adminSelectorOpen":
-            case "importFocus":
             case "identityField":
-            case "groupsField":
             case "rfidField":
             case "activeField":
             case "houseField":
@@ -2193,6 +2320,18 @@ const loadWeekAvailability = async (service, weekStart) => {
     if (bookingModal) app.append(bookingModal);
     if (editUserModal) app.append(editUserModal);
     if (importModal) app.append(importModal);
+
+    if (setupState.importOpen && setupState.importFocus) {
+      const input = app.querySelector(`[data-autofocus="${setupState.importFocus}"]`);
+      if (input) {
+        input.focus();
+        const start =
+          typeof setupState.importFocusStart === "number" ? setupState.importFocusStart : input.value.length;
+        const end =
+          typeof setupState.importFocusEnd === "number" ? setupState.importFocusEnd : input.value.length;
+        input.setSelectionRange?.(start, end);
+      }
+    }
   };
 
   renderSetup();

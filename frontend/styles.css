@@ -265,7 +265,8 @@ body {
 .import-preview-table {
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: 320px;
 }
 
 .import-preview-row {

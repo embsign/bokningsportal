@@ -1282,8 +1282,10 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
 
   const previewRows = rows.map((row: Record<string, string>) => {
     const identity = row[rules.identity_field] || "";
-    const apartmentId = applyRegex(identity, rules.apartment_regex) || identity;
-    const house = applyRegex(identity, rules.house_regex) || "";
+    const apartmentSource = rules.apartment_field ? row[rules.apartment_field] || "" : identity;
+    const apartmentId = applyRegex(apartmentSource, rules.apartment_regex) || apartmentSource || identity;
+    const houseSource = rules.house_field ? row[rules.house_field] || "" : "";
+    const house = houseSource ? applyRegex(houseSource, rules.house_regex) || houseSource : "";
     const groupsRaw = rules.groups_field ? row[rules.groups_field] || "" : "";
     const groups = groupsRaw ? groupsRaw.split(groupSeparator).map((g) => g.trim()).filter(Boolean) : [];
     const admin = groups.some((g) => adminGroups.includes(g));
