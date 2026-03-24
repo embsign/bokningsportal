@@ -1214,6 +1214,8 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body) return errorResponse(400, "invalid_payload");
+  const asText = (value: unknown, fallback = "") =>
+    value === undefined || value === null ? fallback : String(value);
   await env.DB.prepare(
     `INSERT INTO user_import_rules (
       tenant_id, identity_field, groups_field, rfid_field, active_field,
@@ -1233,16 +1235,16 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
       updated_at = CURRENT_TIMESTAMP`
   ).bind(
     auth.tenant.id,
-    body.identity_field,
-    body.groups_field,
-    body.rfid_field,
-    body.active_field,
-    body.house_field,
-    body.apartment_field,
-    body.house_regex,
-    body.apartment_regex,
-    body.group_separator,
-    body.admin_groups
+    asText(body.identity_field, "OrgGrupp"),
+    asText(body.groups_field, ""),
+    asText(body.rfid_field, ""),
+    asText(body.active_field, ""),
+    asText(body.house_field, ""),
+    asText(body.apartment_field, ""),
+    asText(body.house_regex, ""),
+    asText(body.apartment_regex, ""),
+    asText(body.group_separator, "|"),
+    asText(body.admin_groups, "")
   ).run();
   return json({ status: "ok" });
 };
