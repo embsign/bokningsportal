@@ -1247,11 +1247,26 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
   return json({ status: "ok" });
 };
 
+const detectCsvDelimiter = (line: string) => {
+  const candidates = [",", ";", "\t"];
+  let best = ",";
+  let bestCount = -1;
+  for (const delimiter of candidates) {
+    const count = line.split(delimiter).length - 1;
+    if (count > bestCount) {
+      best = delimiter;
+      bestCount = count;
+    }
+  }
+  return best;
+};
+
 const parseCsv = (csvText: string) => {
   const lines = csvText.split(/\r?\n/).filter(Boolean);
-  const headers = lines[0]?.split(",").map((h) => h.trim()) || [];
+  const delimiter = detectCsvDelimiter(lines[0] || "");
+  const headers = lines[0]?.split(delimiter).map((h) => h.trim()) || [];
   const rows = lines.slice(1).map((line) => {
-    const cols = line.split(",").map((c) => c.trim());
+    const cols = line.split(delimiter).map((c) => c.trim());
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
       row[header] = cols[index] || "";

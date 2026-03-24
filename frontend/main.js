@@ -62,11 +62,26 @@ const logout = () => {
   window.location.assign("/");
 };
 
-const parseCsvRows = (csvText) => {
+const detectCsvDelimiter = (line) => {
+  const candidates = [",", ";", "\t"];
+  let best = ",";
+  let bestCount = -1;
+  candidates.forEach((delimiter) => {
+    const count = line.split(delimiter).length - 1;
+    if (count > bestCount) {
+      best = delimiter;
+      bestCount = count;
+    }
+  });
+  return best;
+};
+
+const parseCsvRows = (csvText, delimiterOverride) => {
   const rows = [];
   let row = [];
   let value = "";
   let inQuotes = false;
+  const delimiter = delimiterOverride || detectCsvDelimiter(csvText.split(/\r?\n/)[0] || "");
   for (let i = 0; i < csvText.length; i += 1) {
     const char = csvText[i];
     if (char === '"') {
@@ -78,7 +93,7 @@ const parseCsvRows = (csvText) => {
       }
       continue;
     }
-    if (char === "," && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       row.push(value);
       value = "";
       continue;
@@ -177,7 +192,8 @@ const readCsvFile = async (file) => {
   let text = decode("utf-8");
   let { headers } = parseCsvRows(text);
   let encoding = "utf-8";
-  if (headers.length <= 1) {
+  const hasReplacementChar = text.includes("\uFFFD");
+  if (headers.length <= 1 || hasReplacementChar) {
     text = decode("iso-8859-1");
     headers = parseCsvRows(text).headers;
     encoding = "iso-8859-1";
