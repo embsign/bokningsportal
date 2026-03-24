@@ -617,6 +617,7 @@ if (routePath.startsWith("/admin/")) {
                         ? "preview-removed"
                         : "preview-unchanged",
                 admin: row.admin,
+                rfidStatus: row.rfid_status || "Oförändrad",
               })),
             },
             importHeaders: preview.headers,
@@ -686,6 +687,7 @@ if (routePath.startsWith("/admin/")) {
                                   ? "preview-removed"
                                   : "preview-unchanged",
                           admin: row.admin,
+                          rfidStatus: row.rfid_status || "Oförändrad",
                         })),
                       },
                     })
@@ -2357,6 +2359,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         ? "preview-removed"
                         : "preview-unchanged",
                 admin: row.admin,
+                rfidStatus: row.rfid_status || "Oförändrad",
               })),
             },
             importHeaders: preview.headers,
@@ -2425,6 +2428,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                                   ? "preview-removed"
                                   : "preview-unchanged",
                           admin: row.admin,
+                          rfidStatus: row.rfid_status || "Oförändrad",
                         })),
                       },
                     })

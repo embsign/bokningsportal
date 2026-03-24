@@ -1318,6 +1318,11 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
   const { headers, rows } = parseCsv(csvText);
   const users = await db.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(tenantId).all();
   const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
+  const rfidRows = await db
+    .prepare("SELECT user_id, uid FROM rfid_tags WHERE tenant_id = ? AND is_active = 1")
+    .bind(tenantId)
+    .all();
+  const rfidByUserId = new Map((rfidRows.results || []).map((row: any) => [row.user_id, row.uid]));
   const adminGroups = (rules.admin_groups || "").split("|").filter(Boolean);
   const groupSeparator = rules.group_separator || "|";
 
@@ -1339,16 +1344,49 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
     const activeRaw = rules.active_field ? row[rules.active_field] || "" : "";
     const active = rules.active_field ? parseActiveValue(activeRaw) : true;
     if (!apartmentId && !admin) {
-      return { identity, apartment_id: "", house, admin: false, active, groups, rfid, status: "Ignorerad" };
+      return {
+        identity,
+        apartment_id: "",
+        house,
+        admin: false,
+        active,
+        groups,
+        rfid,
+        rfid_status: rfid ? "Ignoreras" : "Oförändrad",
+        status: "Ignorerad",
+      };
     }
     const resolvedApartmentId = apartmentId || deriveAdminApartmentId(identity);
     const existing = usersByApartment.get(resolvedApartmentId);
+    const currentRfid = existing ? String(rfidByUserId.get(existing.id) || "") : "";
+    const nextRfid = rfid || "";
+    const rfidStatus = !existing
+      ? nextRfid
+        ? "Läggs till"
+        : "Oförändrad"
+      : currentRfid && !nextRfid
+        ? "Tas bort"
+        : !currentRfid && nextRfid
+          ? "Läggs till"
+          : currentRfid !== nextRfid
+            ? "Byts ut"
+            : "Oförändrad";
     const status = existing
       ? existing.house === house && Boolean(existing.is_admin) === admin && Boolean(existing.is_active) === active
         ? "Oförändrad"
         : "Uppdateras"
       : "Ny";
-    return { identity, apartment_id: resolvedApartmentId, house, admin, active, groups, rfid, status };
+    return {
+      identity,
+      apartment_id: resolvedApartmentId,
+      house,
+      admin,
+      active,
+      groups,
+      rfid,
+      rfid_status: rfidStatus,
+      status,
+    };
   });
 
   const handledRows = previewRows.filter((row) => row.status !== "Ignorerad");

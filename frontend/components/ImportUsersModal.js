@@ -552,6 +552,7 @@ export const ImportUsersModal = ({
                   createElement("span", { text: "Lägenhets ID" }),
                   createElement("span", { text: "Hus/Trapphus" }),
                   createElement("span", { text: "Admin" }),
+                  createElement("span", { text: "RFID" }),
                   createElement("span", { text: "Status" }),
                 ],
               }),
@@ -563,6 +564,7 @@ export const ImportUsersModal = ({
                     createElement("span", { text: row.apartmentId }),
                     createElement("span", { text: row.house }),
                     createElement("span", { text: row.admin ? "Ja" : "Nej" }),
+                    createElement("span", { text: row.rfidStatus || "Oförändrad" }),
                     createElement("span", { text: row.status }),
                   ],
                 })
