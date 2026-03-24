@@ -187,7 +187,10 @@ const getAppConfig = async (db: D1Database, key: string) =>
 
 const sendResendEmail = async (env: Env, to: string, subject: string, html: string) => {
   if (!env.RESEND_API_KEY || !env.MAIL_FROM) {
-    return { ok: false, error: "missing_email_config" };
+    const missing: string[] = [];
+    if (!env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+    if (!env.MAIL_FROM) missing.push("MAIL_FROM");
+    return { ok: false, error: "missing_email_config", missing };
   }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -307,7 +310,11 @@ const handleBrfRegister = async (request: Request, env: Env) => {
     `<p>Hej!</p><p>Klicka på länken för att slutföra setup:</p><p><a href="${setupUrl}">${setupUrl}</a></p>`
   );
   if (!mailResult.ok) {
-    return errorResponse(502, mailResult.error);
+    const detail =
+      mailResult.error === "missing_email_config" && (mailResult as any).missing
+        ? `missing_email_config:${(mailResult as any).missing.join(",")}`
+        : mailResult.error || "resend_failed";
+    return errorResponse(502, detail);
   }
 
   return json({ setup_url: setupUrl });
@@ -1202,6 +1209,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
   if (request.method === "POST" && path === "/api/brf/register") return handleBrfRegister(request, env);
   if (request.method === "POST" && path === "/api/brf/setup/verify") return handleBrfSetupVerify(request, env);
+  if (request.method === "GET" && path === "/api/debug/email-config") return handleDebugEmailConfig(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
 
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
