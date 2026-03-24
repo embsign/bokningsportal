@@ -18,6 +18,7 @@ const json = (data: unknown, init: ResponseInit = {}) => {
 };
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
+const BUILD_MARKER = "import-debug-2026-03-09-2";
 
 const addDays = (date: Date, days: number) => {
   const next = new Date(date);
@@ -1474,6 +1475,10 @@ const handleReportCsv = async (request: Request, env: Env, url: URL) => {
 export const router = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");
+
+  if (request.method === "GET" && path === "/api/debug/build") {
+    return json({ build: BUILD_MARKER, path });
+  }
 
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
   if (request.method === "POST" && path === "/api/brf/register") return handleBrfRegister(request, env);
