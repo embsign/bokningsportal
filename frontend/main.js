@@ -589,9 +589,9 @@ if (routePath.startsWith("/admin/")) {
       },
       onClose: () => adminStore.setState({ importOpen: false, importStep: 1 }),
       onNext: async () => {
-        const nextStep = Math.min(state.importStep + 1, 7);
+        const nextStep = Math.min(state.importStep + 1, 8);
         adminStore.setState({ importStep: nextStep });
-        if (nextStep === 7 && state.importCsvText) {
+        if (nextStep === 8 && state.importCsvText) {
           const rules = buildImportRules(adminStore.getState());
           const preview = await previewImport(state.importCsvText, rules);
           adminStore.setState({
@@ -626,7 +626,7 @@ if (routePath.startsWith("/admin/")) {
       onPrev: () =>
         adminStore.setState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        adminStore.setState({ importStep: 7, importProgress: 35 });
+        adminStore.setState({ importStep: 8, importProgress: 35 });
         const rules = buildImportRules(adminStore.getState());
         await saveImportRules(rules);
         await applyImport(state.importCsvText, rules, {
@@ -814,7 +814,7 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
-    if (state.importStep === 7 && (state.importProgress || 0) < 100) {
+    if (state.importStep === 8 && (state.importProgress || 0) < 100) {
       setTimeout(() => {
         adminStore.setState((prev) => ({
           importProgress: Math.min((prev.importProgress || 0) + 15, 100),
@@ -2316,9 +2316,9 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onClose: () => setSetupState({ importOpen: false, importStep: 1 }),
       onNext: async () => {
-        const next = Math.min(setupState.importStep + 1, 7);
+        const next = Math.min(setupState.importStep + 1, 8);
         setSetupState({ importStep: next });
-        if (next === 7 && setupState.importCsvText) {
+        if (next === 8 && setupState.importCsvText) {
           const rules = buildImportRules(setupState);
           const preview = await previewImport(setupState.importCsvText, rules);
           setSetupState({
@@ -2352,7 +2352,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onPrev: () => setSetupState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        setSetupState({ importStep: 7, importProgress: 35 });
+        setSetupState({ importStep: 8, importProgress: 35 });
         const rules = buildImportRules(setupState);
         await saveImportRules(rules);
         await applyImport(setupState.importCsvText, rules, {

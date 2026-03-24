@@ -53,12 +53,12 @@ export const ImportUsersModal = ({
         ? Boolean(mapping.identityField)
         : step === 3
           ? Boolean(form.apartmentField)
-          : step < 7;
+          : step < 8;
 
   const step1 = createElement("div", {
     className: "import-step",
     children: [
-      stepHeader(1, 7),
+      stepHeader(1, 8),
       createElement("div", { className: "modal-title", text: "Välj CSV-fil" }),
       createElement("div", {
         className: "form-field",
@@ -92,7 +92,7 @@ export const ImportUsersModal = ({
   const step2 = createElement("div", {
     className: "import-step",
     children: [
-      stepHeader(2, 7),
+      stepHeader(2, 8),
       createElement("div", { className: "modal-title", text: "Välj namn-kolumn" }),
       createElement("div", {
         className: "admin-form-grid",
@@ -128,7 +128,7 @@ export const ImportUsersModal = ({
   const step3 = createElement("div", {
     className: "import-step",
     children: [
-      stepHeader(3, 7),
+      stepHeader(3, 8),
       createElement("div", { className: "modal-title", text: "Lägenhet" }),
       createElement("div", {
         className: "admin-form-grid",
@@ -201,7 +201,7 @@ export const ImportUsersModal = ({
   const step4 = createElement("div", {
     className: "import-step",
     children: [
-      stepHeader(4, 7),
+      stepHeader(4, 8),
       createElement("div", { className: "modal-title", text: "Hus/Trapphus" }),
       createElement("div", {
         className: "screen-subtitle",
@@ -332,7 +332,7 @@ export const ImportUsersModal = ({
   const step5 = createElement("div", {
     className: "import-step",
     children: [
-      stepHeader(5, 7),
+      stepHeader(5, 8),
       createElement("div", { className: "modal-title", text: "Behörigheter" }),
       createElement("div", {
         className: "screen-subtitle",
@@ -352,22 +352,6 @@ export const ImportUsersModal = ({
                   createElement("option", {
                     text: header === "-" ? "Hoppa över" : header,
                     attrs: { value: header === "-" ? "-" : header, selected: mapping.groupsField === header ? "selected" : null },
-                  })
-                ),
-              }),
-            ],
-          }),
-          createElement("label", {
-            className: "form-field form-row-inline",
-            children: [
-              createElement("div", { className: "form-label form-label-inline", text: "Aktiv-fält" }),
-              createElement("select", {
-                className: "input",
-                onChange: (event) => onChange("activeField", event.target.value),
-                children: ["-", ...mapping.headers].map((header) =>
-                  createElement("option", {
-                    text: header === "-" ? "Hoppa över" : header,
-                    attrs: { value: header, selected: mapping.activeField === header ? "selected" : null },
                   })
                 ),
               }),
@@ -416,7 +400,40 @@ export const ImportUsersModal = ({
   const step6 = createElement("div", {
     className: "import-step",
     children: [
-      stepHeader(6, 7),
+      stepHeader(6, 8),
+      createElement("div", { className: "modal-title", text: "Aktiv status" }),
+      createElement("div", {
+        className: "screen-subtitle",
+        text: "Valfritt – välj kolumn för aktiv/inaktiv eller hoppa över.",
+      }),
+      createElement("div", {
+        className: "admin-form-grid",
+        children: [
+          createElement("label", {
+            className: "form-field form-row-inline",
+            children: [
+              createElement("div", { className: "form-label form-label-inline", text: "Aktiv-fält" }),
+              createElement("select", {
+                className: "input",
+                onChange: (event) => onChange("activeField", event.target.value),
+                children: ["-", ...mapping.headers].map((header) =>
+                  createElement("option", {
+                    text: header === "-" ? "Hoppa över" : header,
+                    attrs: { value: header, selected: mapping.activeField === header ? "selected" : null },
+                  })
+                ),
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const step7 = createElement("div", {
+    className: "import-step",
+    children: [
+      stepHeader(7, 8),
       createElement("div", { className: "modal-title", text: "Adminbehörigheter" }),
       createElement("div", {
         className: "screen-subtitle",
@@ -553,12 +570,12 @@ export const ImportUsersModal = ({
           }),
         ];
 
-  const step7 = createElement("div", {
+  const step8 = createElement("div", {
     className: "import-step",
-    children: [stepHeader(7, 7), ...previewContent],
+    children: [stepHeader(8, 8), ...previewContent],
   });
 
-  const steps = [step1, step2, step3, step4, step5, step6, step7];
+  const steps = [step1, step2, step3, step4, step5, step6, step7, step8];
   const content = steps[step - 1] || step1;
 
   return createElement("div", {
@@ -574,7 +591,7 @@ export const ImportUsersModal = ({
             onNext,
             onImport,
             canNext,
-            showImport: step === 7,
+            showImport: step === 8,
         backLabel: step === 1 ? "Avbryt" : "Tillbaka",
           }),
         ],

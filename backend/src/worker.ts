@@ -50,8 +50,10 @@ export default {
           headers: { "content-type": "application/json; charset=utf-8" },
         });
       return withCors(request, response);
-    } catch {
-      const response = new Response(JSON.stringify({ detail: "internal_error" }), {
+    } catch (error) {
+      const message =
+        error && typeof error === "object" && "message" in error ? String((error as any).message) : "unknown";
+      const response = new Response(JSON.stringify({ detail: `internal_error:${message}` }), {
         status: 500,
         headers: { "content-type": "application/json; charset=utf-8" },
       });

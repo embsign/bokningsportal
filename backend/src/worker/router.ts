@@ -1392,6 +1392,13 @@ const handleImportApply = async (request: Request, env: Env) => {
       await env.DB.prepare(
         "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
       ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0).run();
+      usersByApartment.set(row.apartment_id, {
+        id: userId,
+        apartment_id: row.apartment_id,
+        house: row.house,
+        is_active: row.active ? 1 : 0,
+        is_admin: row.admin ? 1 : 0,
+      });
       added += 1;
     }
     if (existing && row.status === "Uppdateras" && body.actions.update_existing) {
