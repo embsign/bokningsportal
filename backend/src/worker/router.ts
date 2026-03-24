@@ -1300,9 +1300,13 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
     const identity = row[rules.identity_field] || "";
     const apartmentSource = rules.apartment_field ? row[rules.apartment_field] || "" : identity;
     const apartmentBase = apartmentSource || identity;
-    const apartmentId = applyRegex(apartmentBase, rules.apartment_regex) || apartmentBase;
+    const apartmentId = rules.apartment_regex
+      ? applyRegex(apartmentBase, rules.apartment_regex)
+      : apartmentBase;
     const houseSource = rules.house_field ? row[rules.house_field] || "" : "";
-    const house = houseSource ? applyRegex(houseSource, rules.house_regex) || houseSource : "";
+    const house = rules.house_regex
+      ? applyRegex(houseSource, rules.house_regex)
+      : houseSource;
     const groupsRaw = rules.groups_field ? row[rules.groups_field] || "" : "";
     const groups = groupsRaw ? groupsRaw.split(groupSeparator).map((g) => g.trim()).filter(Boolean) : [];
     const admin = groups.some((g) => adminGroups.includes(g));
