@@ -878,7 +878,7 @@ const handleAdminUsers = async (request: Request, env: Env) => {
          u.is_admin,
          u.is_active,
          GROUP_CONCAT(DISTINCT ag.name) AS group_names,
-         COALESCE(MAX(CASE WHEN rt.is_active = 1 THEN rt.uid END), '') AS rfid
+         GROUP_CONCAT(DISTINCT CASE WHEN rt.is_active = 1 THEN rt.uid END) AS rfid_tags
        FROM users u
        LEFT JOIN user_access_groups uag ON uag.user_id = u.id
        LEFT JOIN access_groups ag ON ag.id = uag.group_id
@@ -900,7 +900,13 @@ const handleAdminUsers = async (request: Request, env: Env) => {
           .map((name) => name.trim())
           .filter(Boolean)
       : [],
-    rfid: user.rfid || "",
+    rfid_tags: user.rfid_tags
+      ? String(user.rfid_tags)
+          .split(",")
+          .map((uid) => uid.trim())
+          .filter(Boolean)
+      : [],
+    rfid: user.rfid_tags ? String(user.rfid_tags).split(",").map((uid) => uid.trim()).filter(Boolean)[0] || "" : "",
     is_admin: user.is_admin === 1,
     is_active: user.is_active === 1,
   }));
@@ -933,14 +939,18 @@ const handleAdminUpdateUser = async (request: Request, env: Env, userId: string)
       .run();
   }
 
-  if (body.rfid) {
+  await env.DB.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId).run();
+  const rfidTags: string[] = Array.isArray(body.rfid_tags)
+    ? body.rfid_tags.map((uid: unknown) => String(uid || "").trim()).filter(Boolean)
+    : body.rfid
+      ? [String(body.rfid).trim()]
+      : [];
+  for (const uid of rfidTags) {
     await env.DB.prepare(
       `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
        VALUES (?, ?, ?, 1)
        ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
-    ).bind(body.rfid, auth.tenant.id, userId).run();
-  } else {
-    await env.DB.prepare("DELETE FROM rfid_tags WHERE user_id = ?").bind(userId).run();
+    ).bind(uid, auth.tenant.id, userId).run();
   }
   return json({ id: userId });
 };
@@ -994,12 +1004,17 @@ const handleAdminCreateUser = async (request: Request, env: Env) => {
       .run();
   }
 
-  if (body.rfid) {
+  const rfidTags: string[] = Array.isArray(body.rfid_tags)
+    ? body.rfid_tags.map((uid: unknown) => String(uid || "").trim()).filter(Boolean)
+    : body.rfid
+      ? [String(body.rfid).trim()]
+      : [];
+  for (const uid of rfidTags) {
     await env.DB.prepare(
       `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
        VALUES (?, ?, ?, 1)
        ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
-    ).bind(body.rfid, auth.tenant.id, userId).run();
+    ).bind(uid, auth.tenant.id, userId).run();
   }
 
   return json({ id: userId });
@@ -1450,6 +1465,31 @@ const handleImportApply = async (request: Request, env: Env) => {
   const done = processedRows >= totalRows;
   const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
   const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
+  const userGroupRows = await env.DB
+    .prepare(
+      `SELECT uag.user_id, ag.name
+       FROM user_access_groups uag
+       JOIN access_groups ag ON ag.id = uag.group_id
+       WHERE ag.tenant_id = ?`
+    )
+    .bind(auth.tenant.id)
+    .all();
+  const groupsByUserId = new Map<string, string[]>();
+  for (const row of userGroupRows.results as any[]) {
+    const list = groupsByUserId.get(String(row.user_id)) || [];
+    list.push(String(row.name));
+    groupsByUserId.set(String(row.user_id), list);
+  }
+  const rfidRows = await env.DB
+    .prepare("SELECT user_id, uid FROM rfid_tags WHERE tenant_id = ? AND is_active = 1")
+    .bind(auth.tenant.id)
+    .all();
+  const rfidByUserId = new Map<string, string[]>();
+  for (const row of rfidRows.results as any[]) {
+    const list = rfidByUserId.get(String(row.user_id)) || [];
+    list.push(String(row.uid));
+    rfidByUserId.set(String(row.user_id), list);
+  }
   const groupRows = await env.DB
     .prepare("SELECT id, name FROM access_groups WHERE tenant_id = ?")
     .bind(auth.tenant.id)
@@ -1516,11 +1556,43 @@ const handleImportApply = async (request: Request, env: Env) => {
       ).bind(rfid, auth.tenant.id, userId)
     );
   };
+  const syncUserRfids = async (userId: string, rfids: string[]) => {
+    await pushStatement(env.DB.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId));
+    for (const uid of rfids || []) {
+      if (!uid) continue;
+      await pushStatement(
+        env.DB.prepare(
+          `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
+           VALUES (?, ?, ?, 1)
+           ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+        ).bind(uid, auth.tenant.id, userId)
+      );
+    }
+  };
   let added = 0;
   let updated = 0;
   let removed = 0;
 
+  const mergedByApartment = new Map<
+    string,
+    { apartment_id: string; house: string; admin: boolean; active: boolean; groups: string[]; rfids: string[] }
+  >();
   for (const row of batchRows as any[]) {
+    const key = String(row.apartment_id || "");
+    const prev = mergedByApartment.get(key);
+    const nextGroups = new Set([...(prev?.groups || []), ...(row.groups || [])].filter(Boolean));
+    const nextRfids = new Set([...(prev?.rfids || []), ...(row.rfid ? [row.rfid] : [])].filter(Boolean));
+    mergedByApartment.set(key, {
+      apartment_id: key,
+      house: row.house || prev?.house || "",
+      admin: Boolean(row.admin || prev?.admin),
+      active: typeof row.active === "boolean" ? row.active : prev?.active ?? true,
+      groups: Array.from(nextGroups),
+      rfids: Array.from(nextRfids),
+    });
+  }
+
+  for (const row of mergedByApartment.values()) {
     const existing = usersByApartment.get(row.apartment_id);
     if (!existing && body.actions.add_new) {
       const userId = `user-${crypto.randomUUID()}`;
@@ -1530,7 +1602,7 @@ const handleImportApply = async (request: Request, env: Env) => {
         ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0)
       );
       await syncUserGroups(userId, row.groups || []);
-      await syncUserRfid(userId, row.rfid || "");
+      await syncUserRfids(userId, row.rfids || []);
       usersByApartment.set(row.apartment_id, {
         id: userId,
         apartment_id: row.apartment_id,
@@ -1540,14 +1612,29 @@ const handleImportApply = async (request: Request, env: Env) => {
       });
       added += 1;
     }
-    if (existing && row.status === "Uppdateras" && body.actions.update_existing) {
+    if (existing && body.actions.update_existing) {
+      const currentGroups = (groupsByUserId.get(existing.id) || []).slice().sort();
+      const nextGroups = (row.groups || []).slice().sort();
+      const groupsChanged = currentGroups.join("|") !== nextGroups.join("|");
+      const currentRfids = (rfidByUserId.get(existing.id) || []).slice().sort();
+      const nextRfids = (row.rfids || []).slice().sort();
+      const rfidsChanged = currentRfids.join("|") !== nextRfids.join("|");
+      const shouldUpdate =
+        existing.house !== row.house ||
+        Boolean(existing.is_admin) !== row.admin ||
+        Boolean(existing.is_active) !== row.active ||
+        groupsChanged ||
+        rfidsChanged;
+      if (!shouldUpdate) {
+        continue;
+      }
       await pushStatement(
         env.DB.prepare(
           "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id)
       );
       await syncUserGroups(existing.id, row.groups || []);
-      await syncUserRfid(existing.id, row.rfid || "");
+      await syncUserRfids(existing.id, row.rfids || []);
       updated += 1;
     }
   }

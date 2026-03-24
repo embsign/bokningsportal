@@ -288,6 +288,8 @@ if (routePath.startsWith("/admin/")) {
       apartmentId: "",
       house: "",
       groups: [],
+      rfidTags: [],
+      rfidDraft: "",
       rfid: "",
       active: true,
       admin: false,
@@ -629,7 +631,7 @@ if (routePath.startsWith("/admin/")) {
       onPrev: () =>
         adminStore.setState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        adminStore.setState({ importStep: 8, importProgress: 15, isImporting: true });
+        adminStore.setState({ importStep: 8, importProgress: 0, isImporting: true });
         const rules = buildImportRules(adminStore.getState());
         try {
           await saveImportRules(rules);
@@ -762,6 +764,8 @@ if (routePath.startsWith("/admin/")) {
             apartmentId: user.apartmentId,
             house: user.house,
             groups: user.groups || [],
+            rfidTags: user.rfidTags || (user.rfid ? [user.rfid] : []),
+            rfidDraft: "",
             rfid: user.rfid || "",
             active: user.active !== false,
             admin: user.admin === true,
@@ -1659,6 +1663,8 @@ const loadWeekAvailability = async (service, weekStart) => {
       apartmentId: "",
       house: "",
       groups: [],
+      rfidTags: [],
+      rfidDraft: "",
       rfid: "",
       active: true,
       admin: false,
@@ -1866,6 +1872,8 @@ const loadWeekAvailability = async (service, weekStart) => {
             apartmentId: user.apartmentId,
             house: user.house,
             groups: user.groups || [],
+            rfidTags: user.rfidTags || (user.rfid ? [user.rfid] : []),
+            rfidDraft: "",
             rfid: user.rfid || "",
             active: user.active !== false,
             admin: user.admin === true,
@@ -1875,6 +1883,8 @@ const loadWeekAvailability = async (service, weekStart) => {
             apartmentId: "",
             house: "",
             groups: [],
+            rfidTags: [],
+            rfidDraft: "",
             rfid: "",
             active: true,
             admin: false,
@@ -2370,7 +2380,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       onPrev: () => setSetupState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
       onImport: async () => {
-        setSetupState({ importStep: 8, importProgress: 15, isImporting: true });
+        setSetupState({ importStep: 8, importProgress: 0, isImporting: true });
         const rules = buildImportRules(setupState);
         try {
           await saveImportRules(rules);

@@ -145,11 +145,31 @@ export const EditUserModal = ({
                 }),
               }),
               field({
-                label: "RFID-tagg",
-                input: createElement("input", {
-                  className: "input",
-                  attrs: { value: form.rfid || "" },
-                  onInput: (event) => onChange("rfid", event.target.value),
+                label: "RFID-taggar",
+                input: createElement("div", {
+                  className: "selector-row",
+                  children: [
+                    renderSelectedList(form.rfidTags || [], (next) => onChange("rfidTags", next)),
+                    createElement("input", {
+                      className: "input input-sm",
+                      attrs: { value: form.rfidDraft || "", placeholder: "Ny RFID-tag" },
+                      onInput: (event) => onChange("rfidDraft", event.target.value),
+                    }),
+                    createElement("button", {
+                      className: "secondary-button",
+                      text: "Lägg till",
+                      onClick: () => {
+                        const nextTag = (form.rfidDraft || "").trim();
+                        if (!nextTag) return;
+                        if ((form.rfidTags || []).includes(nextTag)) {
+                          onChange("rfidDraft", "");
+                          return;
+                        }
+                        onChange("rfidTags", [...(form.rfidTags || []), nextTag]);
+                        onChange("rfidDraft", "");
+                      },
+                    }),
+                  ],
                 }),
               }),
               field({
