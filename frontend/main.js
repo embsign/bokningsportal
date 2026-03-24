@@ -14,6 +14,7 @@ import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { getSession } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
+import { registerBrf, verifyBrfSetup } from "./api/brf.js";
 import { getServices } from "./api/services.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
 import {
@@ -1389,7 +1390,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   store.subscribe(render);
   render();
 } else if (routePath.startsWith("/setup/")) {
-  const setupState = { step: 1 };
+  const setupState = { step: 1, status: "loading", data: null, error: "" };
   const setupToken = routePath.split("/")[2] || "";
 
   const setSetupState = (next) => {
@@ -1401,6 +1402,16 @@ const loadWeekAvailability = async (service, weekStart) => {
   const nextStep = () => setSetupState((prev) => ({ step: Math.min((prev.step || 1) + 1, 5) }));
   const prevStep = () => setSetupState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
 
+  const loadSetupData = async () => {
+    try {
+      const data = await verifyBrfSetup(setupToken);
+      setSetupState({ status: "ready", data, error: "" });
+    } catch (error) {
+      const message = error?.detail || "Länken är ogiltig eller har gått ut.";
+      setSetupState({ status: "error", error: message });
+    }
+  };
+
   const renderSetup = () => {
     clearElement(app);
     const step = setupState.step || 1;
@@ -1409,6 +1420,55 @@ const loadWeekAvailability = async (service, weekStart) => {
       className: "modal-step",
       text: `Steg ${step} av 5`,
     });
+
+    if (setupState.status === "loading") {
+      app.append(
+        createElement("div", {
+          className: "setup-page",
+          children: [
+            createElement("div", {
+              className: "setup-container",
+              children: [
+                createElement("div", {
+                  className: "setup-card card",
+                  children: [
+                    createElement("div", { className: "modal-title", text: "Verifierar länken..." }),
+                    createElement("div", {
+                      className: "screen-subtitle",
+                      text: "Detta kan ta några sekunder.",
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        })
+      );
+      return;
+    }
+
+    if (setupState.status === "error") {
+      app.append(
+        createElement("div", {
+          className: "setup-page",
+          children: [
+            createElement("div", {
+              className: "setup-container",
+              children: [
+                createElement("div", {
+                  className: "setup-card card",
+                  children: [
+                    createElement("div", { className: "modal-title", text: "Länken kunde inte verifieras" }),
+                    createElement("div", { className: "form-error", text: setupState.error }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        })
+      );
+      return;
+    }
 
     const content = (() => {
       switch (step) {
@@ -1508,6 +1568,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   renderSetup();
+  loadSetupData();
 } else {
   const createBrfState = {
     open: false,
@@ -1515,6 +1576,9 @@ const loadWeekAvailability = async (service, weekStart) => {
     name: "",
     email: "",
     errors: {},
+    isSubmitting: false,
+    submitError: "",
+    setupUrl: "",
   };
 
   const setCreateBrfState = (next) => {
@@ -1532,13 +1596,16 @@ const loadWeekAvailability = async (service, weekStart) => {
     }
   };
 
-  const openCreateBrf = () => setCreateBrfState({ open: true, step: 1 });
-  const closeCreateBrf = () => setCreateBrfState({ open: false, step: 1 });
+  const openCreateBrf = () => setCreateBrfState({ open: true, step: 1, submitError: "" });
+  const closeCreateBrf = () => setCreateBrfState({ open: false, step: 1, submitError: "" });
   const nextCreateBrf = () =>
-    setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 8) }));
+    setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 3) }));
   const prevCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
-  const submitCreateBrf = () => {
+  const submitCreateBrf = async () => {
+    if (createBrfState.isSubmitting) {
+      return;
+    }
     const errors = {};
     if (!createBrfState.name?.trim()) {
       errors.name = "Ange föreningens namn.";
@@ -1547,11 +1614,21 @@ const loadWeekAvailability = async (service, weekStart) => {
       errors.email = "Ange en e-postadress.";
     }
     if (Object.keys(errors).length) {
-      setCreateBrfState({ errors });
+      setCreateBrfState({ errors, submitError: "" });
       return;
     }
-    setCreateBrfState({ errors: {} });
-    nextCreateBrf();
+    setCreateBrfState({ errors: {}, submitError: "", isSubmitting: true });
+    try {
+      const response = await registerBrf(createBrfState.name.trim(), createBrfState.email.trim());
+      setCreateBrfState({
+        isSubmitting: false,
+        setupUrl: response?.setup_url || "",
+      });
+      nextCreateBrf();
+    } catch (error) {
+      const message = error?.detail || "Kunde inte skicka mail. Försök igen.";
+      setCreateBrfState({ isSubmitting: false, submitError: message });
+    }
   };
   const finishCreateBrf = () => closeCreateBrf();
 

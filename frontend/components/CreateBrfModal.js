@@ -6,19 +6,21 @@ const stepHeader = (current, total) =>
     text: `Steg ${current} av ${total}`,
   });
 
-const footer = ({ onBack, onNext, nextLabel, backLabel }) =>
+const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting }) =>
   createElement("div", {
     className: "modal-footer",
     children: [
       createElement("button", {
         className: "secondary-button",
         text: backLabel,
-        onClick: onBack,
+        attrs: { disabled: isSubmitting ? "disabled" : null },
+        onClick: isSubmitting ? null : onBack,
       }),
       createElement("button", {
         className: "primary-button",
-        text: nextLabel,
-        onClick: onNext,
+        text: isSubmitting ? "Skickar..." : nextLabel,
+        attrs: { disabled: isSubmitting ? "disabled" : null },
+        onClick: isSubmitting ? null : onNext,
       }),
     ],
   });
@@ -79,6 +81,9 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
             : null,
         ],
       }),
+      form.submitError
+        ? createElement("div", { className: "form-error", text: form.submitError })
+        : null,
       createElement("div", {
         className: "screen-subtitle",
         text: "När du klickar på Registrera skickas ett mejl med en länk för att slutföra setup.",
@@ -118,6 +123,7 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
             onNext: onNextAction,
             nextLabel,
             backLabel,
+            isSubmitting: Boolean(form.isSubmitting),
           }),
         ],
       }),
