@@ -48,6 +48,9 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
             attrs: { value: form.name || "", placeholder: "BRF Exempel" },
             onInput: (event) => onChange("name", event.target.value),
           }),
+          form.errors?.name
+            ? createElement("div", { className: "form-error", text: form.errors.name })
+            : null,
         ],
       }),
       createElement("div", {
@@ -71,6 +74,9 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
             attrs: { value: form.email || "", placeholder: "styrelsen@brf.se", type: "email" },
             onInput: (event) => onChange("email", event.target.value),
           }),
+          form.errors?.email
+            ? createElement("div", { className: "form-error", text: form.errors.email })
+            : null,
         ],
       }),
       createElement("div", {

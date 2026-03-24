@@ -1514,6 +1514,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     step: 1,
     name: "",
     email: "",
+    errors: {},
   };
 
   const setCreateBrfState = (next) => {
@@ -1524,6 +1525,11 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   const updateCreateBrfField = (field, value) => {
     createBrfState[field] = value;
+    if (createBrfState.errors?.[field]) {
+      const nextErrors = { ...createBrfState.errors };
+      delete nextErrors[field];
+      createBrfState.errors = nextErrors;
+    }
   };
 
   const openCreateBrf = () => setCreateBrfState({ open: true, step: 1 });
@@ -1533,14 +1539,18 @@ const loadWeekAvailability = async (service, weekStart) => {
   const prevCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
   const submitCreateBrf = () => {
+    const errors = {};
     if (!createBrfState.name?.trim()) {
-      alert("Ange föreningens namn.");
-      return;
+      errors.name = "Ange föreningens namn.";
     }
     if (!createBrfState.email?.trim()) {
-      alert("Ange en e-postadress.");
+      errors.email = "Ange en e-postadress.";
+    }
+    if (Object.keys(errors).length) {
+      setCreateBrfState({ errors });
       return;
     }
+    setCreateBrfState({ errors: {} });
     nextCreateBrf();
   };
   const finishCreateBrf = () => closeCreateBrf();

@@ -29,17 +29,13 @@ Inga **krävda** miljövariabler just nu.
 Valfria:
 - **PORT**: lyssnande port (default `8787`).
 
-### E-post (SMTP)
+### E-post (Resend)
 
-E-post är inte implementerat i koden ännu, men om du vill förbereda konfigurationen
-för SMTP kan följande variabler användas:
+E-post skickas via Resend (HTTP API) från Workern.
 
-- **SMTP_HOST**: SMTP‑serverns hostname.
-- **SMTP_PORT**: SMTP‑port (t.ex. `587` eller `465`).
-- **SMTP_USER**: användarnamn för SMTP‑auth.
-- **SMTP_PASS**: lösenord/API‑nyckel för SMTP‑auth.
-- **SMTP_SECURE**: `true` för implicit TLS (vanligt vid port `465`), annars `false`.
-- **MAIL_FROM**: avsändaradress (t.ex. `no-reply@embsign.se`).
+- **RESEND_API_KEY**: API‑nyckel för Resend.
+- **MAIL_FROM**: avsändaradress (t.ex. `noreply@embsign.app`).
+
 Mottagare för beställningar är hårdkodad till `info@embsign.se`.
 
 ## Produktion (Pages/Workers)

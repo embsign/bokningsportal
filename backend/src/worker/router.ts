@@ -157,6 +157,57 @@ const parseBearerToken = (value: string | null) => {
   return token.trim() || null;
 };
 
+const base64UrlEncode = (input: string) => {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+const base64UrlDecode = (input: string) => {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+};
+
+const sha1Hex = async (value: string) => {
+  const data = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-1", data);
+  return Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const getAppConfig = async (db: D1Database, key: string) =>
+  (await db.prepare("SELECT value FROM app_config WHERE key = ?").bind(key).first()) as any;
+
+const sendResendEmail = async (env: Env, to: string, subject: string, html: string) => {
+  if (!env.RESEND_API_KEY || !env.MAIL_FROM) {
+    return { ok: false, error: "missing_email_config" };
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: env.MAIL_FROM,
+      to: [to],
+      subject,
+      html,
+    }),
+  });
+  if (!response.ok) {
+    return { ok: false, error: "resend_failed" };
+  }
+  return { ok: true };
+};
+
 const getAuthContext = async (db: D1Database, token: string) =>
   (await db
     .prepare(
@@ -222,6 +273,83 @@ const requireAuth = async (request: Request, env: Env) => {
       is_active: 1,
     },
   };
+};
+
+const handleBrfRegister = async (request: Request, env: Env) => {
+  const body = await getJsonBody(request);
+  const associationName = body?.association_name?.trim();
+  const email = body?.email?.trim();
+  if (!associationName || !email) {
+    return errorResponse(400, "invalid_payload");
+  }
+
+  const saltRow = await getAppConfig(env.DB, "setup_link_salt");
+  if (!saltRow?.value) {
+    return errorResponse(500, "missing_setup_salt");
+  }
+
+  const uuid = crypto.randomUUID();
+  const hash = await sha1Hex(`${associationName}|${email}|${uuid}|${saltRow.value}`);
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      association_name: associationName,
+      email,
+      uuid,
+      sha1: hash,
+    })
+  );
+  const setupUrl = `/setup/${payload}`;
+
+  const mailResult = await sendResendEmail(
+    env,
+    email,
+    "Slutför er bokningssida",
+    `<p>Hej!</p><p>Klicka på länken för att slutföra setup:</p><p><a href="${setupUrl}">${setupUrl}</a></p>`
+  );
+  if (!mailResult.ok) {
+    return errorResponse(502, mailResult.error);
+  }
+
+  return json({ setup_url: setupUrl });
+};
+
+const handleBrfSetupVerify = async (request: Request, env: Env) => {
+  const body = await getJsonBody(request);
+  const payload = body?.payload;
+  if (!payload) {
+    return errorResponse(400, "invalid_payload");
+  }
+
+  let decoded;
+  try {
+    decoded = JSON.parse(base64UrlDecode(payload));
+  } catch {
+    return errorResponse(400, "invalid_payload");
+  }
+
+  const associationName = decoded?.association_name;
+  const email = decoded?.email;
+  const uuid = decoded?.uuid;
+  const sha1 = decoded?.sha1;
+  if (!associationName || !email || !uuid || !sha1) {
+    return errorResponse(400, "invalid_payload");
+  }
+
+  const saltRow = await getAppConfig(env.DB, "setup_link_salt");
+  if (!saltRow?.value) {
+    return errorResponse(500, "missing_setup_salt");
+  }
+
+  const expected = await sha1Hex(`${associationName}|${email}|${uuid}|${saltRow.value}`);
+  if (expected !== sha1) {
+    return errorResponse(401, "invalid_signature");
+  }
+
+  return json({
+    association_name: associationName,
+    email,
+    uuid,
+  });
 };
 
 const requireAdmin = async (request: Request, env: Env) => {
@@ -1072,6 +1200,8 @@ export const router = async (request: Request, env: Env) => {
   const path = url.pathname.replace(/\/+$/, "");
 
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
+  if (request.method === "POST" && path === "/api/brf/register") return handleBrfRegister(request, env);
+  if (request.method === "POST" && path === "/api/brf/setup/verify") return handleBrfSetupVerify(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
 
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);

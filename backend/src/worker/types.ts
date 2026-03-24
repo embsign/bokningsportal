@@ -13,4 +13,6 @@ export interface Env {
   DB: D1Database;
   FORCE_NOW_UTC?: string;
   DEBUG_AVAILABILITY_DELAY_MS?: string;
+  RESEND_API_KEY?: string;
+  MAIL_FROM?: string;
 }
