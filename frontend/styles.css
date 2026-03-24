@@ -162,6 +162,12 @@ body {
   box-shadow: 0 8px 18px rgba(34, 197, 94, 0.2);
 }
 
+.admin-btn-compact {
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  min-height: 28px;
+}
+
 .status-pill {
   padding: 6px 10px;
   border-radius: 999px;

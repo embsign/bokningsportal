@@ -62,13 +62,13 @@ export const UserList = ({
                         text: user.active ? "Aktiv" : "Inaktiv",
                       }),
                       createElement("button", {
-                        className: "secondary-button admin-btn-edit",
+                        className: "secondary-button admin-btn-edit admin-btn-compact",
                         text: primaryLabel || "Redigera",
                         onClick: () => onPrimaryAction(user),
                       }),
                       onDelete
                         ? createElement("button", {
-                            className: "secondary-button admin-btn-delete",
+                            className: "secondary-button admin-btn-delete admin-btn-compact",
                             text: "Ta bort",
                             onClick: () => onDelete(user),
                           })

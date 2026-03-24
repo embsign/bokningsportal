@@ -639,7 +639,7 @@ if (routePath.startsWith("/admin/")) {
           update_existing: state.updateChanged !== false,
           remove_missing: state.removeMissing === true,
         });
-        adminStore.setState({ importProgress: 100 });
+        adminStore.setState({ importProgress: 100, importOpen: false, importStep: 1 });
         await loadAdminData();
       },
       onChange: (field, value) =>
@@ -1966,6 +1966,14 @@ const loadWeekAvailability = async (service, weekStart) => {
     clearElement(app);
     const step = setupState.step || 1;
 
+    if (setupState.importStep === 8 && (setupState.importProgress || 0) < 100) {
+      setTimeout(() => {
+        setSetupState((prev) => ({
+          importProgress: Math.min((prev.importProgress || 0) + 15, 100),
+        }));
+      }, 400);
+    }
+
     const stepHeader = createElement("div", {
       className: "modal-step",
       text: `Steg ${step} av 5`,
@@ -2370,7 +2378,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           update_existing: setupState.updateChanged !== false,
           remove_missing: setupState.removeMissing === true,
         });
-        setSetupState({ importProgress: 100 });
+        setSetupState({ importProgress: 100, importOpen: false, importStep: 1 });
         await loadSetupLists();
       },
       onChange: (field, value) =>
