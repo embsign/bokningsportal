@@ -1211,33 +1211,37 @@ const handleImportRulesGet = async (request: Request, env: Env) => {
 };
 
 const handleImportRulesPut = async (request: Request, env: Env) => {
-  const auth = await requireAdmin(request, env);
-  if ("error" in auth) return auth.error;
-  const body = await getJsonBody(request);
-  if (!body) return errorResponse(400, "invalid_payload");
-  const asText = (value: unknown, fallback = "") =>
-    value === undefined || value === null ? fallback : String(value);
-  const params = [
-    auth.tenant?.id ?? "",
-    asText(body.identity_field, "OrgGrupp"),
-    asText(body.groups_field, ""),
-    asText(body.rfid_field, ""),
-    asText(body.active_field, ""),
-    asText(body.house_field, ""),
-    asText(body.apartment_field, ""),
-    asText(body.house_regex, ""),
-    asText(body.apartment_regex, ""),
-    asText(body.group_separator, "|"),
-    asText(body.admin_groups, ""),
-  ];
-  const undefinedIndex = params.findIndex((value) => value === undefined);
-  if (undefinedIndex !== -1) {
-    return errorResponse(500, `import_rules_put_undefined_param:${undefinedIndex}`);
-  }
-  if (!params[0]) {
-    return errorResponse(500, "import_rules_put_missing_tenant_id");
-  }
+  let stage = "start";
   try {
+    stage = "require_admin";
+    const auth = await requireAdmin(request, env);
+    if ("error" in auth) return auth.error;
+    stage = "read_body";
+    const body = await getJsonBody(request);
+    if (!body) return errorResponse(400, "invalid_payload");
+    const asText = (value: unknown, fallback = "") =>
+      value === undefined || value === null ? fallback : String(value);
+    const params = [
+      auth.tenant?.id ?? "",
+      asText(body.identity_field, "OrgGrupp"),
+      asText(body.groups_field, ""),
+      asText(body.rfid_field, ""),
+      asText(body.active_field, ""),
+      asText(body.house_field, ""),
+      asText(body.apartment_field, ""),
+      asText(body.house_regex, ""),
+      asText(body.apartment_regex, ""),
+      asText(body.group_separator, "|"),
+      asText(body.admin_groups, ""),
+    ];
+    const undefinedIndex = params.findIndex((value) => value === undefined);
+    if (undefinedIndex !== -1) {
+      return errorResponse(500, `import_rules_put_undefined_param:${undefinedIndex}`);
+    }
+    if (!params[0]) {
+      return errorResponse(500, "import_rules_put_missing_tenant_id");
+    }
+    stage = "db_upsert";
     await env.DB.prepare(
       `INSERT INTO user_import_rules (
         tenant_id, identity_field, groups_field, rfid_field, active_field,
@@ -1256,11 +1260,12 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
         admin_groups = excluded.admin_groups,
         updated_at = CURRENT_TIMESTAMP`
     ).bind(...params).run();
+    stage = "done";
+    return json({ status: "ok" });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return errorResponse(500, `import_rules_put_failed:${message}`);
+    return errorResponse(500, `import_rules_put_failed:${stage}:${message}`);
   }
-  return json({ status: "ok" });
 };
 
 const detectCsvDelimiter = (line: string) => {
