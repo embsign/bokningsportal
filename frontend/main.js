@@ -1388,6 +1388,126 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   store.subscribe(render);
   render();
+} else if (routePath.startsWith("/setup/")) {
+  const setupState = { step: 1 };
+  const setupToken = routePath.split("/")[2] || "";
+
+  const setSetupState = (next) => {
+    const update = typeof next === "function" ? next({ ...setupState }) : next;
+    Object.assign(setupState, update);
+    renderSetup();
+  };
+
+  const nextStep = () => setSetupState((prev) => ({ step: Math.min((prev.step || 1) + 1, 5) }));
+  const prevStep = () => setSetupState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
+
+  const renderSetup = () => {
+    clearElement(app);
+    const step = setupState.step || 1;
+
+    const stepHeader = createElement("div", {
+      className: "modal-step",
+      text: `Steg ${step} av 5`,
+    });
+
+    const content = (() => {
+      switch (step) {
+        case 1:
+          return [
+            createElement("div", { className: "modal-title", text: "Slutför setup – steg 1" }),
+            createElement("div", {
+              className: "screen-subtitle",
+              text:
+                "Skapa bokningsobjekt. Förenklad modal med möjlighet att expandera till avancerat läge.",
+            }),
+            createElement("div", {
+              className: "state-panel",
+              text: "UI för bokningsobjekt kopplas in här i nästa iteration.",
+            }),
+          ];
+        case 2:
+          return [
+            createElement("div", { className: "modal-title", text: "Slutför setup – steg 2" }),
+            createElement("div", {
+              className: "screen-subtitle",
+              text: "Lägg till eller importera användare via CSV.",
+            }),
+            createElement("div", {
+              className: "state-panel",
+              text: "Import‑modal från admin kan återanvändas här i nästa iteration.",
+            }),
+          ];
+        case 3:
+          return [
+            createElement("div", { className: "modal-title", text: "Slutför setup – steg 3" }),
+            createElement("div", {
+              className: "screen-subtitle",
+              text: "Beställ bokningstavla (skickas till info@embsign.se).",
+            }),
+            createElement("div", {
+              className: "state-panel",
+              text: "Beställningsflöde och mail kopplas in i nästa iteration.",
+            }),
+          ];
+        case 4:
+          return [
+            createElement("div", { className: "modal-title", text: "Slutför setup – steg 4" }),
+            createElement("div", {
+              className: "screen-subtitle",
+              text: "Information om QR‑koder och möjlighet att ladda ned PDF.",
+            }),
+            createElement("div", {
+              className: "state-panel",
+              text: "PDF‑export för QR‑koder kopplas in senare.",
+            }),
+          ];
+        default:
+          return [
+            createElement("div", { className: "modal-title", text: "Klart" }),
+            createElement("div", {
+              className: "state-panel",
+              text: "Setup är klar. Klicka Öppna admin för att gå vidare.",
+            }),
+          ];
+      }
+    })();
+
+    const footer = createElement("div", {
+      className: "modal-footer",
+      children: [
+        createElement("button", {
+          className: "secondary-button",
+          text: step === 1 ? "Tillbaka" : "Tillbaka",
+          attrs: { disabled: step === 1 ? "disabled" : null },
+          onClick: step === 1 ? null : prevStep,
+        }),
+        createElement("button", {
+          className: "primary-button",
+          text: step === 5 ? "Öppna admin" : "Nästa",
+          onClick: step === 5 ? () => (window.location.href = `/admin/${setupToken}`) : nextStep,
+        }),
+      ],
+    });
+
+    const page = createElement("div", {
+      className: "setup-page",
+      children: [
+        createElement("div", {
+          className: "setup-container",
+          children: [
+            createElement("div", {
+              className: "setup-card card",
+              children: [stepHeader, ...content, footer],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    app.append(page);
+  };
+
+  renderSetup();
 } else {
   const createBrfState = {
     open: false,

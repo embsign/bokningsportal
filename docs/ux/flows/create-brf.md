@@ -27,6 +27,7 @@ Syfte: Låta en förening registrera sig och skapa ett konto för admin.
 
 5. **Slutför setup - Steg 1**
    - Kontoägaren klickar på länken i mailet.
+   - Länken öppnar en ny helskärmssida (inte modal) för resten av flödet.
    - Systemet verifierar sha1hash
    - Skapa föreningen om den inte redan finns i databasen
    - Skapa bokningsobjekt - förenklad modal med möjlighet att expandera med Avancerat. Den förenklade delen gör att man kan välja längd på bokning (heldag, eller minuter för pass) samt vid pass tidigast tid och senaste tid. Avancerat visar hela formuläret med alla inställnigar

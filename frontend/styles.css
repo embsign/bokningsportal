@@ -1423,6 +1423,25 @@ body {
   font-family: "Lato", "Inter", system-ui, -apple-system, sans-serif;
 }
 
+.setup-page {
+  min-height: 100vh;
+  background: #ffffff;
+  color: #111c3a;
+  font-family: "Lato", "Inter", system-ui, -apple-system, sans-serif;
+  padding: 48px 24px;
+}
+
+.setup-container {
+  width: min(920px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.setup-card {
+  padding: 32px;
+  display: grid;
+  gap: 20px;
+}
+
 .landing-container {
   width: min(1120px, calc(100% - 48px));
   margin: 0 auto;
