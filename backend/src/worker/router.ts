@@ -301,7 +301,8 @@ const handleBrfRegister = async (request: Request, env: Env) => {
       sha1: hash,
     })
   );
-  const setupUrl = `/setup/${payload}`;
+  const requestUrl = new URL(request.url);
+  const setupUrl = `${requestUrl.origin}/setup/${payload}`;
 
   const mailResult = await sendResendEmail(
     env,

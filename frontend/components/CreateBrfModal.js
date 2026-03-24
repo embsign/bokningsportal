@@ -95,16 +95,10 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
     className: "create-brf-step",
     children: [
       stepHeader(3, totalSteps),
-      createElement("div", { className: "modal-title", text: "Bekräftelse och mail" }),
-      createElement("div", {
-        className: "state-panel",
-        text:
-          "Ett mail skickas till angiven adress med en länk för att slutföra setup. " +
-          "E‑postskick integreras i nästa iteration.",
-      }),
+      createElement("div", { className: "modal-title", text: "Du har fått ett mail" }),
       createElement("div", {
         className: "screen-subtitle",
-        text: "När du klickar på länken i mailet öppnas en ny sida för resten av flödet.",
+        text: "Du skall nu ha fått ett mail med en länk för att slutföra setup. Om du inte ser mailet i din inkorg - kontrollera din spam-mapp.",
       }),
     ],
   });
