@@ -1216,6 +1216,26 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
   if (!body) return errorResponse(400, "invalid_payload");
   const asText = (value: unknown, fallback = "") =>
     value === undefined || value === null ? fallback : String(value);
+  const params = [
+    auth.tenant?.id ?? "",
+    asText(body.identity_field, "OrgGrupp"),
+    asText(body.groups_field, ""),
+    asText(body.rfid_field, ""),
+    asText(body.active_field, ""),
+    asText(body.house_field, ""),
+    asText(body.apartment_field, ""),
+    asText(body.house_regex, ""),
+    asText(body.apartment_regex, ""),
+    asText(body.group_separator, "|"),
+    asText(body.admin_groups, ""),
+  ];
+  const undefinedIndex = params.findIndex((value) => value === undefined);
+  if (undefinedIndex !== -1) {
+    return errorResponse(500, `import_rules_put_undefined_param:${undefinedIndex}`);
+  }
+  if (!params[0]) {
+    return errorResponse(500, "import_rules_put_missing_tenant_id");
+  }
   try {
     await env.DB.prepare(
       `INSERT INTO user_import_rules (
@@ -1234,19 +1254,7 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
         group_separator = excluded.group_separator,
         admin_groups = excluded.admin_groups,
         updated_at = CURRENT_TIMESTAMP`
-    ).bind(
-      auth.tenant.id,
-      asText(body.identity_field, "OrgGrupp"),
-      asText(body.groups_field, ""),
-      asText(body.rfid_field, ""),
-      asText(body.active_field, ""),
-      asText(body.house_field, ""),
-      asText(body.apartment_field, ""),
-      asText(body.house_regex, ""),
-      asText(body.apartment_regex, ""),
-      asText(body.group_separator, "|"),
-      asText(body.admin_groups, "")
-    ).run();
+    ).bind(...params).run();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return errorResponse(500, `import_rules_put_failed:${message}`);
