@@ -1441,6 +1441,13 @@ const handleImportApply = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
   if (!body?.csv_text || !body?.rules || !body?.actions) return errorResponse(400, "invalid_payload");
   const data = await buildImportPreview(env.DB, auth.tenant.id, body.csv_text, body.rules);
+  const importRows = data.rows.filter((row: any) => row.status !== "Ignorerad" && (row.apartment_id || row.admin));
+  const totalRows = importRows.length;
+  const offset = Math.max(0, Number(body.offset || 0));
+  const limit = Math.max(1, Number(body.limit || 100));
+  const batchRows = importRows.slice(offset, offset + limit);
+  const processedRows = Math.min(offset + batchRows.length, totalRows);
+  const done = processedRows >= totalRows;
   const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
   const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
   const syncUserGroups = async (userId: string, groupNames: string[]) => {
@@ -1467,10 +1474,7 @@ const handleImportApply = async (request: Request, env: Env) => {
   let updated = 0;
   let removed = 0;
 
-  for (const row of data.rows as any[]) {
-    if (row.status === "Ignorerad" || (!row.apartment_id && !row.admin)) {
-      continue;
-    }
+  for (const row of batchRows as any[]) {
     const existing = usersByApartment.get(row.apartment_id);
     if (!existing && body.actions.add_new) {
       const userId = `user-${crypto.randomUUID()}`;
@@ -1498,8 +1502,8 @@ const handleImportApply = async (request: Request, env: Env) => {
     }
   }
 
-  if (body.actions.remove_missing) {
-    const seen = new Set(data.rows.filter((row: any) => row.status !== "Ignorerad").map((row: any) => row.apartment_id));
+  if (body.actions.remove_missing && done) {
+    const seen = new Set(importRows.map((row: any) => row.apartment_id));
     for (const user of users.results) {
       if (!seen.has((user as any).apartment_id)) {
         await env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(user.id).run();
@@ -1508,7 +1512,12 @@ const handleImportApply = async (request: Request, env: Env) => {
     }
   }
 
-  return json({ status: "ok", applied: body.actions, summary: { added, updated, removed } });
+  return json({
+    status: "ok",
+    applied: body.actions,
+    summary: { added, updated, removed },
+    progress: { processed: processedRows, total: totalRows, done },
+  });
 };
 
 const handleReportCsv = async (request: Request, env: Env, url: URL) => {

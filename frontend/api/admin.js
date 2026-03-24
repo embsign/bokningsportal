@@ -166,10 +166,16 @@ export const previewImport = (csvText, rules) =>
     body: JSON.stringify({ csv_text: csvText, rules }),
   });
 
-export const applyImport = (csvText, rules, actions) =>
+export const applyImport = (csvText, rules, actions, options = {}) =>
   apiRequest("/admin/users/import/apply", {
     method: "POST",
-    body: JSON.stringify({ csv_text: csvText, rules, actions }),
+    body: JSON.stringify({
+      csv_text: csvText,
+      rules,
+      actions,
+      offset: options.offset || 0,
+      limit: options.limit || 100,
+    }),
   });
 
 export const downloadReportCsv = async (month, bookingObjectId) =>

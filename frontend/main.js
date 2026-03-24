@@ -637,11 +637,25 @@ if (routePath.startsWith("/admin/")) {
           // Non-blocking: import should still run even if persisting rules fails.
           console.warn("Kunde inte spara importregler, fortsätter med import.", error);
         }
-        await applyImport(state.importCsvText, rules, {
+        const actions = {
           add_new: state.addNew !== false,
           update_existing: state.updateChanged !== false,
           remove_missing: state.removeMissing === true,
-        });
+        };
+        let offset = 0;
+        const limit = 100;
+        while (true) {
+          const result = await applyImport(state.importCsvText, rules, actions, { offset, limit });
+          const processed = result?.progress?.processed || 0;
+          const total = result?.progress?.total || 0;
+          const done = Boolean(result?.progress?.done);
+          const percent = total > 0 ? Math.min(99, Math.round((processed / total) * 100)) : 99;
+          adminStore.setState({ importProgress: percent });
+          if (done) {
+            break;
+          }
+          offset = processed;
+        }
         adminStore.setState({ importProgress: 100, isImporting: false, importOpen: false, importStep: 1 });
         void loadAdminData();
       },
@@ -2380,11 +2394,25 @@ const loadWeekAvailability = async (service, weekStart) => {
           // Non-blocking: import should still run even if persisting rules fails.
           console.warn("Kunde inte spara importregler, fortsätter med import.", error);
         }
-        await applyImport(setupState.importCsvText, rules, {
+        const actions = {
           add_new: setupState.addNew !== false,
           update_existing: setupState.updateChanged !== false,
           remove_missing: setupState.removeMissing === true,
-        });
+        };
+        let offset = 0;
+        const limit = 100;
+        while (true) {
+          const result = await applyImport(setupState.importCsvText, rules, actions, { offset, limit });
+          const processed = result?.progress?.processed || 0;
+          const total = result?.progress?.total || 0;
+          const done = Boolean(result?.progress?.done);
+          const percent = total > 0 ? Math.min(99, Math.round((processed / total) * 100)) : 99;
+          setSetupState({ importProgress: percent });
+          if (done) {
+            break;
+          }
+          offset = processed;
+        }
         setSetupState({ importProgress: 100, isImporting: false, importOpen: false, importStep: 1 });
         void loadSetupLists();
       },
