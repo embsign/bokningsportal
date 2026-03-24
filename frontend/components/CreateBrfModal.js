@@ -6,7 +6,7 @@ const stepHeader = (current, total) =>
     text: `Steg ${current} av ${total}`,
   });
 
-const footer = ({ onBack, onNext, nextLabel, canNext, backLabel }) =>
+const footer = ({ onBack, onNext, nextLabel, backLabel }) =>
   createElement("div", {
     className: "modal-footer",
     children: [
@@ -18,7 +18,6 @@ const footer = ({ onBack, onNext, nextLabel, canNext, backLabel }) =>
       createElement("button", {
         className: "primary-button",
         text: nextLabel,
-        attrs: { disabled: canNext ? null : "disabled" },
         onClick: onNext,
       }),
     ],
@@ -31,10 +30,6 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
 
   const totalSteps = 3;
   const safeStep = Math.min(Math.max(step, 1), totalSteps);
-  const canNext =
-    (safeStep === 1 && Boolean(form.name?.trim())) ||
-    (safeStep === 2 && Boolean(form.email?.trim())) ||
-    safeStep > 2;
   const nextLabel = safeStep === 2 ? "Registrera" : safeStep === totalSteps ? "Stäng" : "Nästa";
   const backLabel = safeStep === 1 ? "Avbryt" : "Tillbaka";
   const onNextAction = safeStep === 2 ? onSubmit : safeStep === totalSteps ? onFinish : onNext;
@@ -116,7 +111,6 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
             onBack: safeStep === 1 ? onClose : onPrev,
             onNext: onNextAction,
             nextLabel,
-            canNext,
             backLabel,
           }),
         ],

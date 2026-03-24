@@ -1522,13 +1522,27 @@ const loadWeekAvailability = async (service, weekStart) => {
     renderLanding();
   };
 
+  const updateCreateBrfField = (field, value) => {
+    createBrfState[field] = value;
+  };
+
   const openCreateBrf = () => setCreateBrfState({ open: true, step: 1 });
   const closeCreateBrf = () => setCreateBrfState({ open: false, step: 1 });
   const nextCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 8) }));
   const prevCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
-  const submitCreateBrf = () => nextCreateBrf();
+  const submitCreateBrf = () => {
+    if (!createBrfState.name?.trim()) {
+      alert("Ange föreningens namn.");
+      return;
+    }
+    if (!createBrfState.email?.trim()) {
+      alert("Ange en e-postadress.");
+      return;
+    }
+    nextCreateBrf();
+  };
   const finishCreateBrf = () => closeCreateBrf();
 
   const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
@@ -1836,7 +1850,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       onPrev: prevCreateBrf,
       onSubmit: submitCreateBrf,
       onFinish: finishCreateBrf,
-      onChange: (field, value) => setCreateBrfState({ [field]: value }),
+      onChange: updateCreateBrfField,
     });
     if (modal) {
       app.append(modal);
