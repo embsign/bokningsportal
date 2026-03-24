@@ -376,7 +376,10 @@ if (routePath.startsWith("/admin/")) {
         ? ""
         : state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
     rfid_field: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
-    active_field: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
+    active_field:
+      state.activeField === "-"
+        ? ""
+        : state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
     house_field:
       state.houseField === "-"
         ? ""
@@ -409,7 +412,7 @@ if (routePath.startsWith("/admin/")) {
         identityField: rules?.identity_field,
         groupsField: rules?.groups_field || "-",
         rfidField: rules?.rfid_field,
-        activeField: rules?.active_field,
+        activeField: rules?.active_field || "-",
         houseField: rules?.house_field,
         apartmentField: rules?.apartment_field,
         houseRegex: rules?.house_regex,
@@ -580,6 +583,7 @@ if (routePath.startsWith("/admin/")) {
         newCount: 0,
         updatedCount: 0,
         unchangedCount: 0,
+        ignoredCount: 0,
         removedCount: 0,
         rows: [],
       },
@@ -595,6 +599,7 @@ if (routePath.startsWith("/admin/")) {
               newCount: preview.summary.new,
               updatedCount: preview.summary.updated,
               unchangedCount: preview.summary.unchanged,
+              ignoredCount: preview.summary.ignored || 0,
               removedCount: preview.summary.removed,
               rows: preview.rows.map((row) => ({
                 identity: row.identity,
@@ -606,6 +611,8 @@ if (routePath.startsWith("/admin/")) {
                     ? "preview-new"
                     : row.status === "Uppdateras"
                       ? "preview-updated"
+                      : row.status === "Ignorerad"
+                        ? "preview-ignored"
                       : row.status === "Tas bort"
                         ? "preview-removed"
                         : "preview-unchanged",
@@ -656,6 +663,7 @@ if (routePath.startsWith("/admin/")) {
                         newCount: preview.summary.new,
                         updatedCount: preview.summary.updated,
                         unchangedCount: preview.summary.unchanged,
+                        ignoredCount: preview.summary.ignored || 0,
                         removedCount: preview.summary.removed,
                         rows: preview.rows.map((row) => ({
                           identity: row.identity,
@@ -667,6 +675,8 @@ if (routePath.startsWith("/admin/")) {
                               ? "preview-new"
                               : row.status === "Uppdateras"
                                 ? "preview-updated"
+                                : row.status === "Ignorerad"
+                                  ? "preview-ignored"
                                 : row.status === "Tas bort"
                                   ? "preview-removed"
                                   : "preview-unchanged",
@@ -1758,7 +1768,10 @@ const loadWeekAvailability = async (service, weekStart) => {
         ? ""
         : state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
     rfid_field: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
-    active_field: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
+    active_field:
+      state.activeField === "-"
+        ? ""
+        : state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
     house_field:
       state.houseField === "-"
         ? ""
@@ -1801,7 +1814,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       identityField: rules?.identity_field,
       groupsField: rules?.groups_field || "-",
       rfidField: rules?.rfid_field,
-      activeField: rules?.active_field,
+      activeField: rules?.active_field || "-",
       houseField: rules?.house_field,
       apartmentField: rules?.apartment_field,
       houseRegex: rules?.house_regex,
@@ -2297,6 +2310,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         newCount: 0,
         updatedCount: 0,
         unchangedCount: 0,
+        ignoredCount: 0,
         removedCount: 0,
         rows: [],
       },
@@ -2312,6 +2326,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               newCount: preview.summary.new,
               updatedCount: preview.summary.updated,
               unchangedCount: preview.summary.unchanged,
+              ignoredCount: preview.summary.ignored || 0,
               removedCount: preview.summary.removed,
               rows: preview.rows.map((row) => ({
                 identity: row.identity,
@@ -2323,6 +2338,8 @@ const loadWeekAvailability = async (service, weekStart) => {
                     ? "preview-new"
                     : row.status === "Uppdateras"
                       ? "preview-updated"
+                      : row.status === "Ignorerad"
+                        ? "preview-ignored"
                       : row.status === "Tas bort"
                         ? "preview-removed"
                         : "preview-unchanged",
@@ -2372,6 +2389,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         newCount: preview.summary.new,
                         updatedCount: preview.summary.updated,
                         unchangedCount: preview.summary.unchanged,
+                        ignoredCount: preview.summary.ignored || 0,
                         removedCount: preview.summary.removed,
                         rows: preview.rows.map((row) => ({
                           identity: row.identity,
@@ -2383,6 +2401,8 @@ const loadWeekAvailability = async (service, weekStart) => {
                               ? "preview-new"
                               : row.status === "Uppdateras"
                                 ? "preview-updated"
+                                : row.status === "Ignorerad"
+                                  ? "preview-ignored"
                                 : row.status === "Tas bort"
                                   ? "preview-removed"
                                   : "preview-unchanged",

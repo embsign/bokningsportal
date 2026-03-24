@@ -299,6 +299,11 @@ body {
   background: rgba(91, 100, 120, 0.04);
 }
 
+.import-preview-row.preview-ignored {
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
+}
+
 .import-preview-row:last-child {
   border-bottom: none;
 }

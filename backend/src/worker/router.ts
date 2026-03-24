@@ -1288,6 +1288,29 @@ const applyRegex = (value: string, regexString?: string) => {
   }
 };
 
+const parseActiveValue = (value: string) => {
+  const normalized = (value || "").trim().toLowerCase();
+  if (!normalized) return true;
+  if (["1", "av", "inaktiv", "inactive", "false", "nej", "no"].includes(normalized)) return false;
+  if (["0", "på", "pa", "aktiv", "active", "true", "ja", "yes"].includes(normalized)) return true;
+  return true;
+};
+
+const deriveAdminApartmentId = (identity: string) => {
+  const base = (identity || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  let hash = 0;
+  for (let i = 0; i < identity.length; i += 1) {
+    hash = (hash * 31 + identity.charCodeAt(i)) >>> 0;
+  }
+  const suffix = hash.toString(16).slice(0, 8);
+  return `admin-${base || "user"}-${suffix}`;
+};
+
 const buildImportPreview = async (db: D1Database, tenantId: string, csvText: string, rules: any) => {
   const { headers, rows } = parseCsv(csvText);
   const users = await db.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(tenantId).all();
@@ -1295,8 +1318,7 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
   const adminGroups = (rules.admin_groups || "").split("|").filter(Boolean);
   const groupSeparator = rules.group_separator || "|";
 
-  const previewRows = rows
-    .map((row: Record<string, string>) => {
+  const previewRows = rows.map((row: Record<string, string>) => {
     const identity = row[rules.identity_field] || "";
     const apartmentSource = rules.apartment_field ? row[rules.apartment_field] || "" : identity;
     const apartmentBase = apartmentSource || identity;
@@ -1310,23 +1332,29 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
     const groupsRaw = rules.groups_field ? row[rules.groups_field] || "" : "";
     const groups = groupsRaw ? groupsRaw.split(groupSeparator).map((g) => g.trim()).filter(Boolean) : [];
     const admin = groups.some((g) => adminGroups.includes(g));
+    const activeRaw = rules.active_field ? row[rules.active_field] || "" : "";
+    const active = rules.active_field ? parseActiveValue(activeRaw) : true;
     if (!apartmentId && !admin) {
-      return null;
+      return { identity, apartment_id: "", house, admin: false, active, status: "Ignorerad" };
     }
-    const existing = apartmentId ? usersByApartment.get(apartmentId) : null;
-    const status = existing ? (existing.house === house ? "Oförändrad" : "Uppdateras") : "Ny";
-    return { identity, apartment_id: apartmentId, house, admin, status };
-  })
-  .filter((row): row is { identity: string; apartment_id: string; house: string; admin: boolean; status: string } =>
-    Boolean(row)
-  );
+    const resolvedApartmentId = apartmentId || deriveAdminApartmentId(identity);
+    const existing = usersByApartment.get(resolvedApartmentId);
+    const status = existing
+      ? existing.house === house && Boolean(existing.is_admin) === admin && Boolean(existing.is_active) === active
+        ? "Oförändrad"
+        : "Uppdateras"
+      : "Ny";
+    return { identity, apartment_id: resolvedApartmentId, house, admin, active, status };
+  });
 
-  const seen = new Set(previewRows.map((row) => row.apartment_id));
+  const handledRows = previewRows.filter((row) => row.status !== "Ignorerad");
+  const seen = new Set(handledRows.map((row) => row.apartment_id).filter(Boolean));
   const removed = users.results.filter((user: any) => !seen.has(user.apartment_id));
   const summary = {
-    new: previewRows.filter((row) => row.status === "Ny").length,
-    updated: previewRows.filter((row) => row.status === "Uppdateras").length,
-    unchanged: previewRows.filter((row) => row.status === "Oförändrad").length,
+    new: handledRows.filter((row) => row.status === "Ny").length,
+    updated: handledRows.filter((row) => row.status === "Uppdateras").length,
+    unchanged: handledRows.filter((row) => row.status === "Oförändrad").length,
+    ignored: previewRows.filter((row) => row.status === "Ignorerad").length,
     removed: removed.length,
   };
 
@@ -1355,27 +1383,27 @@ const handleImportApply = async (request: Request, env: Env) => {
   let removed = 0;
 
   for (const row of data.rows as any[]) {
-    if (!row.apartment_id && !row.admin) {
+    if (row.status === "Ignorerad" || (!row.apartment_id && !row.admin)) {
       continue;
     }
     const existing = usersByApartment.get(row.apartment_id);
     if (!existing && body.actions.add_new) {
       const userId = `user-${crypto.randomUUID()}`;
       await env.DB.prepare(
-        "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, 1, ?)"
-      ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.admin ? 1 : 0).run();
+        "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0).run();
       added += 1;
     }
     if (existing && row.status === "Uppdateras" && body.actions.update_existing) {
       await env.DB.prepare(
-        "UPDATE users SET house = ?, is_admin = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      ).bind(row.house, row.admin ? 1 : 0, existing.id).run();
+        "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id).run();
       updated += 1;
     }
   }
 
   if (body.actions.remove_missing) {
-    const seen = new Set(data.rows.map((row) => row.apartment_id));
+    const seen = new Set(data.rows.filter((row: any) => row.status !== "Ignorerad").map((row: any) => row.apartment_id));
     for (const user of users.results) {
       if (!seen.has((user as any).apartment_id)) {
         await env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(user.id).run();

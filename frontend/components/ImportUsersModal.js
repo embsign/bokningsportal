@@ -357,6 +357,22 @@ export const ImportUsersModal = ({
               }),
             ],
           }),
+          createElement("label", {
+            className: "form-field form-row-inline",
+            children: [
+              createElement("div", { className: "form-label form-label-inline", text: "Aktiv-fält" }),
+              createElement("select", {
+                className: "input",
+                onChange: (event) => onChange("activeField", event.target.value),
+                children: ["-", ...mapping.headers].map((header) =>
+                  createElement("option", {
+                    text: header === "-" ? "Hoppa över" : header,
+                    attrs: { value: header, selected: mapping.activeField === header ? "selected" : null },
+                  })
+                ),
+              }),
+            ],
+          }),
           form.groupsField && form.groupsField !== "-"
             ? createElement("label", {
                 className: "form-field form-row-inline",
@@ -469,6 +485,7 @@ export const ImportUsersModal = ({
               createElement("div", { className: "status-pill active", text: `${preview.newCount} nya` }),
               createElement("div", { className: "status-pill warning", text: `${preview.updatedCount} uppdateras` }),
               createElement("div", { className: "status-pill inactive", text: `${preview.removedCount} tas bort` }),
+              createElement("div", { className: "status-pill", text: `${preview.ignoredCount || 0} ignorerade` }),
               createElement("div", { className: "status-pill", text: `${preview.unchangedCount} oförändrade` }),
             ],
           }),
