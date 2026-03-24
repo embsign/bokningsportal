@@ -15,4 +15,5 @@ export interface Env {
   DEBUG_AVAILABILITY_DELAY_MS?: string;
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
+  FRONTEND_BASE_URL?: string;
 }

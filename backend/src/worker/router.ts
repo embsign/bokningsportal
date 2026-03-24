@@ -282,6 +282,7 @@ const handleBrfRegister = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
   const associationName = body?.association_name?.trim();
   const email = body?.email?.trim();
+  const frontendBaseUrl = body?.frontend_base_url?.trim();
   if (!associationName || !email) {
     return errorResponse(400, "invalid_payload");
   }
@@ -302,7 +303,15 @@ const handleBrfRegister = async (request: Request, env: Env) => {
     })
   );
   const requestUrl = new URL(request.url);
-  const setupUrl = `${requestUrl.origin}/setup/${payload}`;
+  const baseUrlCandidate = frontendBaseUrl || env.FRONTEND_BASE_URL || requestUrl.origin;
+  let setupBaseUrl: string;
+  try {
+    const parsed = new URL(baseUrlCandidate);
+    setupBaseUrl = parsed.origin;
+  } catch {
+    setupBaseUrl = requestUrl.origin;
+  }
+  const setupUrl = `${setupBaseUrl.replace(/\/$/, "")}/setup/${payload}`;
 
   const mailResult = await sendResendEmail(
     env,

@@ -35,6 +35,7 @@ E-post skickas via Resend (HTTP API) från Workern.
 
 - **RESEND_API_KEY**: API‑nyckel för Resend.
 - **MAIL_FROM**: avsändaradress (t.ex. `noreply@embsign.app`).
+- **FRONTEND_BASE_URL**: valfri fallback om `frontend_base_url` inte skickas från klienten.
 
 Mottagare för beställningar är hårdkodad till `info@embsign.se`.
 
