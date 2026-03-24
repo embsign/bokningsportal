@@ -1216,36 +1216,41 @@ const handleImportRulesPut = async (request: Request, env: Env) => {
   if (!body) return errorResponse(400, "invalid_payload");
   const asText = (value: unknown, fallback = "") =>
     value === undefined || value === null ? fallback : String(value);
-  await env.DB.prepare(
-    `INSERT INTO user_import_rules (
-      tenant_id, identity_field, groups_field, rfid_field, active_field,
-      house_field, apartment_field, house_regex, apartment_regex, group_separator, admin_groups
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(tenant_id) DO UPDATE SET
-      identity_field = excluded.identity_field,
-      groups_field = excluded.groups_field,
-      rfid_field = excluded.rfid_field,
-      active_field = excluded.active_field,
-      house_field = excluded.house_field,
-      apartment_field = excluded.apartment_field,
-      house_regex = excluded.house_regex,
-      apartment_regex = excluded.apartment_regex,
-      group_separator = excluded.group_separator,
-      admin_groups = excluded.admin_groups,
-      updated_at = CURRENT_TIMESTAMP`
-  ).bind(
-    auth.tenant.id,
-    asText(body.identity_field, "OrgGrupp"),
-    asText(body.groups_field, ""),
-    asText(body.rfid_field, ""),
-    asText(body.active_field, ""),
-    asText(body.house_field, ""),
-    asText(body.apartment_field, ""),
-    asText(body.house_regex, ""),
-    asText(body.apartment_regex, ""),
-    asText(body.group_separator, "|"),
-    asText(body.admin_groups, "")
-  ).run();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO user_import_rules (
+        tenant_id, identity_field, groups_field, rfid_field, active_field,
+        house_field, apartment_field, house_regex, apartment_regex, group_separator, admin_groups
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(tenant_id) DO UPDATE SET
+        identity_field = excluded.identity_field,
+        groups_field = excluded.groups_field,
+        rfid_field = excluded.rfid_field,
+        active_field = excluded.active_field,
+        house_field = excluded.house_field,
+        apartment_field = excluded.apartment_field,
+        house_regex = excluded.house_regex,
+        apartment_regex = excluded.apartment_regex,
+        group_separator = excluded.group_separator,
+        admin_groups = excluded.admin_groups,
+        updated_at = CURRENT_TIMESTAMP`
+    ).bind(
+      auth.tenant.id,
+      asText(body.identity_field, "OrgGrupp"),
+      asText(body.groups_field, ""),
+      asText(body.rfid_field, ""),
+      asText(body.active_field, ""),
+      asText(body.house_field, ""),
+      asText(body.apartment_field, ""),
+      asText(body.house_regex, ""),
+      asText(body.apartment_regex, ""),
+      asText(body.group_separator, "|"),
+      asText(body.admin_groups, "")
+    ).run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResponse(500, `import_rules_put_failed:${message}`);
+  }
   return json({ status: "ok" });
 };
 
@@ -1368,8 +1373,13 @@ const handleImportPreview = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body?.csv_text || !body?.rules) return errorResponse(400, "invalid_payload");
-  const preview = await buildImportPreview(env.DB, auth.tenant.id, body.csv_text, body.rules);
-  return json(preview);
+  try {
+    const preview = await buildImportPreview(env.DB, auth.tenant.id, body.csv_text, body.rules);
+    return json(preview);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResponse(500, `import_preview_failed:${message}`);
+  }
 };
 
 const handleImportApply = async (request: Request, env: Env) => {
@@ -1377,51 +1387,56 @@ const handleImportApply = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body?.csv_text || !body?.rules || !body?.actions) return errorResponse(400, "invalid_payload");
-  const data = await buildImportPreview(env.DB, auth.tenant.id, body.csv_text, body.rules);
-  const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
-  const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
-  let added = 0;
-  let updated = 0;
-  let removed = 0;
+  try {
+    const data = await buildImportPreview(env.DB, auth.tenant.id, body.csv_text, body.rules);
+    const users = await env.DB.prepare("SELECT * FROM users WHERE tenant_id = ?").bind(auth.tenant.id).all();
+    const usersByApartment = new Map(users.results.map((u: any) => [u.apartment_id, u]));
+    let added = 0;
+    let updated = 0;
+    let removed = 0;
 
-  for (const row of data.rows as any[]) {
-    if (row.status === "Ignorerad" || (!row.apartment_id && !row.admin)) {
-      continue;
-    }
-    const existing = usersByApartment.get(row.apartment_id);
-    if (!existing && body.actions.add_new) {
-      const userId = `user-${crypto.randomUUID()}`;
-      await env.DB.prepare(
-        "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
-      ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0).run();
-      usersByApartment.set(row.apartment_id, {
-        id: userId,
-        apartment_id: row.apartment_id,
-        house: row.house,
-        is_active: row.active ? 1 : 0,
-        is_admin: row.admin ? 1 : 0,
-      });
-      added += 1;
-    }
-    if (existing && row.status === "Uppdateras" && body.actions.update_existing) {
-      await env.DB.prepare(
-        "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id).run();
-      updated += 1;
-    }
-  }
-
-  if (body.actions.remove_missing) {
-    const seen = new Set(data.rows.filter((row: any) => row.status !== "Ignorerad").map((row: any) => row.apartment_id));
-    for (const user of users.results) {
-      if (!seen.has((user as any).apartment_id)) {
-        await env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(user.id).run();
-        removed += 1;
+    for (const row of data.rows as any[]) {
+      if (row.status === "Ignorerad" || (!row.apartment_id && !row.admin)) {
+        continue;
+      }
+      const existing = usersByApartment.get(row.apartment_id);
+      if (!existing && body.actions.add_new) {
+        const userId = `user-${crypto.randomUUID()}`;
+        await env.DB.prepare(
+          "INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(userId, auth.tenant.id, row.apartment_id, row.house, row.active ? 1 : 0, row.admin ? 1 : 0).run();
+        usersByApartment.set(row.apartment_id, {
+          id: userId,
+          apartment_id: row.apartment_id,
+          house: row.house,
+          is_active: row.active ? 1 : 0,
+          is_admin: row.admin ? 1 : 0,
+        });
+        added += 1;
+      }
+      if (existing && row.status === "Uppdateras" && body.actions.update_existing) {
+        await env.DB.prepare(
+          "UPDATE users SET house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).bind(row.house, row.admin ? 1 : 0, row.active ? 1 : 0, existing.id).run();
+        updated += 1;
       }
     }
-  }
 
-  return json({ status: "ok", applied: body.actions, summary: { added, updated, removed } });
+    if (body.actions.remove_missing) {
+      const seen = new Set(data.rows.filter((row: any) => row.status !== "Ignorerad").map((row: any) => row.apartment_id));
+      for (const user of users.results) {
+        if (!seen.has((user as any).apartment_id)) {
+          await env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(user.id).run();
+          removed += 1;
+        }
+      }
+    }
+
+    return json({ status: "ok", applied: body.actions, summary: { added, updated, removed } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResponse(500, `import_apply_failed:${message}`);
+  }
 };
 
 const handleReportCsv = async (request: Request, env: Env, url: URL) => {
