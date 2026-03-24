@@ -1234,6 +1234,16 @@ body {
   gap: 20px;
 }
 
+.create-brf-modal {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.create-brf-step {
+  display: grid;
+  gap: 16px;
+}
+
 .booking-object-modal {
   width: min(920px, 100%);
   max-height: calc(100vh - 48px);

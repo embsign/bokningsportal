@@ -5,6 +5,7 @@ import { TimeSelection } from "./screens/TimeSelection.js";
 import { Confirmation } from "./screens/Confirmation.js";
 import { AdminDashboard } from "./screens/AdminDashboard.js";
 import { BookingObjectModal } from "./components/BookingObjectModal.js";
+import { CreateBrfModal } from "./components/CreateBrfModal.js";
 import { ImportUsersModal } from "./components/ImportUsersModal.js";
 import { UserPickerModal } from "./components/UserPickerModal.js";
 import { EditUserModal } from "./components/EditUserModal.js";
@@ -1388,7 +1389,28 @@ const loadWeekAvailability = async (service, weekStart) => {
   store.subscribe(render);
   render();
 } else {
-  clearElement(app);
+  const createBrfState = {
+    open: false,
+    step: 1,
+    name: "",
+    email: "",
+  };
+
+  const setCreateBrfState = (next) => {
+    const update = typeof next === "function" ? next({ ...createBrfState }) : next;
+    Object.assign(createBrfState, update);
+    renderLanding();
+  };
+
+  const openCreateBrf = () => setCreateBrfState({ open: true, step: 1 });
+  const closeCreateBrf = () => setCreateBrfState({ open: false, step: 1 });
+  const nextCreateBrf = () =>
+    setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 8) }));
+  const prevCreateBrf = () =>
+    setCreateBrfState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
+  const submitCreateBrf = () => nextCreateBrf();
+  const finishCreateBrf = () => closeCreateBrf();
+
   const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
   const annaDemoUrl = `${window.location.origin}/user/user-demo-token-anna`;
   const annaDemoQrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
@@ -1400,18 +1422,19 @@ const loadWeekAvailability = async (service, weekStart) => {
       children: [createElement("hr", { className: "landing-section-divider", attrs: { "aria-hidden": "true" } })],
     });
 
-  const createLandingButton = (text, href, variant = "secondary") =>
-    createElement("a", {
+  const createLandingButton = (text, href, variant = "secondary", onClick) =>
+    createElement(onClick ? "button" : "a", {
       className: `landing-button landing-button-${variant}`,
       text,
-      attrs: {
-        href,
-      },
+      attrs: onClick ? { type: "button" } : { href },
+      onClick,
     });
 
-  const landing = createElement("div", {
-    className: "landing-page",
-    children: [
+  const renderLanding = () => {
+    clearElement(app);
+    const landing = createElement("div", {
+      className: "landing-page",
+      children: [
       createElement("div", {
         className: "landing-top-banner",
         children: [
@@ -1455,7 +1478,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               createElement("div", {
                 className: "landing-actions",
                 children: [
-                  createLandingButton("Skapa er bokningssida", primaryCtaHref, "primary"),
+                  createLandingButton("Skapa er bokningssida", null, "primary", openCreateBrf),
                   createLandingButton("Testa demo direkt", "#demo", "secondary"),
                 ],
               }),
@@ -1670,7 +1693,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                   createElement("div", {
                     className: "landing-actions landing-actions-center",
                     children: [
-                      createLandingButton("Skapa er bokningssida", primaryCtaHref, "primary"),
+                      createLandingButton("Skapa er bokningssida", null, "primary", openCreateBrf),
                       createLandingButton("Testa demo direkt", "#demo", "secondary"),
                     ],
                   }),
@@ -1680,7 +1703,25 @@ const loadWeekAvailability = async (service, weekStart) => {
           }),
         ],
       }),
-    ],
-  });
-  app.append(landing);
+      ],
+    });
+    app.append(landing);
+
+    const modal = CreateBrfModal({
+      open: createBrfState.open,
+      step: createBrfState.step,
+      form: createBrfState,
+      onClose: closeCreateBrf,
+      onNext: nextCreateBrf,
+      onPrev: prevCreateBrf,
+      onSubmit: submitCreateBrf,
+      onFinish: finishCreateBrf,
+      onChange: (field, value) => setCreateBrfState({ [field]: value }),
+    });
+    if (modal) {
+      app.append(modal);
+    }
+  };
+
+  renderLanding();
 }

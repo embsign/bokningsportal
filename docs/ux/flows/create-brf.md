@@ -23,7 +23,7 @@ Syfte: Låta en förening registrera sig och skapa ett konto för admin.
        - föreningens namn
        - unik uuid
        - mottagarens epost
-       - sha1hash över föreningens namn, mottagarens epost, salt
+       - sha1hash över föreningens namn, mottagarens epost, uuid, salt
 
 5. **Slutför setup - Steg 1**
    - Kontoägaren klickar på länken i mailet.
@@ -35,6 +35,8 @@ Syfte: Låta en förening registrera sig och skapa ett konto för admin.
 6. **Slutför setup - Steg 2**
    - Lägg till / Importera användare
    - Ge möjlighet att importera CSV med användare, öppna då samma modal som i admininterfacet för import eller gör det möjligt att manuellt lägga in användare
+   - Knapp för att ladda hem CSV-mall med fält:
+     - Lägenhet, Hus/Trappuppgång, RFID UID, Behörigheter (separera med |), 
    - Knappar för Nästa / Föregående
   
 7. **Slutför setup - Steg 3**
@@ -53,4 +55,5 @@ Syfte: Låta en förening registrera sig och skapa ett konto för admin.
 
 Regler:
 - Modaler för redigering / lägga till - skall vara samma kod som används i admininterfacet så att framtida justeringar endast görs på ett ställe
-
+- Salt för sha1hash lagras i databasen vid db-setup
+- Man blir inte inloggad direkt till admininterfacet förrän denna setup är genomförd en gång
