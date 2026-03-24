@@ -1597,7 +1597,17 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   const openCreateBrf = () => setCreateBrfState({ open: true, step: 1, submitError: "" });
-  const closeCreateBrf = () => setCreateBrfState({ open: false, step: 1, submitError: "" });
+  const closeCreateBrf = () =>
+    setCreateBrfState({
+      open: false,
+      step: 1,
+      name: "",
+      email: "",
+      errors: {},
+      submitError: "",
+      setupUrl: "",
+      isSubmitting: false,
+    });
   const nextCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 3) }));
   const prevCreateBrf = () =>

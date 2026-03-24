@@ -6,7 +6,7 @@ const stepHeader = (current, total) =>
     text: `Steg ${current} av ${total}`,
   });
 
-const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting }) =>
+const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting, hideNext }) =>
   createElement("div", {
     className: "modal-footer",
     children: [
@@ -16,12 +16,14 @@ const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting }) =>
         attrs: { disabled: isSubmitting ? "disabled" : null },
         onClick: isSubmitting ? null : onBack,
       }),
-      createElement("button", {
-        className: "primary-button",
-        text: isSubmitting ? "Skickar..." : nextLabel,
-        attrs: { disabled: isSubmitting ? "disabled" : null },
-        onClick: isSubmitting ? null : onNext,
-      }),
+      hideNext
+        ? null
+        : createElement("button", {
+            className: "primary-button",
+            text: isSubmitting ? "Skickar..." : nextLabel,
+            attrs: { disabled: isSubmitting ? "disabled" : null },
+            onClick: isSubmitting ? null : onNext,
+          }),
     ],
   });
 
@@ -105,6 +107,11 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
   const steps = [step1, step2, step3];
   const content = steps[safeStep - 1] || step1;
 
+  const footerConfig =
+    safeStep === 3
+      ? { onBack: onFinish, backLabel: "Stäng", hideNext: true }
+      : { onBack: safeStep === 1 ? onClose : onPrev, backLabel, hideNext: false };
+
   return createElement("div", {
     className: "modal-overlay",
     children: [
@@ -113,11 +120,12 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
         children: [
           content,
           footer({
-            onBack: safeStep === 1 ? onClose : onPrev,
+            onBack: footerConfig.onBack,
             onNext: onNextAction,
             nextLabel,
-            backLabel,
+            backLabel: footerConfig.backLabel,
             isSubmitting: Boolean(form.isSubmitting),
+            hideNext: footerConfig.hideNext,
           }),
         ],
       }),
