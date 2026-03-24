@@ -628,7 +628,12 @@ if (routePath.startsWith("/admin/")) {
       onImport: async () => {
         adminStore.setState({ importStep: 8, importProgress: 35 });
         const rules = buildImportRules(adminStore.getState());
-        await saveImportRules(rules);
+        try {
+          await saveImportRules(rules);
+        } catch (error) {
+          // Non-blocking: import should still run even if persisting rules fails.
+          console.warn("Kunde inte spara importregler, fortsätter med import.", error);
+        }
         await applyImport(state.importCsvText, rules, {
           add_new: state.addNew !== false,
           update_existing: state.updateChanged !== false,
@@ -2354,7 +2359,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       onImport: async () => {
         setSetupState({ importStep: 8, importProgress: 35 });
         const rules = buildImportRules(setupState);
-        await saveImportRules(rules);
+        try {
+          await saveImportRules(rules);
+        } catch (error) {
+          // Non-blocking: import should still run even if persisting rules fails.
+          console.warn("Kunde inte spara importregler, fortsätter med import.", error);
+        }
         await applyImport(setupState.importCsvText, rules, {
           add_new: setupState.addNew !== false,
           update_existing: setupState.updateChanged !== false,

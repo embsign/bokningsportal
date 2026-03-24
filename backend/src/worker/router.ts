@@ -1505,6 +1505,10 @@ export const router = async (request: Request, env: Env) => {
 
   if (request.method === "GET" && path === "/api/admin/users") return handleAdminUsers(request, env);
   if (request.method === "POST" && path === "/api/admin/users") return handleAdminCreateUser(request, env);
+  if (request.method === "GET" && path === "/api/admin/users/import/rules") return handleImportRulesGet(request, env);
+  if (request.method === "PUT" && path === "/api/admin/users/import/rules") return handleImportRulesPut(request, env);
+  if (request.method === "POST" && path === "/api/admin/users/import/preview") return handleImportPreview(request, env);
+  if (request.method === "POST" && path === "/api/admin/users/import/apply") return handleImportApply(request, env);
   if (request.method === "DELETE" && path.startsWith("/api/admin/users/")) {
     return handleAdminDeleteUser(request, env, path.split("/").pop() || "", url);
   }
@@ -1524,10 +1528,6 @@ export const router = async (request: Request, env: Env) => {
   }
   if (request.method === "GET" && path === "/api/admin/booking-groups") return handleAdminBookingGroups(request, env);
   if (request.method === "POST" && path === "/api/admin/booking-groups") return handleAdminCreateBookingGroup(request, env);
-  if (request.method === "GET" && path === "/api/admin/users/import/rules") return handleImportRulesGet(request, env);
-  if (request.method === "PUT" && path === "/api/admin/users/import/rules") return handleImportRulesPut(request, env);
-  if (request.method === "POST" && path === "/api/admin/users/import/preview") return handleImportPreview(request, env);
-  if (request.method === "POST" && path === "/api/admin/users/import/apply") return handleImportApply(request, env);
   if (request.method === "GET" && path === "/api/admin/reports/csv") return handleReportCsv(request, env, url);
 
   return errorResponse(404, "not_found");
