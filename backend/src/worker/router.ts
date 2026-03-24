@@ -1,4 +1,7 @@
 import { Env, D1Database } from "./types.js";
+import { deleteUserBookings, userHasBookings } from "./utils/users.js";
+import { cancelFutureBookings, hasFutureBookings } from "./utils/bookingObjects.js";
+import { createAccessGroup, listAccessGroups } from "./utils/accessGroups.js";
 
 const json = (data: unknown, init: ResponseInit = {}) => {
   const headers = new Headers(init.headers || undefined);
@@ -218,6 +221,7 @@ const getAuthContext = async (db: D1Database, token: string) =>
          at.token AS access_token,
          at.tenant_id AS tenant_id,
          t.name AS tenant_name,
+         t.is_setup_complete AS tenant_is_setup_complete,
          u.id AS user_id,
          u.apartment_id AS user_apartment_id,
          u.house AS user_house,
@@ -244,6 +248,7 @@ const requireAuth = async (request: Request, env: Env) => {
     const tenant = {
       id: context.tenant_id,
       name: context.tenant_name,
+      is_setup_complete: context.tenant_is_setup_complete,
     };
     const user = {
       id: context.user_id,
@@ -266,7 +271,7 @@ const requireAuth = async (request: Request, env: Env) => {
     return { error: errorResponse(401, "unauthorized") };
   }
   return {
-    tenant: { id: tenant.id as string, name: tenant.name as string },
+    tenant: { id: tenant.id as string, name: tenant.name as string, is_setup_complete: tenant.is_setup_complete },
     user: {
       id: "account-owner",
       apartment_id: "admin",
@@ -362,11 +367,73 @@ const handleBrfSetupVerify = async (request: Request, env: Env) => {
     return errorResponse(401, "invalid_signature");
   }
 
+  const existingTenant = await env.DB
+    .prepare("SELECT id, is_setup_complete, account_owner_token FROM tenants WHERE account_owner_token = ?")
+    .bind(uuid)
+    .first();
+
+  if (!existingTenant) {
+    const tenantId = uuid;
+    await env.DB.prepare(
+      `INSERT INTO tenants (id, name, is_active, account_owner_token, admin_email, is_setup_complete)
+       VALUES (?, ?, 1, ?, ?, 0)`
+    ).bind(tenantId, associationName, uuid, email).run();
+  }
+
+  const tenant = existingTenant
+    ? existingTenant
+    : await env.DB
+        .prepare("SELECT id, is_setup_complete, account_owner_token FROM tenants WHERE account_owner_token = ?")
+        .bind(uuid)
+        .first();
+
   return json({
     association_name: associationName,
     email,
     uuid,
+    account_owner_token: uuid,
+    is_setup_complete: (tenant as any)?.is_setup_complete === 1,
   });
+};
+
+const handleBrfSetupComplete = async (request: Request, env: Env) => {
+  const body = await getJsonBody(request);
+  const accountOwnerToken = body?.account_owner_token;
+  const email = body?.email;
+  if (!accountOwnerToken || !email) {
+    return errorResponse(400, "invalid_payload");
+  }
+
+  await env.DB.prepare("UPDATE tenants SET is_setup_complete = 1 WHERE account_owner_token = ?")
+    .bind(accountOwnerToken)
+    .run();
+
+  const requestUrl = new URL(request.url);
+  const bodyBaseUrl = body?.frontend_base_url?.trim();
+  const baseUrlCandidate = bodyBaseUrl || env.FRONTEND_BASE_URL || requestUrl.origin;
+  let adminBaseUrl: string;
+  try {
+    const parsed = new URL(baseUrlCandidate);
+    adminBaseUrl = parsed.origin;
+  } catch {
+    adminBaseUrl = requestUrl.origin;
+  }
+  const adminUrl = `${adminBaseUrl.replace(/\/$/, "")}/admin/${accountOwnerToken}`;
+  void sendResendEmail(
+    env,
+    email,
+    "Admin‑länk till er bokningsportal",
+    `
+      <div style="font-family:Arial,sans-serif;line-height:1.5">
+        <h2>Admin‑länk till er bokningsportal</h2>
+        <p>Här är din admin‑länk:</p>
+        <p><a href="${adminUrl}">${adminUrl}</a></p>
+        <p><strong>Viktigt:</strong> Länken ger full access till bokningssystemet. Spara den säkert.</p>
+      </div>
+    `
+  );
+
+  return json({ ok: true, admin_url: adminUrl });
 };
 
 const requireAdmin = async (request: Request, env: Env) => {
@@ -586,6 +653,9 @@ const handleKioskAccessToken = async (request: Request, env: Env) => {
 const handleSession = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
+  if (auth.tenant.is_setup_complete === 0) {
+    return errorResponse(401, "setup_incomplete");
+  }
   return json({
     tenant: { id: auth.tenant.id, name: auth.tenant.name },
     user: { id: auth.user.id, apartment_id: auth.user.apartment_id, is_admin: auth.user.is_admin === 1 },
@@ -875,6 +945,85 @@ const handleAdminUpdateUser = async (request: Request, env: Env, userId: string)
   return json({ id: userId });
 };
 
+const handleAdminAccessGroups = async (request: Request, env: Env) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+  if (request.method === "GET") {
+    const groups = await listAccessGroups(env.DB, auth.tenant.id);
+    return json({ groups });
+  }
+  const body = await getJsonBody(request);
+  if (!body?.name) return errorResponse(400, "invalid_payload");
+  const group = await createAccessGroup(env.DB, auth.tenant.id, body.name);
+  return json({ group });
+};
+
+const handleAdminCreateUser = async (request: Request, env: Env) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+  const body = await getJsonBody(request);
+  if (!body?.apartment_id) return errorResponse(400, "invalid_payload");
+
+  const userId = `user-${crypto.randomUUID()}`;
+  await env.DB.prepare(
+    `INSERT INTO users (id, tenant_id, apartment_id, house, is_active, is_admin)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(
+    userId,
+    auth.tenant.id,
+    body.apartment_id,
+    body.house || null,
+    body.is_active === false ? 0 : 1,
+    body.is_admin ? 1 : 0
+  ).run();
+
+  await env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId).run();
+  for (const name of body.groups || []) {
+    let group = await env.DB.prepare("SELECT id FROM access_groups WHERE tenant_id = ? AND name = ?")
+      .bind(auth.tenant.id, name)
+      .first();
+    if (!group) {
+      const groupId = `group-${crypto.randomUUID()}`;
+      await env.DB.prepare("INSERT INTO access_groups (id, tenant_id, name) VALUES (?, ?, ?)")
+        .bind(groupId, auth.tenant.id, name)
+        .run();
+      group = { id: groupId };
+    }
+    await env.DB.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)")
+      .bind(userId, group.id)
+      .run();
+  }
+
+  if (body.rfid) {
+    await env.DB.prepare(
+      `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+    ).bind(body.rfid, auth.tenant.id, userId).run();
+  }
+
+  return json({ id: userId });
+};
+
+const handleAdminDeleteUser = async (request: Request, env: Env, userId: string, url: URL) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+  const deleteBookings = url.searchParams.get("delete_bookings") === "true";
+  const hasBookings = await userHasBookings(env.DB, userId);
+  if (hasBookings && !deleteBookings) {
+    return errorResponse(409, "user_has_bookings");
+  }
+  if (hasBookings && deleteBookings) {
+    await deleteUserBookings(env.DB, userId);
+  }
+  await env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId).run();
+  await env.DB.prepare("DELETE FROM rfid_tags WHERE user_id = ?").bind(userId).run();
+  await env.DB.prepare("DELETE FROM users WHERE id = ? AND tenant_id = ?")
+    .bind(userId, auth.tenant.id)
+    .run();
+  return json({ id: userId, deleted: true });
+};
+
 const handleAdminBookingObjects = async (request: Request, env: Env) => {
   const auth = await requireAdmin(request, env);
   if ("error" in auth) return auth.error;
@@ -922,6 +1071,24 @@ const handleAdminBookingObjects = async (request: Request, env: Env) => {
   }
   const objects = Array.from(objectsById.values());
   return json({ booking_objects: objects });
+};
+
+const handleAdminDeactivateBookingObject = async (request: Request, env: Env, bookingObjectId: string, url: URL) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+  const confirm = url.searchParams.get("confirm") === "true";
+  const nowIso = new Date().toISOString();
+  const hasFuture = await hasFutureBookings(env.DB, bookingObjectId, nowIso);
+  if (hasFuture && !confirm) {
+    return errorResponse(409, "booking_object_has_future_bookings");
+  }
+  if (hasFuture) {
+    await cancelFutureBookings(env.DB, bookingObjectId, nowIso);
+  }
+  await env.DB.prepare(
+    "UPDATE booking_objects SET is_active = 0 WHERE id = ? AND tenant_id = ?"
+  ).bind(bookingObjectId, auth.tenant.id).run();
+  return json({ id: bookingObjectId, deactivated: true, cancelled_future: hasFuture });
 };
 
 const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
@@ -1219,7 +1386,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
   if (request.method === "POST" && path === "/api/brf/register") return handleBrfRegister(request, env);
   if (request.method === "POST" && path === "/api/brf/setup/verify") return handleBrfSetupVerify(request, env);
-  if (request.method === "GET" && path === "/api/debug/email-config") return handleDebugEmailConfig(request, env);
+  if (request.method === "POST" && path === "/api/brf/setup/complete") return handleBrfSetupComplete(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
 
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
@@ -1235,11 +1402,21 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "GET" && path === "/api/availability/week") return handleAvailabilityWeek(request, env, url);
 
   if (request.method === "GET" && path === "/api/admin/users") return handleAdminUsers(request, env);
+  if (request.method === "POST" && path === "/api/admin/users") return handleAdminCreateUser(request, env);
+  if (request.method === "DELETE" && path.startsWith("/api/admin/users/")) {
+    return handleAdminDeleteUser(request, env, path.split("/").pop() || "", url);
+  }
   if (request.method === "PUT" && path.startsWith("/api/admin/users/")) {
     return handleAdminUpdateUser(request, env, path.split("/").pop() || "");
   }
+  if (request.method === "GET" && path === "/api/admin/access-groups") return handleAdminAccessGroups(request, env);
+  if (request.method === "POST" && path === "/api/admin/access-groups") return handleAdminAccessGroups(request, env);
   if (request.method === "GET" && path === "/api/admin/booking-objects") return handleAdminBookingObjects(request, env);
   if (request.method === "POST" && path === "/api/admin/booking-objects") return handleAdminCreateBookingObject(request, env);
+  if (request.method === "POST" && path.startsWith("/api/admin/booking-objects/") && path.endsWith("/deactivate")) {
+    const bookingObjectId = path.split("/").slice(-2)[0];
+    return handleAdminDeactivateBookingObject(request, env, bookingObjectId, url);
+  }
   if (request.method === "PUT" && path.startsWith("/api/admin/booking-objects/")) {
     return handleAdminUpdateBookingObject(request, env, path.split("/").pop() || "");
   }

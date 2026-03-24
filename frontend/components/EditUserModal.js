@@ -11,6 +11,7 @@ const field = ({ label, input }) =>
 
 export const EditUserModal = ({
   open,
+  mode,
   form,
   groupOptions,
   selectorOpen,
@@ -19,6 +20,9 @@ export const EditUserModal = ({
   onChange,
   onClose,
   onSave,
+  groupNameDraft,
+  onGroupNameChange,
+  onCreateGroup,
 }) => {
   if (!open) {
     return null;
@@ -109,7 +113,10 @@ export const EditUserModal = ({
       createElement("div", {
         className: "modal card edit-user-modal",
         children: [
-          createElement("div", { className: "modal-title", text: "Redigera användare" }),
+          createElement("div", {
+            className: "modal-title",
+            text: mode === "create" ? "Lägg till användare" : "Redigera användare",
+          }),
           createElement("div", {
             className: "admin-form-grid",
             children: [
@@ -155,6 +162,21 @@ export const EditUserModal = ({
                       className: "secondary-button admin-btn-select",
                       text: "Välj",
                       onClick: onOpenSelector,
+                    }),
+                    createElement("div", {
+                      className: "inline-create-group",
+                      children: [
+                        createElement("input", {
+                          className: "input input-sm",
+                          attrs: { value: groupNameDraft || "", placeholder: "Ny grupp" },
+                          onInput: (event) => onGroupNameChange?.(event.target.value),
+                        }),
+                        createElement("button", {
+                          className: "secondary-button",
+                          text: "Lägg till",
+                          onClick: onCreateGroup,
+                        }),
+                      ],
                     }),
                   ],
                 }),

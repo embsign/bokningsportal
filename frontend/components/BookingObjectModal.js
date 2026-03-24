@@ -72,6 +72,12 @@ export const BookingObjectModal = ({
       : mode === "copy"
         ? "Kopiera bokningsobjekt"
         : "Nytt bokningsobjekt";
+  const advancedOpen = Boolean(form?.advancedOpen);
+  const advancedToggle = createElement("button", {
+    className: "secondary-button admin-btn-advanced",
+    text: advancedOpen ? "Dölj avancerade inställningar" : "Avancerade inställningar",
+    onClick: () => onChange("advancedOpen", !advancedOpen),
+  });
 
   const selectorOptions = {
     allowHouses: { label: "Hus / Trappuppgång", options: ["A", "B", "C"] },
@@ -367,116 +373,121 @@ export const BookingObjectModal = ({
                   ],
                 }),
               }),
-              fieldGroup({
-                label: "Pris",
-                help: "Olika pris för vardag/helg (utan enhet).",
-                children: [
-                  createElement("div", {
-                    className: "form-stack form-group",
-                    children: [
-                      createElement("label", {
-                        className: "form-subfield",
-                        children: [
-                          createElement("span", { text: "Pris per bokning på vardag (kr)" }),
-                          createElement("input", {
-                            className: "input",
-                            attrs: { value: form.priceWeekday || "", "data-focus-key": "priceWeekday" },
-                            onInput: (event) => onChange("priceWeekday", event.target.value),
-                          }),
-                        ],
-                      }),
-                      createElement("label", {
-                        className: "form-subfield",
-                        children: [
-                          createElement("span", { text: "Pris per bokning på helg (kr)" }),
-                          createElement("input", {
-                            className: "input",
-                            attrs: { value: form.priceWeekend || "", "data-focus-key": "priceWeekend" },
-                            onInput: (event) => onChange("priceWeekend", event.target.value),
-                          }),
-                        ],
-                      }),
-                    ],
-                  }),
-                ],
-              }),
-              fieldGroup({
-                label: "Behörigheter",
-                help: "Standard är att alla har tillgång. Allow begränsar, Deny maskar bort.",
-                children: [
-                  createElement("div", {
-                    className: "permissions-stack",
-                    children: [
-                      createElement("div", {
-                        className: "form-stack form-group",
-                        children: [
-                          createElement("div", { className: "form-group-title", text: "Allow" }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Hus / Trappuppgång" }),
-                              renderSelectorButton("allowHouses", form.allowHouses || [], (values) =>
-                                onChange("allowHouses", values)
-                              ),
-                            ],
-                          }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Behörighetsgrupp" }),
-                              renderSelectorButton("allowGroups", form.allowGroups || [], (values) =>
-                                onChange("allowGroups", values)
-                              ),
-                            ],
-                          }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Enskilda lägenheter" }),
-                              renderSelectorButton("allowApartments", form.allowApartments || [], (values) =>
-                                onChange("allowApartments", values)
-                              ),
-                            ],
-                          }),
-                        ],
-                      }),
-                      createElement("div", {
-                        className: "form-stack form-group",
-                        children: [
-                          createElement("div", { className: "form-group-title", text: "Deny" }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Hus / Trappuppgång" }),
-                              renderSelectorButton("denyHouses", form.denyHouses || [], (values) =>
-                                onChange("denyHouses", values)
-                              ),
-                            ],
-                          }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Behörighetsgrupp" }),
-                              renderSelectorButton("denyGroups", form.denyGroups || [], (values) =>
-                                onChange("denyGroups", values)
-                              ),
-                            ],
-                          }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Enskilda lägenheter" }),
-                              renderSelectorButton("denyApartments", form.denyApartments || [], (values) =>
-                                onChange("denyApartments", values)
-                              ),
-                            ],
-                          }),
-                        ],
-                      }),
-                    ],
-                  }),
-                ],
-              }),
+              advancedToggle,
+              ...(advancedOpen
+                ? [
+                    fieldGroup({
+                      label: "Pris",
+                      help: "Olika pris för vardag/helg (utan enhet).",
+                      children: [
+                        createElement("div", {
+                          className: "form-stack form-group",
+                          children: [
+                            createElement("label", {
+                              className: "form-subfield",
+                              children: [
+                                createElement("span", { text: "Pris per bokning på vardag (kr)" }),
+                                createElement("input", {
+                                  className: "input",
+                                  attrs: { value: form.priceWeekday || "", "data-focus-key": "priceWeekday" },
+                                  onInput: (event) => onChange("priceWeekday", event.target.value),
+                                }),
+                              ],
+                            }),
+                            createElement("label", {
+                              className: "form-subfield",
+                              children: [
+                                createElement("span", { text: "Pris per bokning på helg (kr)" }),
+                                createElement("input", {
+                                  className: "input",
+                                  attrs: { value: form.priceWeekend || "", "data-focus-key": "priceWeekend" },
+                                  onInput: (event) => onChange("priceWeekend", event.target.value),
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                    fieldGroup({
+                      label: "Behörigheter",
+                      help: "Standard är att alla har tillgång. Allow begränsar, Deny maskar bort.",
+                      children: [
+                        createElement("div", {
+                          className: "permissions-stack",
+                          children: [
+                            createElement("div", {
+                              className: "form-stack form-group",
+                              children: [
+                                createElement("div", { className: "form-group-title", text: "Allow" }),
+                                createElement("label", {
+                                  className: "form-subfield",
+                                  children: [
+                                    createElement("span", { text: "Hus / Trappuppgång" }),
+                                    renderSelectorButton("allowHouses", form.allowHouses || [], (values) =>
+                                      onChange("allowHouses", values)
+                                    ),
+                                  ],
+                                }),
+                                createElement("label", {
+                                  className: "form-subfield",
+                                  children: [
+                                    createElement("span", { text: "Behörighetsgrupp" }),
+                                    renderSelectorButton("allowGroups", form.allowGroups || [], (values) =>
+                                      onChange("allowGroups", values)
+                                    ),
+                                  ],
+                                }),
+                                createElement("label", {
+                                  className: "form-subfield",
+                                  children: [
+                                    createElement("span", { text: "Enskilda lägenheter" }),
+                                    renderSelectorButton("allowApartments", form.allowApartments || [], (values) =>
+                                      onChange("allowApartments", values)
+                                    ),
+                                  ],
+                                }),
+                              ],
+                            }),
+                            createElement("div", {
+                              className: "form-stack form-group",
+                              children: [
+                                createElement("div", { className: "form-group-title", text: "Deny" }),
+                                createElement("label", {
+                                  className: "form-subfield",
+                                  children: [
+                                    createElement("span", { text: "Hus / Trappuppgång" }),
+                                    renderSelectorButton("denyHouses", form.denyHouses || [], (values) =>
+                                      onChange("denyHouses", values)
+                                    ),
+                                  ],
+                                }),
+                                createElement("label", {
+                                  className: "form-subfield",
+                                  children: [
+                                    createElement("span", { text: "Behörighetsgrupp" }),
+                                    renderSelectorButton("denyGroups", form.denyGroups || [], (values) =>
+                                      onChange("denyGroups", values)
+                                    ),
+                                  ],
+                                }),
+                                createElement("label", {
+                                  className: "form-subfield",
+                                  children: [
+                                    createElement("span", { text: "Enskilda lägenheter" }),
+                                    renderSelectorButton("denyApartments", form.denyApartments || [], (values) =>
+                                      onChange("denyApartments", values)
+                                    ),
+                                  ],
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                  ]
+                : []),
               field({
                 label: "Status",
                 help: "Aktiv eller inaktiv.",

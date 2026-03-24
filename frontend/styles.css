@@ -1271,6 +1271,20 @@ body {
   color: #b91c1c;
 }
 
+.admin-btn-delete {
+  color: #b91c1c;
+}
+
+.admin-btn-advanced {
+  justify-self: start;
+}
+
+.inline-create-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .empty-state,
 .error-state {
   padding: 40px;

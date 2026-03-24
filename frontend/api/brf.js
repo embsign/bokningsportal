@@ -15,3 +15,13 @@ export const verifyBrfSetup = (payload) =>
     method: "POST",
     body: JSON.stringify({ payload }),
   });
+
+export const completeBrfSetup = (accountOwnerToken, email) =>
+  apiRequest("/brf/setup/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      account_owner_token: accountOwnerToken,
+      email,
+      frontend_base_url: typeof window !== "undefined" ? window.location.origin : undefined,
+    }),
+  });

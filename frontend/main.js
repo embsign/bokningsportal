@@ -8,13 +8,15 @@ import { BookingObjectModal } from "./components/BookingObjectModal.js";
 import { CreateBrfModal } from "./components/CreateBrfModal.js";
 import { ImportUsersModal } from "./components/ImportUsersModal.js";
 import { UserPickerModal } from "./components/UserPickerModal.js";
+import { UserList } from "./components/UserList.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
+import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { getSession } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
-import { registerBrf, verifyBrfSetup } from "./api/brf.js";
+import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
 import { getServices } from "./api/services.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
 import {
@@ -29,9 +31,14 @@ import {
   getBookingObjects,
   getUsers,
   updateUser,
+  createUser,
+  deleteUser,
+  getAccessGroups,
+  createAccessGroup,
   createBookingGroup,
   createBookingObject,
   updateBookingObject,
+  deactivateBookingObject,
   getImportRules,
   saveImportRules,
   previewImport,
@@ -99,6 +106,7 @@ if (routePath.startsWith("/admin/")) {
     bookingObjects: [],
     bookingGroups: [],
     users: [],
+    accessGroups: [],
     importRules: null,
     importPreview: null,
     importHeaders: [],
@@ -220,17 +228,19 @@ if (routePath.startsWith("/admin/")) {
 
   const loadAdminData = async () => {
     try {
-      const [bookingObjectsData, bookingGroupsData, usersData, rulesData] = await Promise.all([
+      const [bookingObjectsData, bookingGroupsData, usersData, rulesData, accessGroupsData] = await Promise.all([
         getBookingObjects(),
         getBookingGroups(),
         getUsers(),
         getImportRules(),
+        getAccessGroups(),
       ]);
       const rules = rulesData?.rules || null;
       adminStore.setState({
         bookingObjects: bookingObjectsData,
         bookingGroups: bookingGroupsData,
         users: usersData,
+        accessGroups: accessGroupsData.map((group) => group.name),
         importRules: rules,
         identityField: rules?.identity_field,
         groupsField: rules?.groups_field,
@@ -270,7 +280,11 @@ if (routePath.startsWith("/admin/")) {
       await loadAdminData();
     } catch (error) {
       if (error.status === 401) {
-        alert("Sessionen är ogiltig eller har gått ut.");
+        if (error.detail === "setup_incomplete") {
+          alert("Setup är inte klar ännu. Följ länken i mailet för att slutföra.");
+        } else {
+          alert("Sessionen är ogiltig eller har gått ut.");
+        }
       }
     }
   };
@@ -538,16 +552,29 @@ if (routePath.startsWith("/admin/")) {
 
     const editUserModal = EditUserModal({
       open: state.editUserOpen,
+      mode: state.editUserId ? "edit" : "create",
       form: state.editUserForm,
-      groupOptions: ["Boende", "Styrelse", "Gym Norra gaveln Hus 1", "Boende H6", "Bastu"],
+      groupOptions: state.accessGroups || [],
       selectorOpen: state.userSelectorOpen,
       onOpenSelector: () => adminStore.setState({ userSelectorOpen: true }),
       onCloseSelector: () => adminStore.setState({ userSelectorOpen: false }),
       onChange: (field, value) =>
         adminStore.setState((prev) => ({ editUserForm: { ...prev.editUserForm, [field]: value } })),
       onClose: () => adminStore.setState({ editUserOpen: false, userSelectorOpen: false }),
+      groupNameDraft: state.groupNameDraft,
+      onGroupNameChange: (value) => adminStore.setState({ groupNameDraft: value }),
+      onCreateGroup: async () => {
+        if (!state.groupNameDraft?.trim()) return;
+        await createAccessGroup(state.groupNameDraft.trim());
+        adminStore.setState({ groupNameDraft: "" });
+        await loadAdminData();
+      },
       onSave: async () => {
-        await updateUser(state.editUserId, state.editUserForm);
+        if (state.editUserId) {
+          await updateUser(state.editUserId, state.editUserForm);
+        } else {
+          await createUser(state.editUserForm);
+        }
         await loadAdminData();
         adminStore.setState({ editUserOpen: false, userSelectorOpen: false });
       },
@@ -1390,7 +1417,83 @@ const loadWeekAvailability = async (service, weekStart) => {
   store.subscribe(render);
   render();
 } else if (routePath.startsWith("/setup/")) {
-  const setupState = { step: 1, status: "loading", data: null, error: "" };
+  const setupState = {
+    step: 1,
+    status: "loading",
+    data: null,
+    error: "",
+    users: [],
+    bookingObjects: [],
+    bookingGroups: [],
+    accessGroups: [],
+    userQuery: "",
+    userListError: "",
+    bookingListError: "",
+    stepError: "",
+    editUserOpen: false,
+    editUserId: null,
+    editUserForm: {
+      identity: "",
+      apartmentId: "",
+      house: "",
+      groups: [],
+      rfid: "",
+      active: true,
+      admin: false,
+    },
+    userSelectorOpen: false,
+    accessGroupDraft: "",
+    bookingModalOpen: false,
+    bookingModalMode: "add",
+    editBookingId: null,
+    bookingForm: {
+      name: "Tvättstuga",
+      type: "Tidspass",
+      slotDuration: "120",
+      fullDayStartTime: "12:00",
+      fullDayEndTime: "12:00",
+      windowMin: "0",
+      windowMax: "30",
+      maxBookings: "",
+      groupId: "",
+      priceWeekday: "",
+      priceWeekend: "",
+      status: "Aktiv",
+      allowHouses: [],
+      allowGroups: [],
+      allowApartments: [],
+      denyHouses: [],
+      denyGroups: [],
+      denyApartments: [],
+      advancedOpen: false,
+    },
+    selectorOpenKey: null,
+    groupModalOpen: false,
+    bookingGroupDraft: "",
+    importOpen: false,
+    importStep: 1,
+    importFileName: "",
+    importRowCount: 0,
+    importCsvText: "",
+    importHeaders: [],
+    importPreview: null,
+    importProgress: 0,
+    addNew: true,
+    updateChanged: true,
+    removeMissing: false,
+    identityField: "",
+    groupsField: "",
+    rfidField: "",
+    activeField: "",
+    houseField: "",
+    apartmentField: "",
+    houseRegex: "",
+    apartmentRegex: "",
+    groupSeparator: "|",
+    adminGroups: [],
+    adminSelectorOpen: false,
+    importRules: null,
+  };
   const setupToken = routePath.split("/")[2] || "";
 
   const setSetupState = (next) => {
@@ -1399,16 +1502,228 @@ const loadWeekAvailability = async (service, weekStart) => {
     renderSetup();
   };
 
-  const nextStep = () => setSetupState((prev) => ({ step: Math.min((prev.step || 1) + 1, 5) }));
-  const prevStep = () => setSetupState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
+  const buildRegexEffect = (samples, regexSource) => {
+    if (!regexSource) {
+      return samples.map((original) => ({ original, value: "—" }));
+    }
+    let regex;
+    try {
+      regex = new RegExp(regexSource);
+    } catch {
+      return samples.map((original) => ({ original, value: "Ogiltig regex" }));
+    }
+    return samples.map((original) => {
+      const match = regex.exec(original);
+      if (!match) {
+        return { original, value: "Ingen träff" };
+      }
+      if (match.length > 1) {
+        return { original, value: match.slice(1).join("-") };
+      }
+      return { original, value: match[0] };
+    });
+  };
+
+  const houseSamples = [
+    "1-LGH1001 /1001 Kor tag1",
+    "1-LGH1012 /1108 iLoq Blå",
+    "6-LGH1132/1204 iLoq Grön",
+    "6-LGH1133 /1205 tag1",
+    "6-LGH1133/1205 iLoq Röd",
+  ];
+
+  const apartmentSamples = [
+    "1-LGH1001 /1001 Kor tag1",
+    "1-LGH1012 /1108 iLoq Blå",
+    "6-LGH1132/1204 iLoq Grön",
+    "6-LGH1133 /1205 tag1",
+    "6-LGH1133/1205 iLoq Röd",
+  ];
+
+  const buildImportRules = (state) => ({
+    identity_field: state.identityField || state.importRules?.identity_field || "OrgGrupp",
+    groups_field: state.groupsField || state.importRules?.groups_field || "Behörighetsgrupp",
+    rfid_field: state.rfidField || state.importRules?.rfid_field || "Identitetsid",
+    active_field: state.activeField || state.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
+    house_field: state.houseField || state.importRules?.house_field || "Placering",
+    apartment_field: state.apartmentField || state.importRules?.apartment_field || "Lägenhet",
+    house_regex: state.houseRegex || state.importRules?.house_regex || "",
+    apartment_regex: state.apartmentRegex || state.importRules?.apartment_regex || "",
+    group_separator: state.groupSeparator || state.importRules?.group_separator || "|",
+    admin_groups: (state.adminGroups?.length ? state.adminGroups : state.importRules?.admin_groups?.split("|") || []).join("|"),
+  });
+
+  const nextStep = () => {
+    if (setupState.step === 1 && setupState.users.length === 0) {
+      setSetupState({ stepError: "Lägg till minst en användare för att gå vidare." });
+      return;
+    }
+    if (setupState.step === 2 && setupState.bookingObjects.length === 0) {
+      setSetupState({ stepError: "Lägg till minst ett bokningsobjekt för att gå vidare." });
+      return;
+    }
+    setSetupState((prev) => ({ step: Math.min((prev.step || 1) + 1, 5), stepError: "" }));
+  };
+  const prevStep = () => setSetupState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1), stepError: "" }));
+
+  const loadSetupLists = async () => {
+    const [usersData, bookingObjectsData, bookingGroupsData, accessGroupsData, rulesData] = await Promise.all([
+      getUsers(),
+      getBookingObjects(),
+      getBookingGroups(),
+      getAccessGroups(),
+      getImportRules(),
+    ]);
+    const rules = rulesData?.rules || null;
+    setSetupState({
+      users: usersData,
+      bookingObjects: bookingObjectsData,
+      bookingGroups: bookingGroupsData,
+      accessGroups: accessGroupsData.map((group) => group.name),
+      importRules: rules,
+      identityField: rules?.identity_field,
+      groupsField: rules?.groups_field,
+      rfidField: rules?.rfid_field,
+      activeField: rules?.active_field,
+      houseField: rules?.house_field,
+      apartmentField: rules?.apartment_field,
+      houseRegex: rules?.house_regex,
+      apartmentRegex: rules?.apartment_regex,
+      groupSeparator: rules?.group_separator,
+      adminGroups: rules?.admin_groups ? rules.admin_groups.split("|").filter(Boolean) : [],
+    });
+  };
 
   const loadSetupData = async () => {
     try {
       const data = await verifyBrfSetup(setupToken);
+      if (data?.is_setup_complete) {
+        window.location.href = `/admin/${data.account_owner_token || data.uuid}`;
+        return;
+      }
+      setAccessToken(data.account_owner_token || data.uuid);
       setSetupState({ status: "ready", data, error: "" });
+      await loadSetupLists();
     } catch (error) {
       const message = error?.detail || "Länken är ogiltig eller har gått ut.";
       setSetupState({ status: "error", error: message });
+    }
+  };
+
+  const openUserModal = (user) => {
+    setSetupState({
+      editUserOpen: true,
+      editUserId: user?.id || null,
+      editUserForm: user
+        ? {
+            identity: user.identity,
+            apartmentId: user.apartmentId,
+            house: user.house,
+            groups: user.groups || [],
+            rfid: user.rfid || "",
+            active: user.active !== false,
+            admin: user.admin === true,
+          }
+        : {
+            identity: "",
+            apartmentId: "",
+            house: "",
+            groups: [],
+            rfid: "",
+            active: true,
+            admin: false,
+          },
+    });
+  };
+
+  const deleteUserEntry = async (user) => {
+    try {
+      await deleteUser(user.id, false);
+      await loadSetupLists();
+      setSetupState({ userListError: "" });
+    } catch (error) {
+      if (error?.detail === "user_has_bookings") {
+        if (window.confirm("Användaren har bokningar. Vill du ta bort användaren och alla bokningar?")) {
+          await deleteUser(user.id, true);
+          await loadSetupLists();
+          setSetupState({ userListError: "" });
+          return;
+        }
+      }
+      setSetupState({ userListError: "Kunde inte ta bort användaren." });
+    }
+  };
+
+  const openBookingModal = (mode, item) => {
+    setSetupState({
+      bookingModalOpen: true,
+      bookingModalMode: mode,
+      editBookingId: item?.id || null,
+      bookingForm: item
+        ? {
+            name: item.name,
+            type: item.type,
+            slotDuration: item.slotDuration,
+            fullDayStartTime: item.fullDayStartTime || "12:00",
+            fullDayEndTime: item.fullDayEndTime || "12:00",
+            windowMin: item.windowMin,
+            windowMax: item.windowMax,
+            maxBookings: item.maxBookings,
+            groupId: item.groupId || "",
+            priceWeekday: item.priceWeekday,
+            priceWeekend: item.priceWeekend,
+            status: item.status,
+            allowHouses: item.allowHouses || [],
+            allowGroups: item.allowGroups || [],
+            allowApartments: item.allowApartments || [],
+            denyHouses: item.denyHouses || [],
+            denyGroups: item.denyGroups || [],
+            denyApartments: item.denyApartments || [],
+            advancedOpen: false,
+          }
+        : {
+            name: "Tvättstuga",
+            type: "Tidspass",
+            slotDuration: "120",
+            fullDayStartTime: "12:00",
+            fullDayEndTime: "12:00",
+            windowMin: "0",
+            windowMax: "30",
+            maxBookings: "",
+            groupId: "",
+            priceWeekday: "",
+            priceWeekend: "",
+            status: "Aktiv",
+            allowHouses: [],
+            allowGroups: [],
+            allowApartments: [],
+            denyHouses: [],
+            denyGroups: [],
+            denyApartments: [],
+            advancedOpen: false,
+          },
+    });
+  };
+
+  const deleteBookingObject = async (item) => {
+    try {
+      await deactivateBookingObject(item.id, false);
+      await loadSetupLists();
+      setSetupState({ bookingListError: "" });
+    } catch (error) {
+      if (error?.detail === "booking_object_has_future_bookings") {
+        if (
+          window.confirm(
+            "Det finns framtida/pågående bokningar. Vill du ta bort objektet och avboka dessa?"
+          )
+        ) {
+          await deactivateBookingObject(item.id, true);
+          await loadSetupLists();
+          setSetupState({ bookingListError: "" });
+          return;
+        }
+      }
+      setSetupState({ bookingListError: "Kunde inte ta bort bokningsobjektet." });
     }
   };
 
@@ -1470,64 +1785,151 @@ const loadWeekAvailability = async (service, weekStart) => {
       return;
     }
 
+    const userActions = createElement("div", {
+      className: "admin-section-actions",
+      children: [
+        createElement("button", {
+          className: "secondary-button admin-btn-add",
+          text: "Lägg till",
+          onClick: () => openUserModal(null),
+        }),
+        createElement("button", {
+          className: "secondary-button admin-btn-add",
+          text: "Importera",
+          onClick: () => setSetupState({ importOpen: true, importStep: 1 }),
+        }),
+        createElement("button", {
+          className: "secondary-button admin-btn-add",
+          text: "Ladda ner CSV‑mall",
+          onClick: () => {
+            const csv = "Lägenhet,Hus/Trappuppgång,RFID UID,Behörigheter\n";
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "anvandare-mall.csv";
+            link.click();
+            URL.revokeObjectURL(url);
+          },
+        }),
+      ],
+    });
+
+    const usersSection = createElement("div", {
+      className: "admin-section card",
+      children: [
+        createElement("div", {
+          className: "admin-section-header",
+          children: [
+            createElement("div", {
+              children: [
+                createElement("div", { className: "admin-section-title", text: "Användare" }),
+                createElement("div", {
+                  className: "admin-section-desc",
+                  text: "Lägg till minst en användare innan du går vidare.",
+                }),
+              ],
+            }),
+            userActions,
+          ],
+        }),
+        setupState.userListError
+          ? createElement("div", { className: "form-error", text: setupState.userListError })
+          : null,
+        UserList({
+          users: setupState.users,
+          query: setupState.userQuery,
+          onQueryChange: (value) => setSetupState({ userQuery: value }),
+          onPrimaryAction: openUserModal,
+          primaryLabel: "Redigera",
+          onDelete: deleteUserEntry,
+          emptyText: "Inga användare ännu.",
+        }),
+      ].filter(Boolean),
+    });
+
+    const bookingSection = createElement("div", {
+      className: "admin-section card",
+      children: [
+        createElement("div", {
+          className: "admin-section-header",
+          children: [
+            createElement("div", {
+              children: [
+                createElement("div", { className: "admin-section-title", text: "Bokningsobjekt" }),
+                createElement("div", {
+                  className: "admin-section-desc",
+                  text: "Skapa minst ett bokningsobjekt innan du går vidare.",
+                }),
+              ],
+            }),
+            createElement("div", {
+              className: "admin-section-actions",
+              children: [
+                createElement("button", {
+                  className: "secondary-button admin-btn-add",
+                  text: "Lägg till",
+                  onClick: () => openBookingModal("add"),
+                }),
+              ],
+            }),
+          ],
+        }),
+        setupState.bookingListError
+          ? createElement("div", { className: "form-error", text: setupState.bookingListError })
+          : null,
+        setupState.bookingObjects.length
+          ? BookingObjectsTable({
+              bookingObjects: setupState.bookingObjects,
+              onEdit: (item) => openBookingModal("edit", item),
+              onCopy: (item) => openBookingModal("copy", item),
+              onDelete: deleteBookingObject,
+            })
+          : createElement("div", { className: "empty-state", text: "Inga bokningsobjekt ännu." }),
+      ].filter(Boolean),
+    });
+
+    const orderSection = createElement("div", {
+      className: "state-panel",
+      text: "Beställ bokningstavla (skickas till info@embsign.se).",
+    });
+
+    const qrSection = createElement("div", {
+      className: "state-panel",
+      text: "Information om QR‑koder och möjlighet att ladda ned PDF.",
+    });
+
+    const completeSection = createElement("div", {
+      className: "state-panel",
+      text: `Admin‑länk skickas till ${setupState.data?.email}. Länken ger full access och bör sparas säkert.`,
+    });
+
     const content = (() => {
       switch (step) {
         case 1:
           return [
-            createElement("div", { className: "modal-title", text: "Slutför setup – steg 1" }),
-            createElement("div", {
-              className: "screen-subtitle",
-              text:
-                "Skapa bokningsobjekt. Förenklad modal med möjlighet att expandera till avancerat läge.",
-            }),
-            createElement("div", {
-              className: "state-panel",
-              text: "UI för bokningsobjekt kopplas in här i nästa iteration.",
-            }),
+            createElement("div", { className: "modal-title", text: "Slutför setup – användare" }),
+            usersSection,
           ];
         case 2:
           return [
-            createElement("div", { className: "modal-title", text: "Slutför setup – steg 2" }),
-            createElement("div", {
-              className: "screen-subtitle",
-              text: "Lägg till eller importera användare via CSV.",
-            }),
-            createElement("div", {
-              className: "state-panel",
-              text: "Import‑modal från admin kan återanvändas här i nästa iteration.",
-            }),
+            createElement("div", { className: "modal-title", text: "Slutför setup – bokningsobjekt" }),
+            bookingSection,
           ];
         case 3:
           return [
-            createElement("div", { className: "modal-title", text: "Slutför setup – steg 3" }),
-            createElement("div", {
-              className: "screen-subtitle",
-              text: "Beställ bokningstavla (skickas till info@embsign.se).",
-            }),
-            createElement("div", {
-              className: "state-panel",
-              text: "Beställningsflöde och mail kopplas in i nästa iteration.",
-            }),
+            createElement("div", { className: "modal-title", text: "Slutför setup – beställning" }),
+            orderSection,
           ];
         case 4:
           return [
-            createElement("div", { className: "modal-title", text: "Slutför setup – steg 4" }),
-            createElement("div", {
-              className: "screen-subtitle",
-              text: "Information om QR‑koder och möjlighet att ladda ned PDF.",
-            }),
-            createElement("div", {
-              className: "state-panel",
-              text: "PDF‑export för QR‑koder kopplas in senare.",
-            }),
+            createElement("div", { className: "modal-title", text: "Slutför setup – QR/PDF" }),
+            qrSection,
           ];
         default:
           return [
             createElement("div", { className: "modal-title", text: "Klart" }),
-            createElement("div", {
-              className: "state-panel",
-              text: "Setup är klar. Klicka Öppna admin för att gå vidare.",
-            }),
+            completeSection,
           ];
       }
     })();
@@ -1537,14 +1939,21 @@ const loadWeekAvailability = async (service, weekStart) => {
       children: [
         createElement("button", {
           className: "secondary-button",
-          text: step === 1 ? "Tillbaka" : "Tillbaka",
+          text: "Tillbaka",
           attrs: { disabled: step === 1 ? "disabled" : null },
           onClick: step === 1 ? null : prevStep,
         }),
         createElement("button", {
           className: "primary-button",
-          text: step === 5 ? "Öppna admin" : "Nästa",
-          onClick: step === 5 ? () => (window.location.href = `/admin/${setupToken}`) : nextStep,
+          text: step === 5 ? "Klar" : "Nästa",
+          onClick: async () => {
+            if (step === 5) {
+              await completeBrfSetup(setupState.data.account_owner_token, setupState.data.email);
+              window.location.href = `/admin/${setupState.data.account_owner_token}`;
+              return;
+            }
+            nextStep();
+          },
         }),
       ],
     });
@@ -1557,14 +1966,233 @@ const loadWeekAvailability = async (service, weekStart) => {
           children: [
             createElement("div", {
               className: "setup-card card",
-              children: [stepHeader, ...content, footer],
+              children: [stepHeader, ...content, setupState.stepError ? createElement("div", { className: "form-error", text: setupState.stepError }) : null, footer].filter(Boolean),
             }),
           ],
         }),
       ],
     });
 
+    const bookingModal = BookingObjectModal({
+      open: setupState.bookingModalOpen,
+      mode: setupState.bookingModalMode,
+      form: setupState.bookingForm,
+      onChange: (field, value) => setSetupState({ bookingForm: { ...setupState.bookingForm, [field]: value } }),
+      onClose: () => setSetupState({ bookingModalOpen: false }),
+      selectorOpenKey: setupState.selectorOpenKey,
+      onOpenSelector: (key) => setSetupState({ selectorOpenKey: key }),
+      onCloseSelector: () => setSetupState({ selectorOpenKey: null }),
+      bookingGroups: setupState.bookingGroups,
+      onSelectGroup: (value) => setSetupState({ bookingForm: { ...setupState.bookingForm, groupId: value } }),
+      onUpdateGroupMax: (value) => setSetupState({ bookingForm: { ...setupState.bookingForm, maxBookings: value } }),
+      groupModalOpen: setupState.groupModalOpen,
+      groupNameDraft: setupState.bookingGroupDraft,
+      onGroupNameChange: (value) => setSetupState({ bookingGroupDraft: value }),
+      onOpenGroupModal: () => setSetupState({ groupModalOpen: true }),
+      onCloseGroupModal: () => setSetupState({ groupModalOpen: false }),
+      onCreateGroup: async () => {
+        if (!setupState.bookingGroupDraft?.trim()) return;
+        await createBookingGroup({
+          name: setupState.bookingGroupDraft.trim(),
+          max_bookings: Number(setupState.bookingForm.maxBookings || 1),
+        });
+        setSetupState({ groupModalOpen: false, bookingGroupDraft: "" });
+        await loadSetupLists();
+      },
+      onSave: async () => {
+        if (setupState.bookingModalMode === "edit") {
+          await updateBookingObject(setupState.editBookingId, setupState.bookingForm);
+        } else {
+          await createBookingObject(setupState.bookingForm);
+        }
+        await loadSetupLists();
+        setSetupState({ bookingModalOpen: false });
+      },
+    });
+
+    const editUserModal = EditUserModal({
+      open: setupState.editUserOpen,
+      mode: setupState.editUserId ? "edit" : "create",
+      form: setupState.editUserForm,
+      groupOptions: setupState.accessGroups || [],
+      selectorOpen: setupState.userSelectorOpen,
+      onOpenSelector: () => setSetupState({ userSelectorOpen: true }),
+      onCloseSelector: () => setSetupState({ userSelectorOpen: false }),
+      onChange: (field, value) =>
+        setSetupState({ editUserForm: { ...setupState.editUserForm, [field]: value } }),
+      onClose: () => setSetupState({ editUserOpen: false, userSelectorOpen: false }),
+      groupNameDraft: setupState.accessGroupDraft,
+      onGroupNameChange: (value) => setSetupState({ accessGroupDraft: value }),
+      onCreateGroup: async () => {
+        if (!setupState.accessGroupDraft?.trim()) return;
+        await createAccessGroup(setupState.accessGroupDraft.trim());
+        setSetupState({ accessGroupDraft: "" });
+        await loadSetupLists();
+      },
+      onSave: async () => {
+        if (setupState.editUserId) {
+          await updateUser(setupState.editUserId, setupState.editUserForm);
+        } else {
+          await createUser(setupState.editUserForm);
+        }
+        await loadSetupLists();
+        setSetupState({ editUserOpen: false, userSelectorOpen: false });
+      },
+    });
+
+    const importModal = ImportUsersModal({
+      open: setupState.importOpen,
+      step: setupState.importStep,
+      form: {
+        fileName: setupState.importFileName,
+        rowCount: setupState.importRowCount || 17,
+        houseRegex: setupState.houseRegex || "",
+        apartmentRegex: setupState.apartmentRegex || "",
+        groupSeparator: setupState.groupSeparator || "|",
+        addNew: setupState.addNew !== false,
+        updateChanged: setupState.updateChanged !== false,
+        removeMissing: setupState.removeMissing === true,
+        progress: setupState.importProgress || 0,
+        houseField: setupState.houseField || "Placering",
+        apartmentField: setupState.apartmentField || "Lägenhet",
+        adminGroups: setupState.adminGroups || [],
+        adminSelectorOpen: setupState.adminSelectorOpen || false,
+        adminGroupOptions: setupState.importRules?.admin_groups
+          ? setupState.importRules.admin_groups.split("|").filter(Boolean)
+          : ["Styrelse", "Förvaltare", "Jour"],
+        effectHouse: buildRegexEffect(houseSamples, setupState.houseRegex || ""),
+        effectApartment: buildRegexEffect(apartmentSamples, setupState.apartmentRegex || ""),
+        effectGroups: [
+          { original: "Boende|Gym Norra gaveln Hus 1", values: ["Boende", "Gym Norra gaveln Hus 1"] },
+          { original: "Boende", values: ["Boende"] },
+          { original: "Boende H6", values: ["Boende H6"] },
+        ],
+      },
+      mapping: {
+        headers: setupState.importHeaders?.length ? setupState.importHeaders : ["OrgGrupp", "Placering", "Lägenhet"],
+        identityField: setupState.identityField || setupState.importRules?.identity_field || "OrgGrupp",
+        groupsField: setupState.groupsField || setupState.importRules?.groups_field || "Behörighetsgrupp",
+        rfidField: setupState.rfidField || setupState.importRules?.rfid_field || "Identitetsid",
+        activeField: setupState.activeField || setupState.importRules?.active_field || "Identitetsstatus (0=på 1=av)",
+      },
+      preview: setupState.importPreview || {
+        newCount: 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        removedCount: 0,
+        rows: [],
+      },
+      onClose: () => setSetupState({ importOpen: false, importStep: 1 }),
+      onNext: async () => {
+        const next = Math.min(setupState.importStep + 1, 5);
+        setSetupState({ importStep: next });
+        if (next === 5 && setupState.importCsvText) {
+          const rules = buildImportRules(setupState);
+          const preview = await previewImport(setupState.importCsvText, rules);
+          setSetupState({
+            importPreview: {
+              newCount: preview.summary.new,
+              updatedCount: preview.summary.updated,
+              unchangedCount: preview.summary.unchanged,
+              removedCount: preview.summary.removed,
+              rows: preview.rows.map((row) => ({
+                identity: row.identity,
+                apartmentId: row.apartment_id,
+                house: row.house,
+                status: row.status,
+                statusClass:
+                  row.status === "Ny"
+                    ? "preview-new"
+                    : row.status === "Uppdateras"
+                      ? "preview-updated"
+                      : row.status === "Tas bort"
+                        ? "preview-removed"
+                        : "preview-unchanged",
+                admin: row.admin,
+              })),
+            },
+            importHeaders: preview.headers,
+          });
+        }
+      },
+      onPrev: () => setSetupState((prev) => ({ importStep: Math.max(prev.importStep - 1, 1) })),
+      onImport: async () => {
+        setSetupState({ importStep: 6, importProgress: 35 });
+        const rules = buildImportRules(setupState);
+        await saveImportRules(rules);
+        await applyImport(setupState.importCsvText, rules, {
+          add_new: setupState.addNew !== false,
+          update_existing: setupState.updateChanged !== false,
+          remove_missing: setupState.removeMissing === true,
+        });
+        setSetupState({ importProgress: 100 });
+        await loadSetupLists();
+      },
+      onChange: (field, value) =>
+        setSetupState((prev) => {
+          switch (field) {
+            case "fileName":
+              return { importFileName: value };
+            case "file":
+              if (value) {
+                value.text().then((text) => {
+                  setSetupState({ importCsvText: text, importRowCount: text.split("\n").length });
+                  const rules = buildImportRules(setupState);
+                  previewImport(text, rules).then((preview) =>
+                    setSetupState({
+                      importHeaders: preview.headers,
+                      importPreview: {
+                        newCount: preview.summary.new,
+                        updatedCount: preview.summary.updated,
+                        unchangedCount: preview.summary.unchanged,
+                        removedCount: preview.summary.removed,
+                        rows: preview.rows.map((row) => ({
+                          identity: row.identity,
+                          apartmentId: row.apartment_id,
+                          house: row.house,
+                          status: row.status,
+                          statusClass:
+                            row.status === "Ny"
+                              ? "preview-new"
+                              : row.status === "Uppdateras"
+                                ? "preview-updated"
+                                : row.status === "Tas bort"
+                                  ? "preview-removed"
+                                  : "preview-unchanged",
+                          admin: row.admin,
+                        })),
+                      },
+                    })
+                  );
+                });
+              }
+              return {};
+            case "houseRegex":
+            case "apartmentRegex":
+            case "groupSeparator":
+            case "addNew":
+            case "updateChanged":
+            case "removeMissing":
+            case "adminGroups":
+            case "adminSelectorOpen":
+            case "importFocus":
+            case "identityField":
+            case "groupsField":
+            case "rfidField":
+            case "activeField":
+            case "houseField":
+            case "apartmentField":
+              return { [field]: value };
+            default:
+              return prev;
+          }
+        }),
+    });
+
     app.append(page);
+    if (bookingModal) app.append(bookingModal);
+    if (editUserModal) app.append(editUserModal);
+    if (importModal) app.append(importModal);
   };
 
   renderSetup();

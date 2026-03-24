@@ -79,6 +79,11 @@ export const updateBookingObject = (id, payload) =>
     }),
   });
 
+export const deactivateBookingObject = (id, confirmCancel = false) =>
+  apiRequest(`/admin/booking-objects/${id}/deactivate${confirmCancel ? "?confirm=true" : ""}`, {
+    method: "POST",
+  });
+
 export const getBookingGroups = async () => {
   const { booking_groups } = await apiRequest("/admin/booking-groups");
   return booking_groups.map((group) => ({
@@ -116,6 +121,35 @@ export const updateUser = (id, payload) =>
       is_admin: payload.admin,
       is_active: payload.active,
     }),
+  });
+
+export const createUser = (payload) =>
+  apiRequest("/admin/users", {
+    method: "POST",
+    body: JSON.stringify({
+      apartment_id: payload.identity || payload.apartmentId,
+      house: payload.house,
+      groups: payload.groups,
+      rfid: payload.rfid,
+      is_admin: payload.admin,
+      is_active: payload.active,
+    }),
+  });
+
+export const deleteUser = (id, deleteBookings = false) =>
+  apiRequest(`/admin/users/${id}${deleteBookings ? "?delete_bookings=true" : ""}`, {
+    method: "DELETE",
+  });
+
+export const getAccessGroups = async () => {
+  const { groups } = await apiRequest("/admin/access-groups");
+  return groups || [];
+};
+
+export const createAccessGroup = (name) =>
+  apiRequest("/admin/access-groups", {
+    method: "POST",
+    body: JSON.stringify({ name }),
   });
 
 export const getImportRules = () => apiRequest("/admin/users/import/rules");
