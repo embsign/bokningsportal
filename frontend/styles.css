@@ -1276,6 +1276,14 @@ body {
   color: var(--muted);
   font-size: 16px;
   border-radius: var(--radius-md);
+}
+
+.empty-state {
+  border: 1px solid var(--border);
+  background: #ffffff;
+}
+
+.error-state {
   border: 1px dashed var(--border);
   background: #97e6ea;
 }
