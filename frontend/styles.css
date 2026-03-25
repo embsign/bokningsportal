@@ -906,10 +906,15 @@ body {
 
 .service-pill {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: #ffffff;
   color: #101c33;
   border: 1px solid #101c33;
-  padding: 6px 12px;
+  min-height: 28px;
+  padding: 0 12px;
+  line-height: 1;
   border-radius: 999px;
   font-weight: 600;
   font-size: 13px;
