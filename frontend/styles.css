@@ -647,6 +647,11 @@ body {
   border: 1px solid #101c33;
 }
 
+.week-nav-button {
+  border-color: #101c33;
+  color: #101c33;
+}
+
 .ghost-button[disabled],
 .primary-button[disabled],
 .secondary-button[disabled] {
@@ -989,9 +994,9 @@ body {
 
 
 .day-card.disabled {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  color: #4b5563;
+  background: #d1d5db;
+  border-color: #6b7280;
+  color: #374151;
   cursor: not-allowed;
 }
 
@@ -1112,9 +1117,9 @@ body {
 }
 
 .timeslot-button.disabled {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  color: #4b5563;
+  background: #d1d5db;
+  border-color: #6b7280;
+  color: #374151;
   cursor: not-allowed;
 }
 
