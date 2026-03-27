@@ -503,13 +503,18 @@ const canUserAccessBookingObject = async (db: D1Database, user: any, bookingObje
   return canUserAccessWithPermissions(permissions.results, user, groups);
 };
 
-const getEffectiveMaxBookingsConfig = async (db: D1Database, bookingObject: any) => {
+type MaxBookingScope = "object" | "group" | null;
+
+const getEffectiveMaxBookingsConfig = async (
+  db: D1Database,
+  bookingObject: any
+): Promise<{ limit: number | null; scope: MaxBookingScope }> => {
   const overrideLimit = Number(bookingObject?.max_bookings_override);
   if (Number.isFinite(overrideLimit) && overrideLimit > 0) {
     return { limit: overrideLimit, scope: "object" as const };
   }
   if (!bookingObject?.group_id) {
-    return { limit: null, scope: null as const };
+    return { limit: null, scope: null };
   }
   const group = await db
     .prepare("SELECT max_bookings FROM booking_groups WHERE id = ? AND tenant_id = ?")
@@ -519,7 +524,7 @@ const getEffectiveMaxBookingsConfig = async (db: D1Database, bookingObject: any)
   if (Number.isFinite(groupLimit) && groupLimit > 0) {
     return { limit: groupLimit, scope: "group" as const };
   }
-  return { limit: null, scope: null as const };
+  return { limit: null, scope: null };
 };
 
 const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string, nowUtc: Date) => {
