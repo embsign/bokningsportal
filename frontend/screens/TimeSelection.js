@@ -86,8 +86,14 @@ export const TimeSelection = ({
               className: `timeslot-header ${index === 6 ? "weekday-sunday" : ""}`.trim(),
               text: day.label || "—",
             }),
-            ...Array.from({ length: day.slots?.length || 3 }).map(() =>
-              createElement("div", { className: "skeleton timeslot-skeleton-item" })
+            ...Array.from({ length: day.slots?.length || 3 }).map((slot) =>
+              createElement("div", {
+                className: "skeleton timeslot-skeleton-item",
+                attrs:
+                  slot?.priceText && slot.priceText.trim().length > 0
+                    ? { "data-has-price": "true" }
+                    : {},
+              })
             ),
           ],
         })

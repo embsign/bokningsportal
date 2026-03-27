@@ -1000,6 +1000,26 @@ const getExpectedWeekSlots = (weekStart, slotDurationMinutes) => {
   });
 };
 
+const getExpectedMonthDays = (year, monthIndex) => {
+  const firstDay = new Date(year, monthIndex, 1);
+  const startDay = new Date(firstDay);
+  const dayOfWeek = (firstDay.getDay() + 6) % 7;
+  startDay.setDate(firstDay.getDate() - dayOfWeek);
+  const days = [];
+  for (let i = 0; i < 42; i += 1) {
+    const date = new Date(startDay);
+    date.setDate(startDay.getDate() + i);
+    days.push({
+      id: `expected-month-${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+      date,
+      label: `${date.getDate()}/${date.getMonth() + 1}`,
+      status: date.getMonth() === monthIndex ? "available" : "outside",
+      monthIndex: date.getMonth(),
+    });
+  }
+  return days;
+};
+
 const formatDayLabel = (date) =>
   date
     .toLocaleDateString("sv-SE", { weekday: "short" })
@@ -1369,6 +1389,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     screen = DateSelection({
       monthLabel: getMonthLabel(year, monthIndex),
       days: visibleDays,
+      expectedDays: getExpectedMonthDays(year, monthIndex),
       selectedDateId: state.selectedDate?.id,
       onSelect: (day) => {
         if (day.status === "mine") {
