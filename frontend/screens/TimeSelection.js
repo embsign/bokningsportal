@@ -120,14 +120,6 @@ export const TimeSelection = ({
     bodyContent = createElement("div", { className: "timeslot-grid", children: columns });
   }
 
-  const statusSlot = createElement("div", {
-    className: "screen-status-slot",
-    children:
-      isLoading
-        ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
-        : [],
-  });
-
   const content = createElement("div", { className: "calendar card timeslot-card", children: [nav, bodyContent] });
 
   const cancelModal = cancelModalOpen
@@ -140,6 +132,6 @@ export const TimeSelection = ({
 
   return createElement("section", {
     className: "screen",
-    children: [statusSlot, content, legend(), cancelModal].filter(Boolean),
+    children: [content, legend(), cancelModal].filter(Boolean),
   });
 };

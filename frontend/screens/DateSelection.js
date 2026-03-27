@@ -72,14 +72,6 @@ export const DateSelection = ({
     });
   }
 
-  const statusSlot = createElement("div", {
-    className: "screen-status-slot",
-    children:
-      state === "loading" && hasRenderableDays
-        ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
-        : [],
-  });
-
   const cancelModal = cancelModalOpen
     ? CancelBookingModal({
         booking: cancelBooking,
@@ -90,6 +82,6 @@ export const DateSelection = ({
 
   return createElement("section", {
     className: "screen",
-    children: [header, statusSlot, content, legend(), cancelModal].filter(Boolean),
+    children: [header, content, legend(), cancelModal].filter(Boolean),
   });
 };
