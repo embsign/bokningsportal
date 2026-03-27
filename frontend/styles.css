@@ -164,6 +164,12 @@ body {
   box-shadow: 0 8px 18px rgba(34, 197, 94, 0.2);
 }
 
+.admin-btn-compact {
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  min-height: 28px;
+}
+
 .status-pill {
   padding: 6px 10px;
   border-radius: 999px;
@@ -267,12 +273,13 @@ body {
 .import-preview-table {
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: 320px;
 }
 
 .import-preview-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
@@ -298,6 +305,11 @@ body {
 
 .import-preview-row.preview-unchanged {
   background: rgba(91, 100, 120, 0.04);
+}
+
+.import-preview-row.preview-ignored {
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
 }
 
 .import-preview-row:last-child {
@@ -1266,6 +1278,16 @@ body {
   gap: 20px;
 }
 
+.create-brf-modal {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.create-brf-step {
+  display: grid;
+  gap: 16px;
+}
+
 .booking-object-modal {
   width: min(920px, 100%);
   max-height: calc(100vh - 48px);
@@ -1285,6 +1307,26 @@ body {
 
 .modal-footer.modal-footer-align-end {
   justify-content: flex-end;
+}
+
+.form-error {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.admin-btn-delete {
+  color: #b91c1c;
+}
+
+.admin-btn-advanced {
+  justify-self: start;
+}
+
+.inline-create-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .empty-state,
@@ -1452,6 +1494,25 @@ body {
   background: #ffffff;
   color: #111c3a;
   font-family: "Lato", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.setup-page {
+  min-height: 100vh;
+  background: #ffffff;
+  color: #111c3a;
+  font-family: "Lato", "Inter", system-ui, -apple-system, sans-serif;
+  padding: 48px 24px;
+}
+
+.setup-container {
+  width: min(920px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.setup-card {
+  padding: 32px;
+  display: grid;
+  gap: 20px;
 }
 
 .landing-container {

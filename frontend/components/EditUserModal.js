@@ -11,6 +11,7 @@ const field = ({ label, input }) =>
 
 export const EditUserModal = ({
   open,
+  mode,
   form,
   groupOptions,
   selectorOpen,
@@ -19,6 +20,9 @@ export const EditUserModal = ({
   onChange,
   onClose,
   onSave,
+  groupNameDraft,
+  onGroupNameChange,
+  onCreateGroup,
 }) => {
   if (!open) {
     return null;
@@ -109,7 +113,10 @@ export const EditUserModal = ({
       createElement("div", {
         className: "modal card edit-user-modal",
         children: [
-          createElement("div", { className: "modal-title", text: "Redigera användare" }),
+          createElement("div", {
+            className: "modal-title",
+            text: mode === "create" ? "Lägg till användare" : "Redigera användare",
+          }),
           createElement("div", {
             className: "admin-form-grid",
             children: [
@@ -138,11 +145,31 @@ export const EditUserModal = ({
                 }),
               }),
               field({
-                label: "RFID-tagg",
-                input: createElement("input", {
-                  className: "input",
-                  attrs: { value: form.rfid || "" },
-                  onInput: (event) => onChange("rfid", event.target.value),
+                label: "RFID-taggar",
+                input: createElement("div", {
+                  className: "selector-row",
+                  children: [
+                    renderSelectedList(form.rfidTags || [], (next) => onChange("rfidTags", next)),
+                    createElement("input", {
+                      className: "input input-sm",
+                      attrs: { value: form.rfidDraft || "", placeholder: "Ny RFID-tag" },
+                      onInput: (event) => onChange("rfidDraft", event.target.value),
+                    }),
+                    createElement("button", {
+                      className: "secondary-button",
+                      text: "Lägg till",
+                      onClick: () => {
+                        const nextTag = (form.rfidDraft || "").trim();
+                        if (!nextTag) return;
+                        if ((form.rfidTags || []).includes(nextTag)) {
+                          onChange("rfidDraft", "");
+                          return;
+                        }
+                        onChange("rfidTags", [...(form.rfidTags || []), nextTag]);
+                        onChange("rfidDraft", "");
+                      },
+                    }),
+                  ],
                 }),
               }),
               field({
@@ -155,6 +182,21 @@ export const EditUserModal = ({
                       className: "secondary-button admin-btn-select",
                       text: "Välj",
                       onClick: onOpenSelector,
+                    }),
+                    createElement("div", {
+                      className: "inline-create-group",
+                      children: [
+                        createElement("input", {
+                          className: "input input-sm",
+                          attrs: { value: groupNameDraft || "", placeholder: "Ny grupp" },
+                          onInput: (event) => onGroupNameChange?.(event.target.value),
+                        }),
+                        createElement("button", {
+                          className: "secondary-button",
+                          text: "Lägg till",
+                          onClick: onCreateGroup,
+                        }),
+                      ],
                     }),
                   ],
                 }),

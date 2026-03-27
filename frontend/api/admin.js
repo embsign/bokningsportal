@@ -79,6 +79,11 @@ export const updateBookingObject = (id, payload) =>
     }),
   });
 
+export const deactivateBookingObject = (id, confirmCancel = false) =>
+  apiRequest(`/admin/booking-objects/${id}/deactivate${confirmCancel ? "?confirm=true" : ""}`, {
+    method: "POST",
+  });
+
 export const getBookingGroups = async () => {
   const { booking_groups } = await apiRequest("/admin/booking-groups");
   return booking_groups.map((group) => ({
@@ -99,6 +104,7 @@ export const getUsers = async () => {
     apartmentId: user.apartment_id,
     house: user.house,
     groups: user.groups || [],
+    rfidTags: user.rfid_tags || (user.rfid ? [user.rfid] : []),
     rfid: user.rfid || "",
     active: Boolean(user.is_active),
     admin: Boolean(user.is_admin),
@@ -113,9 +119,40 @@ export const updateUser = (id, payload) =>
       house: payload.house,
       groups: payload.groups,
       rfid: payload.rfid,
+      rfid_tags: payload.rfidTags || (payload.rfid ? [payload.rfid] : []),
       is_admin: payload.admin,
       is_active: payload.active,
     }),
+  });
+
+export const createUser = (payload) =>
+  apiRequest("/admin/users", {
+    method: "POST",
+    body: JSON.stringify({
+      apartment_id: payload.identity || payload.apartmentId,
+      house: payload.house,
+      groups: payload.groups,
+      rfid: payload.rfid,
+      rfid_tags: payload.rfidTags || (payload.rfid ? [payload.rfid] : []),
+      is_admin: payload.admin,
+      is_active: payload.active,
+    }),
+  });
+
+export const deleteUser = (id, deleteBookings = false) =>
+  apiRequest(`/admin/users/${id}${deleteBookings ? "?delete_bookings=true" : ""}`, {
+    method: "DELETE",
+  });
+
+export const getAccessGroups = async () => {
+  const { groups } = await apiRequest("/admin/access-groups");
+  return groups || [];
+};
+
+export const createAccessGroup = (name) =>
+  apiRequest("/admin/access-groups", {
+    method: "POST",
+    body: JSON.stringify({ name }),
   });
 
 export const getImportRules = () => apiRequest("/admin/users/import/rules");
@@ -132,10 +169,16 @@ export const previewImport = (csvText, rules) =>
     body: JSON.stringify({ csv_text: csvText, rules }),
   });
 
-export const applyImport = (csvText, rules, actions) =>
+export const applyImport = (csvText, rules, actions, options = {}) =>
   apiRequest("/admin/users/import/apply", {
     method: "POST",
-    body: JSON.stringify({ csv_text: csvText, rules, actions }),
+    body: JSON.stringify({
+      csv_text: csvText,
+      rules,
+      actions,
+      offset: options.offset || 0,
+      limit: options.limit || 100,
+    }),
   });
 
 export const downloadReportCsv = async (month, bookingObjectId) =>
