@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS booking_objects (
   slot_duration_minutes INTEGER,
   full_day_start_time TEXT NOT NULL DEFAULT '12:00',
   full_day_end_time TEXT NOT NULL DEFAULT '12:00',
+  time_slot_start_time TEXT NOT NULL DEFAULT '08:00',
+  time_slot_end_time TEXT NOT NULL DEFAULT '20:00',
   window_min_days INTEGER NOT NULL DEFAULT 0,
   window_max_days INTEGER NOT NULL DEFAULT 30,
   price_weekday_cents INTEGER NOT NULL DEFAULT 0,

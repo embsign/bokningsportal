@@ -305,6 +305,8 @@ if (routePath.startsWith("/admin/")) {
       slotDuration: "",
       fullDayStartTime: "12:00",
       fullDayEndTime: "12:00",
+      timeSlotStartTime: "08:00",
+      timeSlotEndTime: "20:00",
       windowMin: "",
       windowMax: "",
       maxBookings: "",
@@ -334,6 +336,8 @@ if (routePath.startsWith("/admin/")) {
             slotDuration: item.slotDuration,
             fullDayStartTime: item.fullDayStartTime || "12:00",
             fullDayEndTime: item.fullDayEndTime || "12:00",
+            timeSlotStartTime: item.timeSlotStartTime || "08:00",
+            timeSlotEndTime: item.timeSlotEndTime || "20:00",
             windowMin: item.windowMin,
             windowMax: item.windowMax,
             maxBookings: item.maxBookings,
@@ -354,6 +358,8 @@ if (routePath.startsWith("/admin/")) {
             slotDuration: "",
             fullDayStartTime: "12:00",
             fullDayEndTime: "12:00",
+            timeSlotStartTime: "08:00",
+            timeSlotEndTime: "20:00",
             windowMin: "",
             windowMax: "",
             maxBookings: "",
@@ -461,7 +467,7 @@ if (routePath.startsWith("/admin/")) {
 
   const renderAdmin = () => {
     const state = adminStore.getState();
-    const activeElement = state.modalOpen ? document.activeElement : null;
+    const activeElement = state.modalOpen || state.editUserOpen ? document.activeElement : null;
     const modalFocusSnapshot =
       activeElement && activeElement.getAttribute?.("data-focus-key")
         ? {
@@ -1578,7 +1584,11 @@ const loadWeekAvailability = async (service, weekStart) => {
           }
         } catch (error) {
           if (error.status === 409) {
-            alert("Tiden är redan bokad.");
+            if (error.detail === "max_bookings_reached") {
+              alert("Du har nått max antal aktiva bokningar för detta objekt.");
+            } else {
+              alert("Tiden är redan bokad.");
+            }
           }
           if (error.status === 403) {
             alert("Du saknar behörighet att boka.");
@@ -1682,6 +1692,8 @@ const loadWeekAvailability = async (service, weekStart) => {
       slotDuration: "120",
       fullDayStartTime: "12:00",
       fullDayEndTime: "12:00",
+      timeSlotStartTime: "08:00",
+      timeSlotEndTime: "20:00",
       windowMin: "0",
       windowMax: "30",
       maxBookings: "",
@@ -1695,7 +1707,6 @@ const loadWeekAvailability = async (service, weekStart) => {
       denyHouses: [],
       denyGroups: [],
       denyApartments: [],
-      advancedOpen: false,
     },
     selectorOpenKey: null,
     groupModalOpen: false,
@@ -1924,6 +1935,8 @@ const loadWeekAvailability = async (service, weekStart) => {
             slotDuration: item.slotDuration,
             fullDayStartTime: item.fullDayStartTime || "12:00",
             fullDayEndTime: item.fullDayEndTime || "12:00",
+            timeSlotStartTime: item.timeSlotStartTime || "08:00",
+            timeSlotEndTime: item.timeSlotEndTime || "20:00",
             windowMin: item.windowMin,
             windowMax: item.windowMax,
             maxBookings: item.maxBookings,
@@ -1937,7 +1950,6 @@ const loadWeekAvailability = async (service, weekStart) => {
             denyHouses: item.denyHouses || [],
             denyGroups: item.denyGroups || [],
             denyApartments: item.denyApartments || [],
-            advancedOpen: false,
           }
         : {
             name: "Tvättstuga",
@@ -1945,6 +1957,8 @@ const loadWeekAvailability = async (service, weekStart) => {
             slotDuration: "120",
             fullDayStartTime: "12:00",
             fullDayEndTime: "12:00",
+            timeSlotStartTime: "08:00",
+            timeSlotEndTime: "20:00",
             windowMin: "0",
             windowMax: "30",
             maxBookings: "",
@@ -1958,7 +1972,6 @@ const loadWeekAvailability = async (service, weekStart) => {
             denyHouses: [],
             denyGroups: [],
             denyApartments: [],
-            advancedOpen: false,
           },
     });
   };

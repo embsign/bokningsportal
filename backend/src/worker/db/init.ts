@@ -63,6 +63,22 @@ export const initDb = async (db: D1Database) => {
       await db.exec("ALTER TABLE booking_objects ADD COLUMN full_day_end_time TEXT NOT NULL DEFAULT '12:00';");
     }
 
+    const timeSlotStartColumn = await db
+      .prepare("SELECT name FROM pragma_table_info('booking_objects') WHERE name = ?")
+      .bind("time_slot_start_time")
+      .first();
+    if (!timeSlotStartColumn) {
+      await db.exec("ALTER TABLE booking_objects ADD COLUMN time_slot_start_time TEXT NOT NULL DEFAULT '08:00';");
+    }
+
+    const timeSlotEndColumn = await db
+      .prepare("SELECT name FROM pragma_table_info('booking_objects') WHERE name = ?")
+      .bind("time_slot_end_time")
+      .first();
+    if (!timeSlotEndColumn) {
+      await db.exec("ALTER TABLE booking_objects ADD COLUMN time_slot_end_time TEXT NOT NULL DEFAULT '20:00';");
+    }
+
     const demoTenantExists = await db.prepare("SELECT id FROM tenants WHERE id = ?").bind("demo-brf").first();
     if (!demoTenantExists) {
       await db.exec(seedSql);

@@ -132,6 +132,17 @@ const getFullDayTimeConfig = (bookingObject: any) => {
   };
 };
 
+const getTimeSlotWindowConfig = (bookingObject: any) => {
+  const startTime = normalizeClockTime(bookingObject?.time_slot_start_time, "08:00");
+  const endTime = normalizeClockTime(bookingObject?.time_slot_end_time, "20:00");
+  return {
+    startTime,
+    endTime,
+    startMinutes: getMinutesFromClockTime(startTime),
+    endMinutes: getMinutesFromClockTime(endTime),
+  };
+};
+
 const buildFullDayRange = (date: Date, bookingObject: any) => {
   const config = getFullDayTimeConfig(bookingObject);
   const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0));
@@ -560,7 +571,9 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
   }));
-  const slotMinutes = (bookingObject.slot_duration_minutes as number) || 60;
+  const parsedSlotMinutes = Number(bookingObject.slot_duration_minutes);
+  const slotMinutes = Number.isFinite(parsedSlotMinutes) && parsedSlotMinutes > 0 ? parsedSlotMinutes : 60;
+  const slotWindow = getTimeSlotWindowConfig(bookingObject);
   const nowMs = nowUtc.getTime();
   const { minMs, maxMs } = getWindowBoundaries(bookingObject, nowUtc);
   const days = [];
@@ -570,8 +583,13 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     const dateString = formatDate(date);
     const label = date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "numeric" });
     const slots = [];
-    for (let hour = 8; hour < 20; hour += slotMinutes / 60) {
-      const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, 0, 0));
+    for (
+      let minuteOffset = slotWindow.startMinutes;
+      minuteOffset + slotMinutes <= slotWindow.endMinutes;
+      minuteOffset += slotMinutes
+    ) {
+      const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0));
+      start.setUTCMinutes(minuteOffset);
       const end = new Date(start);
       end.setUTCMinutes(end.getUTCMinutes() + slotMinutes);
       const startMs = start.getTime();
@@ -588,7 +606,7 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
       const isWeekend = [0, 6].includes(start.getUTCDay());
       const price = isWeekend ? (bookingObject.price_weekend_cents as number) : (bookingObject.price_weekday_cents as number);
       slots.push({
-        id: `${dateString}-${hour}`,
+        id: `${dateString}-${minuteOffset}`,
         label: `${start.toISOString().slice(11, 16)}-${end.toISOString().slice(11, 16)}`,
         status,
         price_cents: price,
@@ -705,6 +723,8 @@ const handleServices = async (request: Request, env: Env) => {
       slot_duration_minutes: obj.slot_duration_minutes,
       full_day_start_time: normalizeClockTime(obj.full_day_start_time),
       full_day_end_time: normalizeClockTime(obj.full_day_end_time),
+      time_slot_start_time: normalizeClockTime(obj.time_slot_start_time, "08:00"),
+      time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
       window_min_days: obj.window_min_days,
       window_max_days: obj.window_max_days,
       next_available: formatDate(new Date()),
@@ -751,6 +771,51 @@ const handleCreateBooking = async (request: Request, env: Env) => {
   if (!bookingObject) return errorResponse(404, "not_found");
   if (!(await canUserAccessBookingObject(env.DB, auth.user, bookingObjectId))) {
     return errorResponse(403, "forbidden");
+  }
+  const nowIso = new Date().toISOString();
+  let maxBookingsLimit: number | null = null;
+  const overrideLimit = Number(bookingObject.max_bookings_override);
+  if (Number.isFinite(overrideLimit) && overrideLimit > 0) {
+    maxBookingsLimit = overrideLimit;
+  } else if (bookingObject.group_id) {
+    const group = await env.DB
+      .prepare("SELECT max_bookings FROM booking_groups WHERE id = ? AND tenant_id = ?")
+      .bind(bookingObject.group_id, bookingObject.tenant_id)
+      .first();
+    const groupLimit = Number(group?.max_bookings);
+    if (Number.isFinite(groupLimit) && groupLimit > 0) {
+      maxBookingsLimit = groupLimit;
+    }
+  }
+  if (maxBookingsLimit !== null) {
+    const activeBookings = bookingObject.group_id
+      ? await env.DB
+          .prepare(
+            `SELECT COUNT(1) as count
+             FROM bookings b
+             JOIN booking_objects bo ON bo.id = b.booking_object_id
+             WHERE b.user_id = ?
+               AND bo.group_id = ?
+               AND bo.tenant_id = ?
+               AND b.cancelled_at IS NULL
+               AND b.end_time >= ?`
+          )
+          .bind(auth.user.id, bookingObject.group_id, bookingObject.tenant_id, nowIso)
+          .first()
+      : await env.DB
+          .prepare(
+            `SELECT COUNT(1) as count
+             FROM bookings
+             WHERE user_id = ?
+               AND booking_object_id = ?
+               AND cancelled_at IS NULL
+               AND end_time >= ?`
+          )
+          .bind(auth.user.id, bookingObjectId, nowIso)
+          .first();
+    if ((activeBookings?.count as number) >= maxBookingsLimit) {
+      return errorResponse(409, "max_bookings_reached");
+    }
   }
   const overlap = await env.DB
     .prepare(
@@ -1115,9 +1180,10 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
   await env.DB.prepare(
     `INSERT INTO booking_objects (
       id, tenant_id, name, description, booking_type, slot_duration_minutes, full_day_start_time, full_day_end_time,
+      time_slot_start_time, time_slot_end_time,
       window_min_days, window_max_days, price_weekday_cents, price_weekend_cents,
       is_active, group_id, max_bookings_override
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id,
     auth.tenant.id,
@@ -1127,6 +1193,8 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
     body.slot_duration_minutes || null,
     normalizeClockTime(body.full_day_start_time),
     normalizeClockTime(body.full_day_end_time),
+    normalizeClockTime(body.time_slot_start_time, "08:00"),
+    normalizeClockTime(body.time_slot_end_time, "20:00"),
     body.window_min_days || 0,
     body.window_max_days || 30,
     body.price_weekday_cents || 0,
@@ -1161,6 +1229,7 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
   await env.DB.prepare(
     `UPDATE booking_objects SET
       name = ?, description = ?, booking_type = ?, slot_duration_minutes = ?, full_day_start_time = ?, full_day_end_time = ?,
+      time_slot_start_time = ?, time_slot_end_time = ?,
       window_min_days = ?, window_max_days = ?, price_weekday_cents = ?, price_weekend_cents = ?,
       is_active = ?, group_id = ?, max_bookings_override = ?
      WHERE id = ?`
@@ -1171,6 +1240,8 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
     body.slot_duration_minutes || null,
     normalizeClockTime(body.full_day_start_time),
     normalizeClockTime(body.full_day_end_time),
+    normalizeClockTime(body.time_slot_start_time, "08:00"),
+    normalizeClockTime(body.time_slot_end_time, "20:00"),
     body.window_min_days || 0,
     body.window_max_days || 30,
     body.price_weekday_cents || 0,
