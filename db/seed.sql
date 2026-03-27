@@ -1,4 +1,4 @@
-INSERT OR IGNORE INTO tenants (id, name, account_owner_token, admin_email, is_setup)
+INSERT OR IGNORE INTO tenants (id, name, account_owner_token, admin_email, is_setup_complete)
 VALUES ("demo-brf", "Demo BRF", "admin-demo-token", "admin@demo.se", 1);
 
 INSERT OR IGNORE INTO users (id, tenant_id, apartment_id, house, is_active, is_admin)
