@@ -124,7 +124,7 @@ export const EditUserModal = ({
                 label: "Identitet",
                 input: createElement("input", {
                   className: "input",
-                  attrs: { value: form.identity || "" },
+                  attrs: { value: form.identity || "", "data-focus-key": "editUserIdentity" },
                   onInput: (event) => onChange("identity", event.target.value),
                 }),
               }),
@@ -132,7 +132,7 @@ export const EditUserModal = ({
                 label: "Lägenhets ID",
                 input: createElement("input", {
                   className: "input",
-                  attrs: { value: form.apartmentId || "" },
+                  attrs: { value: form.apartmentId || "", "data-focus-key": "editUserApartmentId" },
                   onInput: (event) => onChange("apartmentId", event.target.value),
                 }),
               }),
@@ -140,7 +140,7 @@ export const EditUserModal = ({
                 label: "Hus/Trapphus",
                 input: createElement("input", {
                   className: "input",
-                  attrs: { value: form.house || "" },
+                  attrs: { value: form.house || "", "data-focus-key": "editUserHouse" },
                   onInput: (event) => onChange("house", event.target.value),
                 }),
               }),
@@ -152,7 +152,11 @@ export const EditUserModal = ({
                     renderSelectedList(form.rfidTags || [], (next) => onChange("rfidTags", next)),
                     createElement("input", {
                       className: "input input-sm",
-                      attrs: { value: form.rfidDraft || "", placeholder: "Ny RFID-tag" },
+                      attrs: {
+                        value: form.rfidDraft || "",
+                        placeholder: "Ny RFID-tag",
+                        "data-focus-key": "editUserRfidDraft",
+                      },
                       onInput: (event) => onChange("rfidDraft", event.target.value),
                     }),
                     createElement("button", {
@@ -188,7 +192,7 @@ export const EditUserModal = ({
                       children: [
                         createElement("input", {
                           className: "input input-sm",
-                          attrs: { value: groupNameDraft || "", placeholder: "Ny grupp" },
+                          attrs: { value: groupNameDraft || "", placeholder: "Ny grupp", "data-focus-key": "editUserGroupDraft" },
                           onInput: (event) => onGroupNameChange?.(event.target.value),
                         }),
                         createElement("button", {

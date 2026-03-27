@@ -1,7 +1,7 @@
 import { apiRequest } from "./client.js";
 
 const toKr = (value) => (value ? String(Math.round(value / 100)) : "0");
-const normalizeClockTime = (value) => (/^\d{2}:\d{2}$/.test(value || "") ? value : "12:00");
+const normalizeClockTime = (value, fallback = "12:00") => (/^\d{2}:\d{2}$/.test(value || "") ? value : fallback);
 const toCents = (value) => {
   const parsed = Number(value);
   if (Number.isNaN(parsed)) {
@@ -26,6 +26,8 @@ export const getBookingObjects = async () => {
           : "",
     fullDayStartTime: normalizeClockTime(obj.full_day_start_time),
     fullDayEndTime: normalizeClockTime(obj.full_day_end_time),
+    slotStartTime: normalizeClockTime(obj.time_slot_start_time || "08:00"),
+    slotEndTime: normalizeClockTime(obj.time_slot_end_time || "20:00"),
     windowMin: String(obj.window_min_days),
     windowMax: String(obj.window_max_days),
     maxBookings: obj.max_bookings_override ? String(obj.max_bookings_override) : "",
@@ -50,6 +52,8 @@ export const createBookingObject = (payload) =>
       slot_duration_minutes: payload.type === "Dygn" ? null : payload.slotDuration ? Number(payload.slotDuration) : null,
       full_day_start_time: normalizeClockTime(payload.fullDayStartTime),
       full_day_end_time: normalizeClockTime(payload.fullDayEndTime),
+      time_slot_start_time: normalizeClockTime(payload.slotStartTime || "08:00"),
+      time_slot_end_time: normalizeClockTime(payload.slotEndTime || "20:00"),
       window_min_days: Number(payload.windowMin || 0),
       window_max_days: Number(payload.windowMax || 0),
       price_weekday_cents: toCents(payload.priceWeekday),
@@ -69,6 +73,8 @@ export const updateBookingObject = (id, payload) =>
       slot_duration_minutes: payload.type === "Dygn" ? null : payload.slotDuration ? Number(payload.slotDuration) : null,
       full_day_start_time: normalizeClockTime(payload.fullDayStartTime),
       full_day_end_time: normalizeClockTime(payload.fullDayEndTime),
+      time_slot_start_time: normalizeClockTime(payload.slotStartTime || "08:00"),
+      time_slot_end_time: normalizeClockTime(payload.slotEndTime || "20:00"),
       window_min_days: Number(payload.windowMin || 0),
       window_max_days: Number(payload.windowMax || 0),
       price_weekday_cents: toCents(payload.priceWeekday),
