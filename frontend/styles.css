@@ -47,7 +47,7 @@ body {
   padding: 32px 40px 28px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 8px;
 }
 
 .footer-actions {
@@ -914,7 +914,7 @@ body {
   gap: 12px;
   cursor: pointer;
   transition: 0.2s ease;
-  min-height: 210px;
+  min-height: 165px;
 }
 
 
