@@ -111,12 +111,14 @@ export const Confirmation = ({
             text: "Tillbaka",
             onClick: onBack,
           }),
-          createElement("button", {
-            className: "primary-button",
-            text: "Boka",
-            onClick: onConfirm,
-            attrs: { disabled: confirmDisabled },
-          }),
+          !maxBookingsReached
+            ? createElement("button", {
+                className: "primary-button",
+                text: "Boka",
+                onClick: onConfirm,
+                attrs: { disabled: confirmDisabled },
+              })
+            : null,
         ],
       });
 

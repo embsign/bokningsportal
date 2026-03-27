@@ -1560,6 +1560,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     screen = Confirmation({
       summary,
       state: state.uiStates.confirmation,
+      maxBookingsReached,
       confirmed: state.confirmed,
       isKioskMode: !isMobile,
       calendarQrImageUrl,
