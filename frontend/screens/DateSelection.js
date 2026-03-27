@@ -25,6 +25,7 @@ const legendItem = (dotClass, label) =>
 export const DateSelection = ({
   monthLabel,
   days,
+  expectedDays,
   selectedDateId,
   onSelect,
   onPrev,
@@ -45,15 +46,32 @@ export const DateSelection = ({
   });
 
   const hasRenderableDays = days.some((day) => day.status !== "outside");
+  const hasRenderableExpectedDays = (expectedDays || []).some((day) => day.status !== "outside");
 
   let content;
-  if (state === "loading" && !hasRenderableDays) {
-    content = createElement("div", {
-      className: "card calendar calendar-panel",
-      children: [
-        createElement("div", { className: "skeleton skeleton-row" }),
-        createElement("div", { className: "skeleton skeleton-row", attrs: { style: "height: 240px; margin-top: 16px;" } }),
-      ],
+  if (state === "loading" && !hasRenderableDays && hasRenderableExpectedDays) {
+    content = Calendar({
+      monthLabel,
+      days: expectedDays,
+      selectedDateId,
+      onSelect: () => {},
+      onPrev,
+      onNext,
+      canPrev,
+      canNext,
+      isLoading: true,
+    });
+  } else if (state === "loading" && !hasRenderableDays) {
+    content = Calendar({
+      monthLabel,
+      days: [],
+      selectedDateId,
+      onSelect: () => {},
+      onPrev,
+      onNext,
+      canPrev,
+      canNext,
+      isLoading: true,
     });
   } else if (state === "error" && !hasRenderableDays) {
     content = createElement("div", { className: "error-state", text: "Kunde inte ladda datum." });
@@ -72,14 +90,6 @@ export const DateSelection = ({
     });
   }
 
-  const statusSlot = createElement("div", {
-    className: "screen-status-slot",
-    children:
-      state === "loading" && hasRenderableDays
-        ? [createElement("div", { className: "inline-loading", text: "Laddar tillgänglighet…" })]
-        : [],
-  });
-
   const cancelModal = cancelModalOpen
     ? CancelBookingModal({
         booking: cancelBooking,
@@ -90,6 +100,6 @@ export const DateSelection = ({
 
   return createElement("section", {
     className: "screen",
-    children: [header, statusSlot, content, legend(), cancelModal].filter(Boolean),
+    children: [header, content, legend(), cancelModal].filter(Boolean),
   });
 };

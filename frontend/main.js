@@ -940,6 +940,7 @@ const store = createStore({
   availabilityMonth: [],
   availabilityWeekKey: null,
   availabilityWeekRequestKey: null,
+  availabilityWeekLoadingPlaceholder: null,
   availabilityWeek: [],
   availabilityLoading: false,
   dataLoading: false,
@@ -989,6 +990,42 @@ const canMoveWeek = (weekDate, service = null) => {
 };
 
 const getWeekLabel = (weekStart) => `Vecka ${getWeekNumber(weekStart)}`;
+
+const getExpectedWeekSlots = (weekStart, slotDurationMinutes) => {
+  const slotMinutes = Number(slotDurationMinutes) > 0 ? Number(slotDurationMinutes) : 60;
+  const slotCount = Math.max(1, Math.floor((12 * 60) / slotMinutes));
+  return Array.from({ length: 7 }).map((_, dayOffset) => {
+    const date = new Date(weekStart);
+    date.setDate(weekStart.getDate() + dayOffset);
+    const dayName = date.toLocaleDateString("sv-SE", { weekday: "short" }).replace(".", "");
+    const dayNameCapitalized = dayName.replace(/^./, (char) => char.toUpperCase());
+    return {
+      id: `expected-${date.toISOString().slice(0, 10)}`,
+      label: `${dayNameCapitalized} ${date.getDate()}/${date.getMonth() + 1}`,
+      slots: Array.from({ length: slotCount }),
+    };
+  });
+};
+
+const getExpectedMonthDays = (year, monthIndex) => {
+  const firstDay = new Date(year, monthIndex, 1);
+  const startDay = new Date(firstDay);
+  const dayOfWeek = (firstDay.getDay() + 6) % 7;
+  startDay.setDate(firstDay.getDate() - dayOfWeek);
+  const days = [];
+  for (let i = 0; i < 42; i += 1) {
+    const date = new Date(startDay);
+    date.setDate(startDay.getDate() + i);
+    days.push({
+      id: `expected-month-${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+      date,
+      label: `${date.getDate()}/${date.getMonth() + 1}`,
+      status: date.getMonth() === monthIndex ? "available" : "outside",
+      monthIndex: date.getMonth(),
+    });
+  }
+  return days;
+};
 
 const formatDayLabel = (date) =>
   date
@@ -1117,6 +1154,13 @@ const bookingMatches = (booking, target) => {
 const findBookingId = (bookingsList, target) =>
   bookingsList.find((booking) => bookingMatches(booking, target))?.id;
 
+const isBookingCurrentOrFuture = (booking) => {
+  if (!booking?.startTime || !booking?.endTime) {
+    return true;
+  }
+  return new Date(booking.endTime).getTime() > Date.now();
+};
+
 const getWeekNumber = (date) => {
   const temp = new Date(date.getTime());
   temp.setHours(0, 0, 0, 0);
@@ -1136,7 +1180,7 @@ const loadUserData = async () => {
     const [servicesData, bookingsData] = await Promise.all([getServices(), getCurrentBookings()]);
     store.setState({
       services: servicesData,
-      bookings: bookingsData,
+      bookings: bookingsData.filter(isBookingCurrentOrFuture),
       dataLoading: false,
       uiStates: {
         ...store.getState().uiStates,
@@ -1218,6 +1262,10 @@ const loadWeekAvailability = async (service, weekStart) => {
   store.setState((prev) => ({
     availabilityLoading: true,
     availabilityWeekRequestKey: key,
+    availabilityWeekLoadingPlaceholder:
+      prev.availabilityWeekKey && prev.availabilityWeek?.length
+        ? prev.availabilityWeek
+        : null,
     uiStates: { ...prev.uiStates, time: "loading" },
   }));
   try {
@@ -1229,6 +1277,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       return {
         availabilityWeekKey: key,
         availabilityWeekRequestKey: null,
+        availabilityWeekLoadingPlaceholder: null,
         availabilityWeek: days,
         availabilityLoading: false,
         uiStates: { ...prev.uiStates, time: days.length ? "normal" : "empty" },
@@ -1242,6 +1291,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       return {
         availabilityLoading: false,
         availabilityWeekRequestKey: null,
+        availabilityWeekLoadingPlaceholder: null,
         uiStates: { ...prev.uiStates, time: "error" },
       };
     });
@@ -1338,7 +1388,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         }
         const bookingsData = await getCurrentBookings();
         store.setState({
-          bookings: bookingsData,
+          bookings: bookingsData.filter(isBookingCurrentOrFuture),
           cancelModalOpen: false,
           cancelBooking: null,
         });
@@ -1391,6 +1441,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     screen = DateSelection({
       monthLabel: getMonthLabel(year, monthIndex),
       days: visibleDays,
+      expectedDays: getExpectedMonthDays(year, monthIndex),
       selectedDateId: state.selectedDate?.id,
       onSelect: (day) => {
         if (day.status === "mine") {
@@ -1444,7 +1495,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         const bookingsData = await getCurrentBookings();
         store.setState({
           cancelledDayIds: [...store.getState().cancelledDayIds, store.getState().cancelBooking?.id].filter(Boolean),
-          bookings: bookingsData,
+          bookings: bookingsData.filter(isBookingCurrentOrFuture),
           cancelModalOpen: false,
           cancelBooking: null,
         });
@@ -1478,10 +1529,12 @@ const loadWeekAvailability = async (service, weekStart) => {
     prevWeekCandidate.setDate(prevWeekCandidate.getDate() - 7);
     const nextWeekCandidate = new Date(state.weekCursor);
     nextWeekCandidate.setDate(nextWeekCandidate.getDate() + 7);
+    const expectedWeekSlots = getExpectedWeekSlots(state.weekCursor, state.selectedService?.slotDuration);
 
     screen = TimeSelection({
       weekLabel: getWeekLabel(state.weekCursor),
       weekSlots: visibleSlots,
+      expectedWeekSlots: state.availabilityWeekLoadingPlaceholder || expectedWeekSlots,
       selectedSlotId: state.selectedSlot?.id,
       onSelect: (slot) => {
         if (slot.status === "mine") {
@@ -1512,8 +1565,6 @@ const loadWeekAvailability = async (service, weekStart) => {
         if (canMoveWeek(prevWeekCandidate, state.selectedService)) {
           store.setState({
             weekCursor: new Date(prevWeekCandidate),
-            availabilityWeek: [],
-            availabilityWeekKey: null,
             availabilityWeekRequestKey: null,
           });
         }
@@ -1522,8 +1573,6 @@ const loadWeekAvailability = async (service, weekStart) => {
         if (canMoveWeek(nextWeekCandidate, state.selectedService)) {
           store.setState({
             weekCursor: new Date(nextWeekCandidate),
-            availabilityWeek: [],
-            availabilityWeekKey: null,
             availabilityWeekRequestKey: null,
           });
         }
@@ -1543,7 +1592,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         const bookingsData = await getCurrentBookings();
         store.setState({
           cancelledSlotIds: [...store.getState().cancelledSlotIds, store.getState().cancelBooking?.id].filter(Boolean),
-          bookings: bookingsData,
+          bookings: bookingsData.filter(isBookingCurrentOrFuture),
           cancelModalOpen: false,
           cancelBooking: null,
         });
@@ -1623,7 +1672,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           try {
             const bookingsData = await getCurrentBookings();
             store.setState({
-              bookings: bookingsData,
+              bookings: bookingsData.filter(isBookingCurrentOrFuture),
             });
           } catch (refreshError) {
             console.error("Kunde inte uppdatera aktuella bokningar efter bokning.", refreshError);

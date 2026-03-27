@@ -2,7 +2,7 @@ import { createElement } from "../hooks/dom.js";
 
 const weekDays = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
 
-export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, canPrev, canNext, onSelect }) => {
+export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, canPrev, canNext, onSelect, isLoading = false }) => {
   const header = createElement("div", {
     className: "calendar-header",
     children: [
@@ -10,14 +10,14 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
         className: "secondary-button",
         text: "‹ Föregående",
         onClick: onPrev,
-        attrs: { disabled: !canPrev },
+        attrs: { disabled: !canPrev || isLoading },
       }),
       createElement("div", { className: "calendar-title", text: monthLabel }),
       createElement("button", {
         className: "secondary-button",
         text: "Nästa ›",
         onClick: onNext,
-        attrs: { disabled: !canNext },
+        attrs: { disabled: !canNext || isLoading },
       }),
     ],
   });
@@ -32,6 +32,12 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
   const dayCards = days.map((day) => {
     if (day.status === "outside") {
       return createElement("div", { className: "day-card outside", attrs: { "aria-hidden": "true" } });
+    }
+    if (isLoading) {
+      return createElement("div", {
+        className: "day-card skeleton calendar-day-skeleton",
+        attrs: { "aria-hidden": "true" },
+      });
     }
     const isSelected = selectedDateId === day.id;
     const className = [
