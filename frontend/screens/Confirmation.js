@@ -52,6 +52,7 @@ export const Confirmation = ({
   summary,
   state,
   errorDetail,
+  maxBookingsReached,
   confirmed,
   isKioskMode,
   calendarQrImageUrl,
@@ -64,6 +65,11 @@ export const Confirmation = ({
   let content;
   if (state === "loading") {
     content = createElement("div", { className: "skeleton skeleton-card" });
+  } else if (maxBookingsReached && !confirmed) {
+    content = createElement("div", {
+      className: "error-state",
+      text: "Du har nått max antal aktiva bokningar för det här objektet. Avboka en aktiv bokning först.",
+    });
   } else if (state === "error") {
     const errorText =
       errorDetail === "max_bookings_reached"

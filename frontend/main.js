@@ -1056,7 +1056,9 @@ const isSelectedServiceMaxReached = (state) => {
   if (!state.selectedService || !isBookingCountLimited(state.selectedService)) {
     return false;
   }
-  return getActiveBookingsForSelectedService(state).length >= Number(state.selectedService.maxBookings);
+  const activeBookings = getActiveBookingsForSelectedService(state);
+  const reached = activeBookings.length >= Number(state.selectedService.maxBookings);
+  return reached;
 };
 
 const buildConfirmationCalendarEvent = (state, range) => {
