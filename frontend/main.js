@@ -1047,17 +1047,33 @@ const buildBookingRangeForState = (state) => {
   return null;
 };
 
-const isBookingCountLimited = (service) => Number.isFinite(Number(service?.maxBookings)) && Number(service.maxBookings) > 0;
+const getSelectedServiceBookingLimit = (service) => {
+  const explicitLimit = Number(service?.maxBookingsLimit);
+  if (Number.isFinite(explicitLimit) && explicitLimit > 0) {
+    return explicitLimit;
+  }
+  const fallbackLimit = Number(service?.maxBookings);
+  if (Number.isFinite(fallbackLimit) && fallbackLimit > 0) {
+    return fallbackLimit;
+  }
+  return null;
+};
+
+const isBookingCountLimited = (service) => getSelectedServiceBookingLimit(service) !== null;
 
 const getActiveBookingsForSelectedService = (state) =>
   (state.bookings || []).filter((booking) => booking.bookingObjectId === state.selectedService?.id);
 
 const isSelectedServiceMaxReached = (state) => {
-  if (!state.selectedService || !isBookingCountLimited(state.selectedService)) {
+  if (!state.selectedService) {
+    return false;
+  }
+  const bookingLimit = getSelectedServiceBookingLimit(state.selectedService);
+  if (bookingLimit === null) {
     return false;
   }
   const activeBookings = getActiveBookingsForSelectedService(state);
-  const reached = activeBookings.length >= Number(state.selectedService.maxBookings);
+  const reached = activeBookings.length >= bookingLimit;
   return reached;
 };
 
