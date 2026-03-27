@@ -49,6 +49,7 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
       children: [
         createElement("span", { className: "day-weekday", text: weekday }),
         createElement("strong", { text: day.label }),
+        day.priceText ? createElement("span", { className: "day-price", text: day.priceText }) : null,
       ],
     });
   });

@@ -1333,9 +1333,18 @@ const loadWeekAvailability = async (service, weekStart) => {
         monthIndex,
       };
     }
-    const days = (isMonthDataCurrent ? state.availabilityMonth || [] : []).map((day) =>
-      state.cancelledDayIds.includes(day.id) ? { ...day, status: "available" } : day
-    );
+    const days = (isMonthDataCurrent ? state.availabilityMonth || [] : []).map((day) => {
+      const statusPatchedDay = state.cancelledDayIds.includes(day.id) ? { ...day, status: "available" } : day;
+      if (statusPatchedDay.status === "outside") {
+        return statusPatchedDay;
+      }
+      const isWeekend = [0, 6].includes(statusPatchedDay.date.getDay());
+      const priceCents = isWeekend ? Number(state.selectedService?.priceWeekend || 0) : Number(state.selectedService?.priceWeekday || 0);
+      return {
+        ...statusPatchedDay,
+        priceText: priceCents > 0 ? `${Math.round(priceCents / 100)} kr` : "",
+      };
+    });
     const visibleDays = isMobile ? days.filter((day) => day.status !== "disabled") : days;
 
     screen = DateSelection({
