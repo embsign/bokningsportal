@@ -1,6 +1,6 @@
 import { createElement } from "../hooks/dom.js";
 
-export const Header = ({ apartmentId, showBack = false, onBack, onHelp, onLogout }) => {
+export const Header = ({ apartmentId, tenantName, showBack = false, onBack, onHelp, onLogout }) => {
   const title = showBack
     ? createElement("button", {
         className: "header-back",
@@ -9,10 +9,7 @@ export const Header = ({ apartmentId, showBack = false, onBack, onHelp, onLogout
       })
     : createElement("div", {
         className: "header-title",
-        children: [
-          createElement("div", { className: "logo-badge", text: "BRF" }),
-          createElement("span", { text: "Bokningsportal" }),
-        ],
+        children: [createElement("span", { text: tenantName || "Bokningsportal" })],
       });
 
   const meta = createElement("div", {

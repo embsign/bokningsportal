@@ -844,6 +844,7 @@ if (routePath.startsWith("/admin/")) {
     shell.append(
       Header({
         apartmentId: state.adminUser?.association || "—",
+        tenantName: state.adminUser?.association,
         onHelp: openHelp,
         onLogout: logout,
       }),
@@ -1240,6 +1241,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     shell.append(
       Header({
         apartmentId: state.sessionUser?.apartment_id || "—",
+        tenantName: state.sessionTenant?.name,
         showBack: Boolean(headerBack),
         onBack: headerBack || undefined,
         onHelp: openHelp,
