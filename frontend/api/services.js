@@ -14,10 +14,22 @@ const formatDuration = (service) => {
 };
 
 const formatPriceText = (service) => {
-  if (service.price_weekday_cents && service.price_weekday_cents > 0) {
-    return `Debiteras: ${Math.round(service.price_weekday_cents / 100)} kr`;
+  const weekdayCents = Number(service.price_weekday_cents || 0);
+  const weekendCents = Number(service.price_weekend_cents || 0);
+  const hasAnyPrice = weekdayCents > 0 || weekendCents > 0;
+  if (!hasAnyPrice) {
+    return "";
   }
-  return "";
+
+  const weekday = Math.round(weekdayCents / 100);
+  const weekend = Math.round(weekendCents / 100);
+  if (weekday === weekend) {
+    return `Debiteras: ${weekday} kr`;
+  }
+
+  const low = Math.min(weekday, weekend);
+  const high = Math.max(weekday, weekend);
+  return `Debiteras: ${low}-${high} kr`;
 };
 
 export const getServices = async () => {
