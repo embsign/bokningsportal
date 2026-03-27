@@ -1047,6 +1047,18 @@ const buildBookingRangeForState = (state) => {
   return null;
 };
 
+const isBookingCountLimited = (service) => Number.isFinite(Number(service?.maxBookings)) && Number(service.maxBookings) > 0;
+
+const getActiveBookingsForSelectedService = (state) =>
+  (state.bookings || []).filter((booking) => booking.bookingObjectId === state.selectedService?.id);
+
+const isSelectedServiceMaxReached = (state) => {
+  if (!state.selectedService || !isBookingCountLimited(state.selectedService)) {
+    return false;
+  }
+  return getActiveBookingsForSelectedService(state).length >= Number(state.selectedService.maxBookings);
+};
+
 const buildConfirmationCalendarEvent = (state, range) => {
   if (!state.selectedService || !state.selectedDate?.date || !range?.startTime || !range?.endTime) {
     return null;
@@ -1511,6 +1523,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   }
 
   if (state.step === 3) {
+    const maxBookingsReached = isSelectedServiceMaxReached(state);
     const summary = createBookingSummary({
       service: state.selectedService,
       date: state.selectedDate?.date,
@@ -1540,7 +1553,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           uiStates: { ...store.getState().uiStates, confirmation: "normal" },
         }),
       onConfirm: async () => {
-        if (!summary) {
+        if (!summary || maxBookingsReached) {
           return;
         }
         store.setState((prev) => ({ uiStates: { ...prev.uiStates, confirmation: "loading" } }));
@@ -1597,11 +1610,18 @@ const loadWeekAvailability = async (service, weekStart) => {
             confirmed: false,
             confirmationCalendarEvent: null,
             confirmationBookingId: null,
+            bookingErrorDetail: error?.detail || "booking_failed",
             uiStates: { ...prev.uiStates, confirmation: "error" },
           }));
         }
       },
-      confirmDisabled: !summary,
+      errorDetail:
+        state.uiStates.confirmation === "error"
+          ? state.bookingErrorDetail || (maxBookingsReached ? "max_bookings_reached" : "booking_failed")
+          : maxBookingsReached
+            ? "max_bookings_reached"
+            : "",
+      confirmDisabled: !summary || maxBookingsReached,
     });
 
     footer = null;

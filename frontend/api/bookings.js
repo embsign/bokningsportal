@@ -14,6 +14,8 @@ export const getCurrentBookings = async () => {
     const date = new Date(booking.date);
     return {
       id: booking.id,
+      bookingObjectId: booking.booking_object_id,
+      groupId: booking.group_id || "",
       serviceName: booking.service_name,
       dayLabel: formatDayLabel(date),
       dateLabel: formatDateLabel(date),

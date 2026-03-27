@@ -51,6 +51,7 @@ const calendarAction = ({ isKioskMode, calendarQrImageUrl, calendarDownloadUrl }
 export const Confirmation = ({
   summary,
   state,
+  errorDetail,
   confirmed,
   isKioskMode,
   calendarQrImageUrl,
@@ -64,7 +65,15 @@ export const Confirmation = ({
   if (state === "loading") {
     content = createElement("div", { className: "skeleton skeleton-card" });
   } else if (state === "error") {
-    content = createElement("div", { className: "error-state", text: "Kunde inte skapa bokningen." });
+    const errorText =
+      errorDetail === "max_bookings_reached"
+        ? "Du har nått max antal aktiva bokningar för den här bokningsgruppen. Avboka en aktiv bokning först."
+        : errorDetail === "outside_booking_window"
+          ? "Vald tid ligger utanför tillåtet bokningsfönster."
+          : errorDetail === "forbidden"
+            ? "Du saknar behörighet att boka den här tiden."
+            : "Kunde inte skapa bokningen. Försök igen.";
+    content = createElement("div", { className: "error-state", text: errorText });
   } else if (!summary) {
     content = createElement("div", { className: "empty-state", text: "Ingen bokning att bekräfta." });
   } else if (confirmed) {

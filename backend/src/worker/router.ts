@@ -503,6 +503,25 @@ const canUserAccessBookingObject = async (db: D1Database, user: any, bookingObje
   return canUserAccessWithPermissions(permissions.results, user, groups);
 };
 
+const getEffectiveMaxBookingsConfig = async (db: D1Database, bookingObject: any) => {
+  const overrideLimit = Number(bookingObject?.max_bookings_override);
+  if (Number.isFinite(overrideLimit) && overrideLimit > 0) {
+    return { limit: overrideLimit, scope: "object" as const };
+  }
+  if (!bookingObject?.group_id) {
+    return { limit: null, scope: null as const };
+  }
+  const group = await db
+    .prepare("SELECT max_bookings FROM booking_groups WHERE id = ? AND tenant_id = ?")
+    .bind(bookingObject.group_id, bookingObject.tenant_id)
+    .first();
+  const groupLimit = Number(group?.max_bookings);
+  if (Number.isFinite(groupLimit) && groupLimit > 0) {
+    return { limit: groupLimit, scope: "group" as const };
+  }
+  return { limit: null, scope: null as const };
+};
+
 const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string, nowUtc: Date) => {
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
@@ -714,8 +733,10 @@ const handleServices = async (request: Request, env: Env) => {
       canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
     );
   }
-  const services = filtered
-    .map((obj: any) => ({
+  const services = await Promise.all(
+    filtered.map(async (obj: any) => {
+      const maxBookings = await getEffectiveMaxBookingsConfig(env.DB, obj);
+      return {
       id: obj.id,
       name: obj.name,
       description: obj.description || "",
@@ -730,7 +751,12 @@ const handleServices = async (request: Request, env: Env) => {
       next_available: formatDate(new Date()),
       price_weekday_cents: obj.price_weekday_cents,
       price_weekend_cents: obj.price_weekend_cents,
-    }));
+      group_id: obj.group_id || null,
+      max_bookings_limit: maxBookings.limit,
+      max_bookings_scope: maxBookings.scope,
+      };
+    })
+  );
   return json({ services });
 };
 
@@ -739,7 +765,7 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const rows = await env.DB
     .prepare(
-      `SELECT b.id, b.start_time, b.end_time, bo.name AS booking_object_name
+      `SELECT b.id, b.start_time, b.end_time, b.booking_object_id, bo.group_id AS booking_group_id, bo.name AS booking_object_name
        FROM bookings b
        JOIN booking_objects bo ON bo.id = b.booking_object_id
        WHERE b.user_id = ? AND b.cancelled_at IS NULL
@@ -750,6 +776,10 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
   const bookings = rows.results.map((row: any) => ({
     id: row.id,
     service_name: row.booking_object_name,
+    booking_object_id: row.booking_object_id,
+    booking_group_id: row.booking_group_id,
+    start_time: row.start_time,
+    end_time: row.end_time,
     date: (row.start_time as string).slice(0, 10),
     time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
     status: "mine",
@@ -773,22 +803,10 @@ const handleCreateBooking = async (request: Request, env: Env) => {
     return errorResponse(403, "forbidden");
   }
   const nowIso = new Date().toISOString();
-  let maxBookingsLimit: number | null = null;
-  const overrideLimit = Number(bookingObject.max_bookings_override);
-  if (Number.isFinite(overrideLimit) && overrideLimit > 0) {
-    maxBookingsLimit = overrideLimit;
-  } else if (bookingObject.group_id) {
-    const group = await env.DB
-      .prepare("SELECT max_bookings FROM booking_groups WHERE id = ? AND tenant_id = ?")
-      .bind(bookingObject.group_id, bookingObject.tenant_id)
-      .first();
-    const groupLimit = Number(group?.max_bookings);
-    if (Number.isFinite(groupLimit) && groupLimit > 0) {
-      maxBookingsLimit = groupLimit;
-    }
-  }
+  const maxBookingsConfig = await getEffectiveMaxBookingsConfig(env.DB, bookingObject);
+  const maxBookingsLimit = maxBookingsConfig.limit;
   if (maxBookingsLimit !== null) {
-    const activeBookings = bookingObject.group_id
+    const activeBookings = maxBookingsConfig.scope === "group" && bookingObject.group_id
       ? await env.DB
           .prepare(
             `SELECT COUNT(1) as count
