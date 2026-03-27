@@ -15,7 +15,7 @@ export const getCurrentBookings = async () => {
     return {
       id: booking.id,
       bookingObjectId: booking.booking_object_id,
-      groupId: booking.group_id || "",
+      groupId: booking.booking_group_id || "",
       serviceName: booking.service_name,
       dayLabel: formatDayLabel(date),
       dateLabel: formatDateLabel(date),
