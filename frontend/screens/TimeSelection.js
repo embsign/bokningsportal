@@ -47,13 +47,13 @@ export const TimeSelection = ({
         className: "header-actions",
         children: [
           createElement("button", {
-            className: "secondary-button",
+            className: "secondary-button week-nav-button",
             text: "‹ Föregående vecka",
             onClick: onPrev,
             attrs: { disabled: !canPrev },
           }),
           createElement("button", {
-            className: "secondary-button",
+            className: "secondary-button week-nav-button",
             text: "Nästa vecka ›",
             onClick: onNext,
             attrs: { disabled: !canNext },

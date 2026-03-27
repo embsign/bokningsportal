@@ -2,18 +2,18 @@
 
 :root {
   color-scheme: light;
-  --bg: #f6f7fb;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-alt: #f0f2f8;
-  --text: #0f172a;
-  --muted: #5b6478;
-  --border: #e4e8f0;
-  --primary: #3b63f7;
-  --primary-dark: #2d4fe1;
+  --surface-alt: #ffffff;
+  --text: #101c33;
+  --muted: #1c3154;
+  --border: #45d3e4;
+  --primary: #45d3e4;
+  --primary-dark: #101c33;
   --success: #1f9d6a;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  --shadow: 0 16px 40px rgba(16, 28, 51, 0.18);
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 10px;
@@ -27,6 +27,7 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -42,6 +43,7 @@ body {
   max-width: 1600px;
   margin: 0 auto;
   width: 100%;
+  min-height: 100vh;
   padding: 32px 40px 28px;
   display: flex;
   flex-direction: column;
@@ -150,9 +152,9 @@ body {
 
 .admin-btn-edit {
   background: var(--primary) !important;
-  color: #fff !important;
-  border: none !important;
-  box-shadow: 0 8px 18px rgba(59, 99, 247, 0.2);
+  color: #101c33 !important;
+  border: 1px solid #2f567d !important;
+  box-shadow: 0 8px 18px rgba(16, 28, 51, 0.16);
 }
 
 .admin-btn-add {
@@ -328,7 +330,7 @@ body {
 .pill {
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(59, 99, 247, 0.12);
+  background: rgba(16, 28, 51, 0.12);
   color: var(--primary);
   font-size: 11px;
   font-weight: 600;
@@ -396,7 +398,7 @@ body {
 }
 
 .form-help:hover {
-  background: #e7ebf4;
+  background: #7fd9df;
 }
 
 .form-row {
@@ -542,6 +544,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  background: #101c33;
+  border-color: #101c33;
 }
 
 .header-left,
@@ -567,16 +571,17 @@ body {
   gap: 14px;
   font-weight: 600;
   font-size: 20px;
+  color: #d7f7ff;
 }
 
 .header-back {
   font-size: 16px;
   font-weight: 600;
   padding: 10px 16px;
-  color: #fff;
-  background: var(--primary);
-  border: none;
-  box-shadow: 0 8px 18px rgba(59, 99, 247, 0.25);
+  color: #8fe8f5;
+  background: transparent;
+  border: 1px solid #8fe8f5;
+  box-shadow: none;
   border-radius: 12px;
 }
 
@@ -584,10 +589,10 @@ body {
   width: 42px;
   height: 42px;
   border-radius: 14px;
-  background: #60b5c3;
+  background: linear-gradient(135deg, #45d3e4, #8fe8f5);
   display: grid;
   place-items: center;
-  color: white;
+  color: #101c33;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -596,14 +601,16 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  color: var(--muted);
+  color: #c6eef7;
   font-size: 15px;
 }
 
 .meta-pill {
   padding: 8px 14px;
   border-radius: 999px;
-  background: var(--surface-alt);
+  background: rgba(232, 119, 34, 0.08);
+  border: 1px solid #e87722;
+  color: #e87722;
   font-weight: 500;
 }
 
@@ -629,15 +636,28 @@ body {
 
 .primary-button {
   background: var(--primary);
-  color: #fff;
-  border: none;
-  box-shadow: 0 12px 22px rgba(59, 99, 247, 0.25);
+  color: #101c33;
+  border: 1px solid #2f567d;
+  box-shadow: 0 12px 22px rgba(16, 28, 51, 0.16);
 }
 
 
 .secondary-button {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid #101c33;
+}
+
+.week-nav-button {
+  border-color: #101c33;
+  color: #101c33;
+}
+
+.ghost-button[disabled],
+.primary-button[disabled],
+.secondary-button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .ghost-button[disabled],
@@ -650,7 +670,14 @@ body {
 
 .ghost-button {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid #8fe8f5;
+  color: #8fe8f5;
+}
+
+.header-back:hover,
+.ghost-button:hover {
+  background: rgba(143, 232, 245, 0.14);
+  color: #d7f7ff;
 }
 
 .step-indicator {
@@ -674,7 +701,7 @@ body {
 }
 
 .step.active {
-  background: rgba(59, 99, 247, 0.14);
+  background: rgba(16, 28, 51, 0.16);
   color: var(--primary);
 }
 
@@ -689,7 +716,7 @@ body {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: #fff;
+  background: rgba(16, 28, 51, 0.14);
   color: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -771,8 +798,8 @@ body {
 }
 
 .booking-card.mine {
-  border-color: #fbbf24;
-  background: rgba(251, 191, 36, 0.16);
+  border-color: #45d3e4;
+  background: #ffffff;
 }
 
 .booking-card-date {
@@ -861,7 +888,7 @@ body {
   height: 220px;
   border-radius: 20px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: #97e6ea;
   object-fit: contain;
 }
 
@@ -892,10 +919,13 @@ body {
 
 .service-pill {
   align-self: flex-start;
-  background: rgba(59, 99, 247, 0.1);
-  color: var(--primary);
-  padding: 6px 12px;
-  border-radius: 999px;
+  display: inline-block;
+  background: #ffffff;
+  color: #101c33;
+  border: 1px solid #101c33;
+  padding: 6px 14px;
+  line-height: 1.1;
+  border-radius: 9999px;
   font-weight: 600;
   font-size: 13px;
 }
@@ -972,8 +1002,9 @@ body {
 
 
 .day-card.disabled {
-  background: #f4f5f9;
-  color: #9aa3b2;
+  background: #d1d5db;
+  border-color: #6b7280;
+  color: #374151;
   cursor: not-allowed;
 }
 
@@ -1094,8 +1125,9 @@ body {
 }
 
 .timeslot-button.disabled {
-  background: #f4f5f9;
-  color: #9aa3b2;
+  background: #d1d5db;
+  border-color: #6b7280;
+  color: #374151;
   cursor: not-allowed;
 }
 
@@ -1132,7 +1164,7 @@ body {
   height: 220px;
   border-radius: 20px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: #97e6ea;
   object-fit: contain;
 }
 
@@ -1214,7 +1246,7 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.35);
+  background: rgba(16, 28, 51, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1262,13 +1294,22 @@ body {
   color: var(--muted);
   font-size: 16px;
   border-radius: var(--radius-md);
+}
+
+.empty-state {
+  border: 1px solid #22cad8;
+  background: #ffffff;
+}
+
+.error-state {
   border: 1px dashed var(--border);
-  background: #f9f9fc;
+  background: #97e6ea;
 }
 
 .skeleton {
-  background: #e4edf1;
-  animation: none;
+  background: linear-gradient(90deg, #72d1d9 25%, #97e6ea 37%, #72d1d9 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
   border-radius: 12px;
 }
 
