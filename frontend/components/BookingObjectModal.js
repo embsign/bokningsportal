@@ -66,6 +66,11 @@ export const BookingObjectModal = ({
     return null;
   }
 
+  const bindTimeFieldChange = (field) => ({
+    onInput: (event) => onChange(field, event.target.value),
+    onChange: (event) => onChange(field, event.target.value),
+  });
+
   const title =
     mode === "edit"
       ? "Redigera bokningsobjekt"
@@ -253,7 +258,7 @@ export const BookingObjectModal = ({
                                   value: form.fullDayStartTime || "12:00",
                                   "data-focus-key": "fullDayStartTime",
                                 },
-                                onInput: (event) => onChange("fullDayStartTime", event.target.value),
+                                ...bindTimeFieldChange("fullDayStartTime"),
                               }),
                             ],
                           }),
@@ -268,7 +273,50 @@ export const BookingObjectModal = ({
                                   value: form.fullDayEndTime || "12:00",
                                   "data-focus-key": "fullDayEndTime",
                                 },
-                                onInput: (event) => onChange("fullDayEndTime", event.target.value),
+                                ...bindTimeFieldChange("fullDayEndTime"),
+                              }),
+                            ],
+                          }),
+                        ],
+                      }),
+                    ],
+                  })
+                : null,
+              form.type === "Tidspass"
+                ? fieldGroup({
+                    label: "Tidsfönster för tidspass",
+                    help: "Ange tidigaste och senaste start/slut för slotar.",
+                    children: [
+                      createElement("div", {
+                        className: "form-stack form-group",
+                        children: [
+                          createElement("label", {
+                            className: "form-subfield",
+                            children: [
+                              createElement("span", { text: "Tidigaste tid" }),
+                              createElement("input", {
+                                className: "input",
+                                attrs: {
+                                  type: "time",
+                                  value: form.slotStartTime || "08:00",
+                                  "data-focus-key": "slotStartTime",
+                                },
+                                ...bindTimeFieldChange("slotStartTime"),
+                              }),
+                            ],
+                          }),
+                          createElement("label", {
+                            className: "form-subfield",
+                            children: [
+                              createElement("span", { text: "Senaste tid" }),
+                              createElement("input", {
+                                className: "input",
+                                attrs: {
+                                  type: "time",
+                                  value: form.slotEndTime || "20:00",
+                                  "data-focus-key": "slotEndTime",
+                                },
+                                ...bindTimeFieldChange("slotEndTime"),
                               }),
                             ],
                           }),
@@ -290,49 +338,6 @@ export const BookingObjectModal = ({
                   onInput: (event) => onChange("slotDuration", event.target.value),
                 }),
               }),
-              form.type === "Tidspass"
-                ? fieldGroup({
-                    label: "Tidsfönster för tidspass",
-                    help: "Ange tidigaste och senaste start/slut för slotar.",
-                    children: [
-                      createElement("div", {
-                        className: "form-stack form-group",
-                        children: [
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Tidigaste tid" }),
-                              createElement("input", {
-                                className: "input",
-                                attrs: {
-                                  type: "time",
-                                  value: form.slotStartTime || "08:00",
-                                  "data-focus-key": "slotStartTime",
-                                },
-                                onInput: (event) => onChange("slotStartTime", event.target.value),
-                              }),
-                            ],
-                          }),
-                          createElement("label", {
-                            className: "form-subfield",
-                            children: [
-                              createElement("span", { text: "Senaste tid" }),
-                              createElement("input", {
-                                className: "input",
-                                attrs: {
-                                  type: "time",
-                                  value: form.slotEndTime || "20:00",
-                                  "data-focus-key": "slotEndTime",
-                                },
-                                onInput: (event) => onChange("slotEndTime", event.target.value),
-                              }),
-                            ],
-                          }),
-                        ],
-                      }),
-                    ],
-                  })
-                : null,
               fieldGroup({
                 label: "Bokningsfönster",
                 help: "Min/max dagar framåt (utan enhet).",
