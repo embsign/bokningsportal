@@ -738,9 +738,40 @@ const handleServices = async (request: Request, env: Env) => {
       canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
     );
   }
+  const nowIso = new Date().toISOString();
   const services = await Promise.all(
     filtered.map(async (obj: any) => {
       const maxBookings = await getEffectiveMaxBookingsConfig(env.DB, obj);
+      let maxBookingsReached = false;
+      if (maxBookings.limit !== null) {
+        const activeCount =
+          maxBookings.scope === "group" && obj.group_id
+            ? await env.DB
+                .prepare(
+                  `SELECT COUNT(1) as count
+                   FROM bookings b
+                   JOIN booking_objects bo ON bo.id = b.booking_object_id
+                   WHERE b.user_id = ?
+                     AND bo.group_id = ?
+                     AND bo.tenant_id = ?
+                     AND b.cancelled_at IS NULL
+                     AND b.end_time >= ?`
+                )
+                .bind(auth.user.id, obj.group_id, auth.tenant.id, nowIso)
+                .first()
+            : await env.DB
+                .prepare(
+                  `SELECT COUNT(1) as count
+                   FROM bookings
+                   WHERE user_id = ?
+                     AND booking_object_id = ?
+                     AND cancelled_at IS NULL
+                     AND end_time >= ?`
+                )
+                .bind(auth.user.id, obj.id, nowIso)
+                .first();
+        maxBookingsReached = Number(activeCount?.count || 0) >= maxBookings.limit;
+      }
       return {
       id: obj.id,
       name: obj.name,
@@ -759,6 +790,7 @@ const handleServices = async (request: Request, env: Env) => {
       group_id: obj.group_id || null,
       max_bookings_limit: maxBookings.limit,
       max_bookings_scope: maxBookings.scope,
+      max_bookings_reached: maxBookingsReached,
       };
     })
   );

@@ -37,6 +37,7 @@ export const getServices = async () => {
     timeSlotEndTime: normalizeClockTime(service.time_slot_end_time || "20:00"),
     maxBookings: Number(service.max_bookings_limit || service.max_bookings || 0),
     maxBookingsLimit: Number(service.max_bookings_limit || service.max_bookings || 0),
+    maxBookingsReached: service.max_bookings_reached === true,
     bookingGroupId: service.group_id || "",
     priceWeekday: service.price_weekday_cents || 0,
     priceWeekend: service.price_weekend_cents || 0,

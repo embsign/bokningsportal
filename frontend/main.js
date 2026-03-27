@@ -1061,12 +1061,17 @@ const getSelectedServiceBookingLimit = (service) => {
 
 const isBookingCountLimited = (service) => getSelectedServiceBookingLimit(service) !== null;
 
+const isServiceMarkedAsMaxReached = (service) => Boolean(service?.maxBookingsReached === true);
+
 const getActiveBookingsForSelectedService = (state) =>
   (state.bookings || []).filter((booking) => booking.bookingObjectId === state.selectedService?.id);
 
 const isSelectedServiceMaxReached = (state) => {
   if (!state.selectedService) {
     return false;
+  }
+  if (isServiceMarkedAsMaxReached(state.selectedService)) {
+    return true;
   }
   const bookingLimit = getSelectedServiceBookingLimit(state.selectedService);
   if (bookingLimit === null) {
