@@ -25,6 +25,7 @@ const legendItem = (dotClass, label) =>
 export const TimeSelection = ({
   weekLabel,
   weekSlots,
+  expectedWeekSlots,
   selectedSlotId,
   onSelect,
   onPrev,
@@ -68,19 +69,26 @@ export const TimeSelection = ({
 
   let bodyContent;
   if (isLoading) {
+    const loadingDays = expectedWeekSlots?.length
+      ? expectedWeekSlots
+      : Array.from({ length: 7 }).map((_, index) => ({
+          id: `loading-day-${index}`,
+          label: "—",
+          slots: Array.from({ length: 3 }),
+        }));
     bodyContent = createElement("div", {
       className: "timeslot-grid",
-      children: Array.from({ length: 7 }).map((_, index) =>
+      children: loadingDays.map((day, index) =>
         createElement("div", {
           className: "timeslot-column",
           children: [
             createElement("div", {
               className: `timeslot-header ${index === 6 ? "weekday-sunday" : ""}`.trim(),
-              text: "—",
+              text: day.label || "—",
             }),
-            createElement("div", { className: "skeleton timeslot-skeleton-item" }),
-            createElement("div", { className: "skeleton timeslot-skeleton-item" }),
-            createElement("div", { className: "skeleton timeslot-skeleton-item" }),
+            ...Array.from({ length: day.slots?.length || 3 }).map(() =>
+              createElement("div", { className: "skeleton timeslot-skeleton-item" })
+            ),
           ],
         })
       ),

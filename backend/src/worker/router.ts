@@ -576,14 +576,17 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
       end.setUTCMinutes(end.getUTCMinutes() + slotMinutes);
       const startMs = start.getTime();
       const endMs = end.getTime();
-      let status: "available" | "booked" | "mine" | "disabled" = "available";
-      const outsideWindow = startMs < minMs || endMs > maxMs;
-      if (endMs <= nowMs || outsideWindow) {
-        status = "disabled";
-      }
+      let status: "available" | "booked" | "mine" | "disabled";
       const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
       if (overlap) {
         status = overlap.userId === user.id ? "mine" : "booked";
+      } else {
+        const outsideWindow = startMs < minMs || endMs > maxMs;
+        status = outsideWindow ? "disabled" : "available";
+      }
+      // Passed slots should always be visually disabled, regardless of booking ownership.
+      if (endMs <= nowMs) {
+        status = "disabled";
       }
       const isWeekend = [0, 6].includes(start.getUTCDay());
       const price = isWeekend ? (bookingObject.price_weekend_cents as number) : (bookingObject.price_weekday_cents as number);
@@ -723,6 +726,7 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
        FROM bookings b
        JOIN booking_objects bo ON bo.id = b.booking_object_id
        WHERE b.user_id = ? AND b.cancelled_at IS NULL
+         AND datetime(b.end_time) > datetime('now')
        ORDER BY b.start_time ASC`
     )
     .bind(auth.user.id)
@@ -731,6 +735,8 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
     id: row.id,
     service_name: row.booking_object_name,
     date: (row.start_time as string).slice(0, 10),
+    start_time: row.start_time,
+    end_time: row.end_time,
     time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
     status: "mine",
   }));
