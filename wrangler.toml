@@ -1,7 +1,6 @@
 name = "bokningsportal"
 compatibility_date = "2024-11-01"
 pages_build_output_dir = "frontend"
-rules = [{ type = "Text", globs = ["**/*.sql"], fallthrough = true }]
 
 [[d1_databases]]
 binding = "DB"
