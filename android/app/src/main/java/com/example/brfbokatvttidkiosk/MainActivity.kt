@@ -385,7 +385,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun runPairingFlow(code: String): KioskConfig? {
         var lastAnnounceAt = 0L
         repeat(pairingSessionMaxPolls) {
-            if (uiState != UiState.Pairing || !isActive) return null
+            if (uiState != UiState.Pairing) return null
 
             val now = System.currentTimeMillis()
             if (now - lastAnnounceAt >= pairingAnnounceIntervalMs) {
