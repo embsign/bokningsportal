@@ -42,16 +42,11 @@ Sätt `PRINT_ENV=1` för att lista env‑variabler (hjälper att hitta PR‑numm
 
 ## Backend URL discovery
 
-Frontend läser API‑bas från:
-1) `window.API_BASE` (runtime)
-2) `<meta name="api-base" content="...">`
-3) fallback `/api`
-
-I produktion/preview kan frontend använda standardvärdet `/api` (samma origin).
+Frontend använder `/api` (same-origin) för API-anrop.
 
 ### Auto‑resolution i build
 
-`scripts/prepare_pages_api_base.mjs` injicerar `/api` som standard (eller explicit `API_BASE` om satt).
+Ingen API-base-injektion krävs i build när backend körs som Pages Functions.
 
 ## Cloudflare Turnstile (registrering av ny BRF)
 
