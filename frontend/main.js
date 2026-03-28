@@ -484,7 +484,7 @@ if (routePath.startsWith("/admin/")) {
 
   const renderAdmin = () => {
     const state = adminStore.getState();
-    const activeElement = state.modalOpen || state.editUserOpen ? document.activeElement : null;
+    const activeElement = state.modalOpen || state.editUserOpen || state.pairScreenModalOpen || state.editScreenModalOpen ? document.activeElement : null;
     const modalFocusSnapshot =
       activeElement && activeElement.getAttribute?.("data-focus-key")
         ? {
@@ -960,7 +960,7 @@ if (routePath.startsWith("/admin/")) {
     );
     app.append(shell);
 
-    if (modalFocusSnapshot && !state.groupModalOpen) {
+    if (modalFocusSnapshot && !state.groupModalOpen && !state.orderScreensModalOpen) {
       const target = app.querySelector(`[data-focus-key="${modalFocusSnapshot.key}"]`);
       if (target) {
         target.focus();
