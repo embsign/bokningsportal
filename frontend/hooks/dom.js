@@ -31,6 +31,10 @@ export const createElement = (tag, options = {}, children = []) => {
           return;
         }
         element.setAttribute(key, value);
+        // For input/textarea/select elements, also set the DOM property
+        if (key === "value" && (tag === "input" || tag === "textarea" || tag === "select")) {
+          element.value = value;
+        }
       }
     });
   }
