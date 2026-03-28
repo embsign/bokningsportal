@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev ../frontend --config ../wrangler.toml --port 8787",
-    "dev:remote": "wrangler pages dev ../frontend --config ../wrangler.toml --port 8787"
+    "dev": "wrangler --cwd .. pages dev frontend --port 8787",
+    "dev:remote": "wrangler --cwd .. pages dev frontend --port 8787"
   },
   "dependencies": {},
   "devDependencies": {
