@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler --cwd .. pages dev frontend --port 8787",
-    "dev:remote": "wrangler --cwd .. pages dev frontend --port 8787"
+    "dev": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787",
+    "dev:remote": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787"
   },
   "dependencies": {},
   "devDependencies": {

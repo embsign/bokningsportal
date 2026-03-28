@@ -5,6 +5,7 @@
 - D1 används som databas.
 - Produktion använder `booking-prod`.
 - Preview för PR använder `booking-pr-{PR_NUMBER}`.
+- D1-binding för Pages sätts i Cloudflare Dashboard (Settings → Bindings), inte via placeholder i `wrangler.toml`.
 
 ## Preview vs Production
 
@@ -102,3 +103,15 @@ och blockerar registreringen om verifieringen misslyckas.
 ## Lokalt
 - Backend (Node): `npm run dev` i `backend/`
 - Frontend: `npx serve -s -l 5173` i `frontend/`
+
+## Pages bindings (Cloudflare Dashboard)
+
+För deploy i Pages måste D1 bindas i projektets settings:
+
+1) **Workers & Pages** → välj projektet  
+2) **Settings** → **Bindings**  
+3) **Add** → **D1 database bindings**  
+4) Variable name: `DB`  
+5) Välj rätt databas för miljön (Production/Preview)
+
+Detta ersätter tidigare Worker-flöde där `database_id` kunde injiceras i `wrangler.generated.toml`.
