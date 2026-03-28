@@ -2766,6 +2766,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       open: true,
       step: 1,
       submitError: "",
+      turnstileSiteKey: getTurnstileSiteKey(),
       turnstileToken: "",
       turnstileWidgetId: null,
       turnstileError: "",
