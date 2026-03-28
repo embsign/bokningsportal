@@ -1,5 +1,6 @@
 import { createElement } from "../hooks/dom.js";
 import { BookingObjectsTable } from "../components/BookingObjectsTable.js";
+import { BookingScreensSection } from "../components/BookingScreensSection.js";
 
 const sectionCard = ({ title, description, actions, content }) =>
   createElement("div", {
@@ -29,12 +30,32 @@ const sectionCard = ({ title, description, actions, content }) =>
 export const AdminDashboard = ({
   adminUser,
   bookingObjects,
+  bookingScreens,
   onAdd,
   onCopy,
   onEdit,
   onImportUsers,
   onEditUsers,
   onCreateReport,
+  onOpenOrderScreens,
+  onOpenPairScreen,
+  onCloseOrderScreens,
+  onConfirmOrderScreens,
+  onClosePairScreen,
+  onConfirmPairScreen,
+  onPairCodeInput,
+  onPairNameInput,
+  onEditScreen,
+  onDeleteScreen,
+  onCloseEditScreen,
+  onConfirmEditScreen,
+  onEditScreenNameInput,
+  orderScreensModalOpen,
+  pairScreenModalOpen,
+  editScreenModalOpen,
+  pairScreenCode,
+  pairScreenName,
+  editScreenName,
   modal,
   importModal,
   userPickerModal,
@@ -89,6 +110,29 @@ export const AdminDashboard = ({
     ],
   });
 
+  const bookingScreensSection = BookingScreensSection({
+    bookingScreens,
+    orderModalOpen: orderScreensModalOpen,
+    pairModalOpen: pairScreenModalOpen,
+    editModalOpen: editScreenModalOpen,
+    pairingCode: pairScreenCode,
+    pairName: pairScreenName,
+    editName: editScreenName,
+    onOpenOrder: onOpenOrderScreens,
+    onOpenPair: onOpenPairScreen,
+    onCloseOrder: onCloseOrderScreens,
+    onConfirmOrder: onConfirmOrderScreens,
+    onClosePair: onClosePairScreen,
+    onConfirmPair: onConfirmPairScreen,
+    onPairCodeInput: onPairCodeInput,
+    onPairNameInput: onPairNameInput,
+    onEdit: onEditScreen,
+    onDelete: onDeleteScreen,
+    onCloseEdit: onCloseEditScreen,
+    onConfirmEdit: onConfirmEditScreen,
+    onEditNameInput: onEditScreenNameInput,
+  });
+
   return createElement("section", {
     className: "admin-dashboard",
     children: [
@@ -104,7 +148,7 @@ export const AdminDashboard = ({
       }),
       createElement("div", {
         className: "admin-grid",
-        children: [userSection, bookingSection, reportsSection],
+        children: [userSection, bookingSection, bookingScreensSection, reportsSection],
       }),
       modal,
       importModal,

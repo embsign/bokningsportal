@@ -189,3 +189,51 @@ export const applyImport = (csvText, rules, actions, options = {}) =>
 
 export const downloadReportCsv = async (month, bookingObjectId) =>
   apiRequest(`/admin/reports/csv?month=${encodeURIComponent(month)}&booking_object_id=${encodeURIComponent(bookingObjectId)}`);
+
+export const getBookingScreens = async () => {
+  const { booking_screens } = await apiRequest("/admin/booking-screens");
+  return (booking_screens || []).map((screen) => ({
+    id: screen.id,
+    tenantId: screen.tenant_id,
+    name: screen.name,
+    pairingCode: screen.pairing_code,
+    createdAt: screen.created_at,
+    updatedAt: screen.updated_at,
+    pairedAt: screen.paired_at,
+    lastSeenAt: screen.last_seen_at,
+    lastVerifiedAt: screen.last_verified_at,
+    active: Boolean(screen.is_active),
+  }));
+};
+
+export const orderBookingScreens = (payload = {}) =>
+  apiRequest("/admin/booking-screens/order", {
+    method: "POST",
+    body: JSON.stringify({
+      quantity: payload.quantity || 1,
+      contact_name: payload.contactName || "",
+      contact_email: payload.contactEmail || "",
+    }),
+  });
+
+export const pairBookingScreen = (payload) =>
+  apiRequest("/admin/booking-screens/pair", {
+    method: "POST",
+    body: JSON.stringify({
+      pairing_code: payload.pairingCode,
+      name: payload.name,
+    }),
+  });
+
+export const updateBookingScreen = (id, payload) =>
+  apiRequest(`/admin/booking-screens/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: payload.name,
+    }),
+  });
+
+export const deleteBookingScreen = (id) =>
+  apiRequest(`/admin/booking-screens/${id}`, {
+    method: "DELETE",
+  });

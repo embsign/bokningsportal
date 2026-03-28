@@ -67,6 +67,39 @@ cd backend && npx tsc --noEmit
 ```
 No ESLint config exists. TypeScript checking is the primary static analysis tool.
 
+### Android build in Cursor Cloud
+
+Android-kioskappen finns i `android/` och kan byggas i cloud-miljön om SDK installeras först.
+
+1. Installera Android command-line tools:
+```sh
+sudo mkdir -p /opt/android-sdk/cmdline-tools
+cd /tmp
+wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -O cmdline-tools.zip
+unzip -q -o cmdline-tools.zip -d /tmp/android-cmdline-tools
+sudo rm -rf /opt/android-sdk/cmdline-tools/latest
+sudo mv /tmp/android-cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+sudo chown -R ubuntu:ubuntu /opt/android-sdk
+```
+
+2. Acceptera licenser och installera SDK-komponenter:
+```sh
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk --licenses < <(yes)
+/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk \
+  "platform-tools" \
+  "platforms;android-36" \
+  "build-tools;36.0.0"
+```
+
+3. Konfigurera projektet och bygg:
+```sh
+echo "sdk.dir=/opt/android-sdk" > /workspace/android/local.properties
+cd /workspace/android && ./gradlew :app:assembleDebug
+```
+
+Verifierad fungerande build-output:
+- APK: `android/app/build/outputs/apk/debug/app-debug.apk`
+
 ### Demo access tokens (from seed data)
 
 | Role | URL path | Token |
