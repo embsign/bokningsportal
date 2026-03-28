@@ -22,7 +22,10 @@ export const ServiceSelection = ({
   onCloseCancel,
   onConfirmCancel,
   qrWarningOpen,
-  qrGenerated,
+  qrGenerating,
+  qrError,
+  qrUrl,
+  qrImageUrl,
   qrModalOpen,
   onOpenQrWarning,
   onCloseQrWarning,
@@ -98,7 +101,8 @@ export const ServiceSelection = ({
                   }),
                   createElement("button", {
                     className: "primary-button",
-                    text: "Generera QR kod",
+                    text: qrGenerating ? "Genererar..." : "Generera QR kod",
+                    attrs: { disabled: qrGenerating ? "disabled" : null },
                     onClick: onOpenQrWarning,
                   }),
                 ],
@@ -121,17 +125,25 @@ export const ServiceSelection = ({
                 className: "screen-subtitle",
                 text: "Den nuvarande personliga länken kommer att försvinna och en ny genereras. Är du säker?",
               }),
+              qrError
+                ? createElement("div", {
+                    className: "form-error",
+                    text: qrError,
+                  })
+                : null,
               createElement("div", {
                 className: "modal-footer",
                 children: [
                   createElement("button", {
                     className: "secondary-button",
                     text: "Avbryt",
+                    attrs: { disabled: qrGenerating ? "disabled" : null },
                     onClick: onCloseQrWarning,
                   }),
                   createElement("button", {
                     className: "primary-button",
-                    text: "Generera",
+                    text: qrGenerating ? "Genererar..." : "Generera",
+                    attrs: { disabled: qrGenerating ? "disabled" : null },
                     onClick: onConfirmQr,
                   }),
                 ],
@@ -158,7 +170,26 @@ export const ServiceSelection = ({
             className: "modal card",
             children: [
               createElement("div", { className: "modal-title", text: "Din QR-kod" }),
-              createElement("div", { className: "qr-box qr-box-large", text: "QR" }),
+              qrImageUrl
+                ? createElement("img", {
+                    className: "qr-image",
+                    attrs: {
+                      src: qrImageUrl,
+                      alt: "QR-kod till din personliga bokningslänk",
+                    },
+                  })
+                : createElement("div", { className: "qr-box qr-box-large", text: "QR" }),
+              qrUrl
+                ? createElement("a", {
+                    className: "booking-download-link",
+                    text: qrUrl,
+                    attrs: {
+                      href: qrUrl,
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                    },
+                  })
+                : null,
               createElement("div", {
                 className: "screen-subtitle",
                 text: "QR-koden visas bara en gång. Spara den, t.ex. som bokmärke i telefonen.",

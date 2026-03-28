@@ -739,6 +739,67 @@ const handleKioskAccessToken = async (request: Request, env: Env) => {
   return json({ access_token: accessToken, login_url: `/user/${accessToken}` });
 };
 
+const handleDemoLinks = async (request: Request, env: Env) => {
+  const requestUrl = new URL(request.url);
+  const frontendBaseUrlCandidate = env.FRONTEND_BASE_URL || requestUrl.origin;
+  let frontendOrigin = requestUrl.origin;
+  try {
+    frontendOrigin = new URL(frontendBaseUrlCandidate).origin;
+  } catch {
+    frontendOrigin = requestUrl.origin;
+  }
+
+  const demoTenant = (await env.DB.prepare(
+    `SELECT id, account_owner_token
+     FROM tenants
+     WHERE id = 'demo-brf'
+     LIMIT 1`
+  ).bind().first()) as any;
+  if (!demoTenant) {
+    return errorResponse(404, "demo_not_found");
+  }
+
+  const tokenRows = await env.DB
+    .prepare(
+      `SELECT
+         u.apartment_id,
+         u.is_admin,
+         at.token
+       FROM users u
+       JOIN access_tokens at ON at.user_id = u.id
+       WHERE u.tenant_id = ?
+         AND u.is_active = 1
+       ORDER BY u.is_admin DESC, u.apartment_id ASC`
+    )
+    .bind(demoTenant.id)
+    .all();
+
+  const adminToken =
+    (tokenRows.results.find((row: any) => Number(row.is_admin) === 1)?.token as string | undefined) ||
+    (demoTenant.account_owner_token as string | undefined);
+  const userTokens = tokenRows.results
+    .filter((row: any) => Number(row.is_admin) !== 1)
+    .slice(0, 2)
+    .map((row: any) => row.token as string);
+
+  const buildLink = (path: string) => `${frontendOrigin.replace(/\/$/, "")}${path}`;
+
+  return json({
+    links: {
+      admin: adminToken
+        ? {
+            path: `/admin/${adminToken}`,
+            url: buildLink(`/admin/${adminToken}`),
+          }
+        : null,
+      users: userTokens.map((token) => ({
+        path: `/user/${token}`,
+        url: buildLink(`/user/${token}`),
+      })),
+    },
+  });
+};
+
 const handleSession = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
@@ -864,8 +925,6 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
     service_name: row.booking_object_name,
     booking_object_id: row.booking_object_id,
     booking_group_id: row.booking_group_id,
-    start_time: row.start_time,
-    end_time: row.end_time,
     date: (row.start_time as string).slice(0, 10),
     start_time: row.start_time,
     end_time: row.end_time,
@@ -1868,6 +1927,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "POST" && path === "/api/brf/setup/verify") return handleBrfSetupVerify(request, env);
   if (request.method === "POST" && path === "/api/brf/setup/complete") return handleBrfSetupComplete(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
+  if (request.method === "GET" && path === "/api/demo-links") return handleDemoLinks(request, env);
 
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
   if (request.method === "GET" && path === "/api/services") return handleServices(request, env);
