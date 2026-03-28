@@ -754,7 +754,7 @@ const handleDemoLinks = async (request: Request, env: Env) => {
      FROM tenants
      WHERE id = 'demo-brf'
      LIMIT 1`
-  ).first()) as any;
+  ).bind().first()) as any;
   if (!demoTenant) {
     return errorResponse(404, "demo_not_found");
   }
@@ -925,8 +925,6 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
     service_name: row.booking_object_name,
     booking_object_id: row.booking_object_id,
     booking_group_id: row.booking_group_id,
-    start_time: row.start_time,
-    end_time: row.end_time,
     date: (row.start_time as string).slice(0, 10),
     start_time: row.start_time,
     end_time: row.end_time,
