@@ -955,6 +955,7 @@ const store = createStore({
   qrError: "",
   qrUrl: "",
   qrImageUrl: "",
+  qrRedirectPath: "",
   qrModalOpen: false,
   confirmationCalendarEvent: null,
   confirmationBookingId: null,
@@ -1244,11 +1245,8 @@ const refreshPersonalQrLink = async () => {
       qrModalOpen: true,
       qrUrl: loginUrl,
       qrImageUrl: buildQrImageUrl(loginUrl, 320),
+      qrRedirectPath: loginPath,
     });
-    // Laddar om med nya URL:en så aktuell sessionslänk alltid matchar aktiv token.
-    window.setTimeout(() => {
-      window.location.assign(loginPath);
-    }, 1200);
   } catch (error) {
     store.setState({
       qrGenerating: false,
@@ -1440,7 +1438,13 @@ const loadWeekAvailability = async (service, weekStart) => {
       onOpenQrWarning: () => store.setState({ qrWarningOpen: true, qrError: "" }),
       onCloseQrWarning: () => store.setState({ qrWarningOpen: false, qrError: "" }),
       onConfirmQr: refreshPersonalQrLink,
-      onCloseQrModal: () => store.setState({ qrModalOpen: false }),
+      onCloseQrModal: () => {
+        const nextPath = store.getState().qrRedirectPath;
+        store.setState({ qrModalOpen: false });
+        if (nextPath) {
+          window.location.assign(nextPath);
+        }
+      },
       isMobile,
       state: state.uiStates.service,
     });
