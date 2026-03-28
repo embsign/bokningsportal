@@ -1293,8 +1293,6 @@ const handleCurrentBookings = async (request: Request, env: Env) => {
     booking_object_id: row.booking_object_id,
     booking_group_id: row.booking_group_id,
     date: (row.start_time as string).slice(0, 10),
-    start_time: row.start_time,
-    end_time: row.end_time,
     time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
     status: "mine",
   }));
