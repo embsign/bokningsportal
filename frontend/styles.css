@@ -1271,6 +1271,19 @@ body {
   align-items: center;
 }
 
+.turnstile-panel {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.turnstile-copy {
+  font-size: 14px;
+}
+
+.turnstile-widget-host {
+  min-height: 72px;
+}
+
 .week-label {
   font-size: 18px;
   font-weight: 600;

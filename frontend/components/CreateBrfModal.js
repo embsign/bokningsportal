@@ -58,8 +58,28 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
         ],
       }),
       createElement("div", {
-        className: "state-panel",
-        text: "Turnstile placeras här i nästa iteration.",
+        className: "state-panel turnstile-panel",
+        children: [
+          createElement("div", {
+            className: "turnstile-copy",
+            text: "Verifiera att du är människa innan du går vidare.",
+          }),
+          form.turnstileSiteKey
+            ? createElement("div", {
+                className: "turnstile-widget-host",
+                attrs: { id: form.turnstileContainerId || "create-brf-turnstile" },
+              })
+            : createElement("div", {
+                className: "form-error",
+                text: "Turnstile är inte konfigurerad. Ange site key i frontend.",
+              }),
+          form.turnstileError
+            ? createElement("div", { className: "form-error", text: form.turnstileError })
+            : null,
+          form.errors?.turnstile
+            ? createElement("div", { className: "form-error", text: form.errors.turnstile })
+            : null,
+        ],
       }),
     ],
   });

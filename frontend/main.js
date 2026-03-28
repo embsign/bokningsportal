@@ -54,6 +54,54 @@ const hashPath = window.location.hash.replace(/^#/, "");
 const routePath = hashPath || path;
 const buildQrImageUrl = (targetUrl, size = 320) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(targetUrl)}`;
+const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const getTurnstileSiteKey = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  if (window.TURNSTILE_SITE_KEY) {
+    return String(window.TURNSTILE_SITE_KEY).trim();
+  }
+  const meta = document.querySelector('meta[name="turnstile-site-key"]');
+  return (meta?.content || "").trim();
+};
+const ensureTurnstileScript = (() => {
+  let promise = null;
+  return () => {
+    if (typeof window === "undefined") {
+      return Promise.reject(new Error("turnstile_unavailable"));
+    }
+    if (window.turnstile) {
+      return Promise.resolve(window.turnstile);
+    }
+    if (!promise) {
+      promise = new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[src^="https://challenges.cloudflare.com/turnstile/"]');
+        if (existing) {
+          existing.addEventListener(
+            "load",
+            () => resolve(window.turnstile),
+            { once: true }
+          );
+          existing.addEventListener(
+            "error",
+            () => reject(new Error("turnstile_script_load_failed")),
+            { once: true }
+          );
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = TURNSTILE_SCRIPT_SRC;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve(window.turnstile);
+        script.onerror = () => reject(new Error("turnstile_script_load_failed"));
+        document.head.append(script);
+      });
+    }
+    return promise;
+  };
+})();
 const openHelp = () => {
   window.alert(
     "Hjälp\n\nBoka genom att välja objekt, vecka/datum och tid.\nVid problem med behörighet eller bokning, kontakta styrelsen/förvaltaren."
@@ -2691,6 +2739,11 @@ const loadWeekAvailability = async (service, weekStart) => {
     isSubmitting: false,
     submitError: "",
     setupUrl: "",
+    turnstileSiteKey: getTurnstileSiteKey(),
+    turnstileContainerId: "create-brf-turnstile",
+    turnstileToken: "",
+    turnstileWidgetId: null,
+    turnstileError: "",
   };
 
   const setCreateBrfState = (next) => {
@@ -2708,7 +2761,16 @@ const loadWeekAvailability = async (service, weekStart) => {
     }
   };
 
-  const openCreateBrf = () => setCreateBrfState({ open: true, step: 1, submitError: "" });
+  const openCreateBrf = () =>
+    setCreateBrfState({
+      open: true,
+      step: 1,
+      submitError: "",
+      turnstileSiteKey: getTurnstileSiteKey(),
+      turnstileToken: "",
+      turnstileWidgetId: null,
+      turnstileError: "",
+    });
   const closeCreateBrf = () =>
     setCreateBrfState({
       open: false,
@@ -2719,6 +2781,9 @@ const loadWeekAvailability = async (service, weekStart) => {
       submitError: "",
       setupUrl: "",
       isSubmitting: false,
+      turnstileToken: "",
+      turnstileWidgetId: null,
+      turnstileError: "",
     });
   const nextCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 3) }));
@@ -2735,13 +2800,20 @@ const loadWeekAvailability = async (service, weekStart) => {
     if (!createBrfState.email?.trim()) {
       errors.email = "Ange en e-postadress.";
     }
+    if (!createBrfState.turnstileToken) {
+      errors.turnstile = "Verifiera att du är människa i steg 1.";
+    }
     if (Object.keys(errors).length) {
       setCreateBrfState({ errors, submitError: "" });
       return;
     }
     setCreateBrfState({ errors: {}, submitError: "", isSubmitting: true });
     try {
-      const response = await registerBrf(createBrfState.name.trim(), createBrfState.email.trim());
+      const response = await registerBrf(
+        createBrfState.name.trim(),
+        createBrfState.email.trim(),
+        createBrfState.turnstileToken
+      );
       setCreateBrfState({
         isSubmitting: false,
         setupUrl: response?.setup_url || "",
@@ -2749,7 +2821,15 @@ const loadWeekAvailability = async (service, weekStart) => {
       nextCreateBrf();
     } catch (error) {
       const message = error?.detail || "Kunde inte skicka mail. Försök igen.";
-      setCreateBrfState({ isSubmitting: false, submitError: message });
+      setCreateBrfState({
+        isSubmitting: false,
+        submitError: message,
+        turnstileToken: "",
+      });
+      if (createBrfState.turnstileWidgetId !== null && window.turnstile?.remove) {
+        window.turnstile.remove(createBrfState.turnstileWidgetId);
+        createBrfState.turnstileWidgetId = null;
+      }
     }
   };
   const finishCreateBrf = () => closeCreateBrf();
@@ -3094,6 +3174,43 @@ const loadWeekAvailability = async (service, weekStart) => {
     });
     if (modal) {
       app.append(modal);
+    }
+
+    if (createBrfState.open && createBrfState.step === 1 && createBrfState.turnstileSiteKey) {
+      const target = document.getElementById(createBrfState.turnstileContainerId);
+      if (target && target.childElementCount === 0) {
+        ensureTurnstileScript()
+          .then((turnstile) => {
+            if (!turnstile || !document.getElementById(createBrfState.turnstileContainerId)) {
+              return;
+            }
+            if (createBrfState.turnstileWidgetId !== null && turnstile.remove) {
+              turnstile.remove(createBrfState.turnstileWidgetId);
+            }
+            const widgetId = turnstile.render(`#${createBrfState.turnstileContainerId}`, {
+              sitekey: createBrfState.turnstileSiteKey,
+              callback: (token) => {
+                createBrfState.turnstileToken = token;
+                createBrfState.turnstileError = "";
+                if (createBrfState.errors?.turnstile) {
+                  const nextErrors = { ...createBrfState.errors };
+                  delete nextErrors.turnstile;
+                  createBrfState.errors = nextErrors;
+                }
+              },
+              "expired-callback": () => {
+                setCreateBrfState({ turnstileToken: "", turnstileError: "Verifieringen har gått ut. Försök igen." });
+              },
+              "error-callback": () => {
+                setCreateBrfState({ turnstileToken: "", turnstileError: "Turnstile kunde inte laddas. Ladda om sidan." });
+              },
+            });
+            createBrfState.turnstileWidgetId = widgetId;
+          })
+          .catch(() => {
+            setCreateBrfState({ turnstileError: "Turnstile-script kunde inte laddas." });
+          });
+      }
     }
   };
 

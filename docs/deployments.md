@@ -63,6 +63,57 @@ Exempel:
 
 Detta gör att frontend kan deployas med rätt worker‑namn även för PR‑previews.
 
+## Cloudflare Turnstile (registrering av ny BRF)
+
+För att registreringsflödet ska fungera måste Turnstile vara konfigurerad både i frontend och backend.
+
+### 1) Skapa Turnstile‑widget i Cloudflare
+
+- Gå till **Cloudflare Dashboard → Turnstile**.
+- Skapa en ny widget och välj lämplig widgettyp (Managed är oftast bäst).
+- Spara:
+  - **Site key** (publik, används i frontend).
+  - **Secret key** (hemlig, används i backend).
+
+### 2) Lägg till tillåtna hostnames/domäner
+
+Ja, du behöver lägga till domäner/hostnames i Turnstile‑widgeten. Minst:
+
+- Produktionsdomän för frontend (t.ex. `bokningar.dindoman.se`).
+- Eventuella preview‑domäner som används i CI/PR‑preview.
+- Lokalt för utveckling (t.ex. `localhost`).
+
+Om hostnamen inte finns med i widgetens tillåtna lista kommer verifieringen att fallera.
+
+### 3) Konfigurera frontend med Site key
+
+Sätt site key i `frontend/index.html`:
+
+```html
+<meta name="turnstile-site-key" content="0x4AAAAA..." />
+```
+
+Alternativt kan den injiceras via:
+
+```html
+<script>window.TURNSTILE_SITE_KEY = "0x4AAAAA...";</script>
+```
+
+### 4) Konfigurera backend med Secret key
+
+Sätt `TURNSTILE_SECRET` som Worker‑secret i Cloudflare.
+
+Exempel:
+
+```sh
+wrangler secret put TURNSTILE_SECRET
+```
+
+Backend verifierar token mot:
+`https://challenges.cloudflare.com/turnstile/v0/siteverify`
+
+och blockerar registreringen om verifieringen misslyckas.
+
 ## Lokalt
 - Backend (Node): `npm run dev` i `backend/`
 - Frontend: `npx serve -s -l 5173` i `frontend/`

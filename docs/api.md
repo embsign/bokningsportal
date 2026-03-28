@@ -13,6 +13,39 @@ Denna API‑spec följer nuvarande frontend‑implementation och UX‑flöden.
 
 ## Publika endpoints
 
+### POST /api/brf/register
+Registrera ny BRF och skicka setup‑länk via e‑post.
+
+**Body**:
+`{ "association_name": "BRF Exempel", "email": "styrelsen@brf.se", "turnstile_token": "..." }`
+
+**Notering**:
+- `turnstile_token` är obligatorisk och verifieras server-side via Cloudflare Turnstile.
+- Returnerar `400 turnstile_invalid[:codes]` om token är ogiltig/utgången.
+- Returnerar `500 missing_turnstile_secret` om backend saknar Turnstile‑secret.
+- Returnerar `502 turnstile_unavailable` om verifieringstjänsten inte går att nå.
+
+**Response**:
+`{ "setup_url": "https://.../setup/{payload}" }`
+
+### POST /api/brf/setup/verify
+Verifiera setup‑payload och skapa tenant om den inte redan finns.
+
+**Body**:
+`{ "payload": "{base64url-json}" }`
+
+**Response**:
+`{ "association_name": "...", "email": "...", "uuid": "...", "account_owner_token": "...", "is_setup_complete": false }`
+
+### POST /api/brf/setup/complete
+Markera setup som slutförd och skicka admin‑länk.
+
+**Body**:
+`{ "account_owner_token": "...", "email": "..." }`
+
+**Response**:
+`{ "ok": true, "admin_url": "https://.../admin/{token}" }`
+
 ### POST /api/rfid-login
 Logga in via RFID‑UID (kiosk).
 
