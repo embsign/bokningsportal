@@ -112,6 +112,50 @@ const getWindowBoundaries = (bookingObject: any, nowUtc: Date) => {
   };
 };
 
+const getNextAvailableStart = (bookingObject: any, nowUtc: Date) => {
+  const windowMinDays = Number(bookingObject.window_min_days || 0);
+  const candidateDate = new Date(
+    Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), 0, 0, 0)
+  );
+  candidateDate.setUTCDate(candidateDate.getUTCDate() + windowMinDays);
+
+  if (bookingObject.booking_type === "full-day") {
+    return buildFullDayRange(candidateDate, bookingObject).start;
+  }
+
+  const parsedSlotMinutes = Number(bookingObject.slot_duration_minutes);
+  const slotMinutes = Number.isFinite(parsedSlotMinutes) && parsedSlotMinutes > 0 ? parsedSlotMinutes : 60;
+  const slotWindow = getTimeSlotWindowConfig(bookingObject);
+  for (
+    let minuteOffset = slotWindow.startMinutes;
+    minuteOffset + slotMinutes <= slotWindow.endMinutes;
+    minuteOffset += slotMinutes
+  ) {
+    const start = new Date(
+      Date.UTC(
+        candidateDate.getUTCFullYear(),
+        candidateDate.getUTCMonth(),
+        candidateDate.getUTCDate(),
+        0,
+        0,
+        0
+      )
+    );
+    start.setUTCMinutes(minuteOffset);
+    if (start.getTime() >= nowUtc.getTime()) {
+      return start;
+    }
+  }
+
+  const nextDay = new Date(candidateDate);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const nextDayStart = new Date(
+    Date.UTC(nextDay.getUTCFullYear(), nextDay.getUTCMonth(), nextDay.getUTCDate(), 0, 0, 0)
+  );
+  nextDayStart.setUTCMinutes(slotWindow.startMinutes);
+  return nextDayStart;
+};
+
 const maybeDelayAvailability = async (env: Env) => {
   const raw = env.DEBUG_AVAILABILITY_DELAY_MS;
   const delayMs = Number(raw);
@@ -710,6 +754,7 @@ const handleSession = async (request: Request, env: Env) => {
 const handleServices = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
+  const nowUtc = getUtcNowFromEnv(env);
   const bookingObjects = await env.DB
     .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
     .bind(auth.tenant.id)
@@ -787,7 +832,7 @@ const handleServices = async (request: Request, env: Env) => {
       time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
       window_min_days: obj.window_min_days,
       window_max_days: obj.window_max_days,
-      next_available: formatDate(new Date()),
+      next_available: formatDate(getNextAvailableStart(obj, nowUtc)),
       price_weekday_cents: obj.price_weekday_cents,
       price_weekend_cents: obj.price_weekend_cents,
       group_id: obj.group_id || null,
