@@ -28,20 +28,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +47,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.brfbokatvttidkiosk.ui.theme.BRFBokaTvättidKioskTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -59,6 +57,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
 
@@ -79,15 +78,21 @@ class MainActivity : ComponentActivity() {
     private lateinit var kioskConfigStore: KioskConfigStore
     private var kioskConfig: KioskConfig? = null
     private var uiState by mutableStateOf<UiState>(UiState.Pairing)
-    private var pairingCodeInput by mutableStateOf(TextFieldValue(""))
+    private var pairingCodeDisplay by mutableStateOf("")
+    private var pairingStatusMessage by mutableStateOf("Initierar koppling...")
     private var pairingErrorMessage by mutableStateOf<String?>(null)
     private var isPairingBusy by mutableStateOf(false)
+    private var pairingJob: Job? = null
     private val hidBuffer = StringBuilder()
     private var lastHidKeyTimestamp = 0L
 
     private val hidKeyTimeoutMs = 300L
     private val hidMaxLength = 64
     private val verifyIntervalMs = 90_000L
+    private val pairingPollIntervalMs = 3_000L
+    private val pairingAnnounceIntervalMs = 25_000L
+    private val pairingSessionMaxPolls = 100
+    private val pairingCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     private val verifyHandler = Handler(Looper.getMainLooper())
     private val verifyRunnable = object : Runnable {
         override fun run() {
@@ -125,28 +130,19 @@ class MainActivity : ComponentActivity() {
             } else {
                 UiState.Pairing
             }
+            if (uiState == UiState.Pairing) {
+                startPairingLoop()
+            }
         }
 
         setContent {
             BRFBokaTvättidKioskTheme {
                 when (val state = uiState) {
                     UiState.Pairing -> PairingScreen(
-                        codeValue = pairingCodeInput.text,
+                        codeValue = pairingCodeDisplay,
                         isBusy = isPairingBusy,
+                        statusMessage = pairingStatusMessage,
                         errorMessage = pairingErrorMessage,
-                        onCodeChanged = { input ->
-                            val normalized = input
-                                .uppercase()
-                                .replace(Regex("[^A-Z0-9]"), "")
-                                .take(6)
-                            pairingCodeInput = TextFieldValue(normalized)
-                            pairingErrorMessage = null
-                        },
-                        onPair = {
-                            lifecycleScope.launch {
-                                pairScreen()
-                            }
-                        }
                     )
                     UiState.Idle -> IdleScreen(tenantName = kioskConfig?.tenantName)
                     UiState.Loading -> LoadingScreen()
@@ -168,12 +164,17 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
         verifyHandler.postDelayed(verifyRunnable, verifyIntervalMs)
+        if (uiState == UiState.Pairing) {
+            startPairingLoop()
+        }
     }
 
     override fun onPause() {
         super.onPause()
         nfcAdapter?.disableForegroundDispatch(this)
         verifyHandler.removeCallbacks(verifyRunnable)
+        pairingJob?.cancel()
+        pairingJob = null
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -349,67 +350,99 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun pairScreen() {
-        val code = pairingCodeInput.text
-            .trim()
-            .uppercase()
-            .replace(Regex("[^A-Z0-9]"), "")
-        if (code.length != 6) {
-            pairingErrorMessage = "Ange sex tecken."
-            return
+    private fun startPairingLoop() {
+        if (pairingJob?.isActive == true) return
+        pairingJob = lifecycleScope.launch {
+            isPairingBusy = true
+            pairingErrorMessage = null
+            while (isActive && uiState == UiState.Pairing) {
+                val code = generatePairingCode()
+                pairingCodeDisplay = code
+                pairingStatusMessage = "Skriv in koden i admin för att koppla skärmen."
+                val pairedConfig = runPairingFlow(code)
+                if (pairedConfig != null) {
+                    applyKioskConfig(pairedConfig)
+                    withContext(Dispatchers.IO) { kioskConfigStore.save(pairedConfig) }
+                    pairingCodeDisplay = ""
+                    pairingStatusMessage = "Skärmen är kopplad."
+                    pairingErrorMessage = null
+                    isPairingBusy = false
+                    uiState = UiState.Idle
+                    pairingJob = null
+                    return@launch
+                }
+                if (!isActive || uiState != UiState.Pairing) {
+                    break
+                }
+                pairingErrorMessage = "Ingen koppling ännu. Ny kod skapas..."
+                delay(1500)
+            }
+            isPairingBusy = false
+            pairingJob = null
         }
-        isPairingBusy = true
-        pairingErrorMessage = null
-        val pairedConfig = withContext(Dispatchers.IO) {
-            runPairingFlow(code)
-        }
-        isPairingBusy = false
-        if (pairedConfig == null) {
-            pairingErrorMessage = "Kunde inte koppla skärmen. Kontrollera koden och försök igen."
-            return
-        }
-        applyKioskConfig(pairedConfig)
-        withContext(Dispatchers.IO) { kioskConfigStore.save(pairedConfig) }
-        pairingCodeInput = TextFieldValue("")
-        pairingErrorMessage = null
-        uiState = UiState.Idle
     }
 
-    private fun runPairingFlow(code: String): KioskConfig? {
-        val announceResult = postJson(
-            pairingAnnounceEndpoint,
-            JSONObject()
-                .put("pairing_code", code)
-        )
-        if (!announceResult.ok) {
-            return null
-        }
-        val claimResult = postJson(
-            pairingClaimEndpoint,
-            JSONObject()
-                .put("pairing_code", code)
-        )
-        if (!claimResult.ok || claimResult.body.isNullOrBlank()) {
-            return null
-        }
-        return try {
-            val payload = JSONObject(claimResult.body)
-            val screen = payload.optJSONObject("screen") ?: return null
-            val tenantId = screen.optString("tenant_id")
-            val tenantName = screen.optString("tenant_name")
-            val screenToken = screen.optString("screen_token")
-            if (tenantId.isBlank() || screenToken.isBlank()) {
-                null
-            } else {
-                KioskConfig(
-                    tenantId = tenantId,
-                    tenantName = tenantName,
-                    screenToken = screenToken,
-                    screenName = screen.optString("name").ifBlank { null }
+    private suspend fun runPairingFlow(code: String): KioskConfig? {
+        var lastAnnounceAt = 0L
+        repeat(pairingSessionMaxPolls) {
+            if (uiState != UiState.Pairing || !isActive) return null
+
+            val now = System.currentTimeMillis()
+            if (now - lastAnnounceAt >= pairingAnnounceIntervalMs) {
+                pairingStatusMessage = "Registrerar kod mot servern..."
+                val announceResult = withContext(Dispatchers.IO) {
+                    postJson(
+                        pairingAnnounceEndpoint,
+                        JSONObject().put("pairing_code", code)
+                    )
+                }
+                if (!announceResult.ok) {
+                    return null
+                }
+                lastAnnounceAt = now
+            }
+
+            pairingStatusMessage = "Väntar på koppling från admin..."
+            val claimResult = withContext(Dispatchers.IO) {
+                postJson(
+                    pairingClaimEndpoint,
+                    JSONObject().put("pairing_code", code)
                 )
             }
-        } catch (_: Exception) {
-            null
+            if (claimResult.ok && !claimResult.body.isNullOrBlank()) {
+                return try {
+                    val payload = JSONObject(claimResult.body)
+                    val screen = payload.optJSONObject("screen") ?: return null
+                    val tenantId = screen.optString("tenant_id")
+                    val tenantName = screen.optString("tenant_name")
+                    val screenToken = screen.optString("screen_token")
+                    if (tenantId.isBlank() || screenToken.isBlank()) {
+                        null
+                    } else {
+                        KioskConfig(
+                            tenantId = tenantId,
+                            tenantName = tenantName,
+                            screenToken = screenToken,
+                            screenName = screen.optString("name").ifBlank { null }
+                        )
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            if (claimResult.statusCode != null && claimResult.statusCode !in setOf(404, 409)) {
+                return null
+            }
+            delay(pairingPollIntervalMs)
+        }
+        return null
+    }
+
+    private fun generatePairingCode(): String {
+        return buildString {
+            repeat(6) {
+                append(pairingCodeAlphabet[Random.nextInt(pairingCodeAlphabet.length)])
+            }
         }
     }
 
@@ -442,7 +475,11 @@ class MainActivity : ComponentActivity() {
         }
         applyKioskConfig(null)
         resetToIdle()
+        pairingCodeDisplay = ""
+        pairingStatusMessage = "Initierar koppling..."
+        pairingErrorMessage = null
         uiState = UiState.Pairing
+        startPairingLoop()
     }
 
     private fun applyKioskConfig(config: KioskConfig?) {
@@ -607,9 +644,8 @@ private fun LoadingScreen() {
 private fun PairingScreen(
     codeValue: String,
     isBusy: Boolean,
+    statusMessage: String,
     errorMessage: String?,
-    onCodeChanged: (String) -> Unit,
-    onPair: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -634,7 +670,7 @@ private fun PairingScreen(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "Ange den 6-tecken långa kod som visas i admin för att koppla skärmen.",
+                text = "Starta koppling i admin och skriv in koden som visas här.",
                 color = Color(0xFFD1D5DB),
                 textAlign = TextAlign.Center
             )
@@ -660,14 +696,10 @@ private fun PairingScreen(
                     }
                 }
             }
-            OutlinedTextField(
-                value = codeValue,
-                onValueChange = onCodeChanged,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions.Default,
-                label = { Text("Kopplingskod", color = Color.White) },
-                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White)
+            Text(
+                text = statusMessage,
+                color = Color(0xFFD1D5DB),
+                textAlign = TextAlign.Center
             )
             if (!errorMessage.isNullOrBlank()) {
                 Text(
@@ -676,15 +708,12 @@ private fun PairingScreen(
                     textAlign = TextAlign.Center
                 )
             }
-            Button(
-                onClick = onPair,
-                enabled = !isBusy && codeValue.length == 6,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF22C55E),
-                    disabledContainerColor = Color(0xFF4B5563)
+            if (isBusy) {
+                Text(
+                    text = "Väntar på administratör...",
+                    color = Color(0xFF93C5FD),
+                    textAlign = TextAlign.Center
                 )
-            ) {
-                Text(if (isBusy) "Kopplar..." else "Koppla", color = Color.White)
             }
         }
     }
