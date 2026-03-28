@@ -8,3 +8,10 @@ export const loginWithRfid = (uid) =>
     method: "POST",
     body: JSON.stringify({ uid }),
   });
+
+export const rotatePersonalLoginLink = () =>
+  apiRequest("/kiosk/access-token", {
+    method: "POST",
+  });
+
+export const getDemoLinks = () => apiRequest("/demo-links");

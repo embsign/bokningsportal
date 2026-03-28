@@ -14,7 +14,7 @@ import { ReportModal } from "./components/ReportModal.js";
 import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
-import { getSession } from "./api/session.js";
+import { getSession, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
 import { getServices } from "./api/services.js";
@@ -52,6 +52,8 @@ const app = document.getElementById("app");
 const path = window.location.pathname;
 const hashPath = window.location.hash.replace(/^#/, "");
 const routePath = hashPath || path;
+const buildQrImageUrl = (targetUrl, size = 320) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(targetUrl)}`;
 const openHelp = () => {
   window.alert(
     "Hjälp\n\nBoka genom att välja objekt, vecka/datum och tid.\nVid problem med behörighet eller bokning, kontakta styrelsen/förvaltaren."
@@ -949,7 +951,10 @@ const store = createStore({
   cancelledDayIds: [],
   cancelledSlotIds: [],
   qrWarningOpen: false,
-  qrGenerated: false,
+  qrGenerating: false,
+  qrError: "",
+  qrUrl: "",
+  qrImageUrl: "",
   qrModalOpen: false,
   confirmationCalendarEvent: null,
   confirmationBookingId: null,
@@ -1222,6 +1227,39 @@ const initUser = async () => {
   }
 };
 
+const refreshPersonalQrLink = async () => {
+  store.setState({ qrGenerating: true, qrError: "" });
+  try {
+    const result = await rotatePersonalLoginLink();
+    const loginPath = typeof result?.login_url === "string" ? result.login_url : "";
+    const accessToken = typeof result?.access_token === "string" ? result.access_token : "";
+    if (!loginPath || !accessToken) {
+      throw new Error("invalid_login_link");
+    }
+    const loginUrl = `${window.location.origin}${loginPath}`;
+    setAccessToken(accessToken);
+    store.setState({
+      qrGenerating: false,
+      qrWarningOpen: false,
+      qrModalOpen: true,
+      qrUrl: loginUrl,
+      qrImageUrl: buildQrImageUrl(loginUrl, 320),
+    });
+    // Laddar om med nya URL:en så aktuell sessionslänk alltid matchar aktiv token.
+    window.setTimeout(() => {
+      window.location.assign(loginPath);
+    }, 1200);
+  } catch (error) {
+    store.setState({
+      qrGenerating: false,
+      qrError:
+        error?.detail === "unauthorized"
+          ? "Kunde inte generera ny länk. Logga in igen."
+          : "Kunde inte generera QR-kod. Försök igen.",
+    });
+  }
+};
+
 const loadMonthAvailability = async (service, year, monthIndex) => {
   const key = `${service.id}-${year}-${monthIndex}`;
   store.setState((prev) => ({
@@ -1394,16 +1432,14 @@ const loadWeekAvailability = async (service, weekStart) => {
         });
       },
       qrWarningOpen: state.qrWarningOpen,
-      qrGenerated: state.qrGenerated,
+      qrGenerating: state.qrGenerating,
+      qrError: state.qrError,
+      qrUrl: state.qrUrl,
+      qrImageUrl: state.qrImageUrl,
       qrModalOpen: state.qrModalOpen,
-      onOpenQrWarning: () => store.setState({ qrWarningOpen: true }),
-      onCloseQrWarning: () => store.setState({ qrWarningOpen: false }),
-      onConfirmQr: () =>
-        store.setState({
-          qrWarningOpen: false,
-          qrGenerated: true,
-          qrModalOpen: true,
-        }),
+      onOpenQrWarning: () => store.setState({ qrWarningOpen: true, qrError: "" }),
+      onCloseQrWarning: () => store.setState({ qrWarningOpen: false, qrError: "" }),
+      onConfirmQr: refreshPersonalQrLink,
       onCloseQrModal: () => store.setState({ qrModalOpen: false }),
       isMobile,
       state: state.uiStates.service,
@@ -2714,11 +2750,15 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
   const finishCreateBrf = () => closeCreateBrf();
 
-  const primaryCtaHref = "mailto:admin@demo.se?subject=Skapa%20er%20bokningssida";
-  const annaDemoUrl = `${window.location.origin}/user/user-demo-token-anna`;
-  const annaDemoQrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
-    annaDemoUrl
-  )}`;
+  const defaultDemoLinks = {
+    adminPath: "/admin/admin-demo-token",
+    userPaths: ["/user/user-demo-token-anna", "/user/user-demo-token-erik"],
+  };
+  const landingState = {
+    demoLinks: {
+      ...defaultDemoLinks,
+    },
+  };
   const sectionDivider = () =>
     createElement("div", {
       className: "landing-container",
@@ -2733,8 +2773,35 @@ const loadWeekAvailability = async (service, weekStart) => {
       onClick,
     });
 
+  const initLanding = async () => {
+    try {
+      const response = await getDemoLinks();
+      const adminPath = response?.links?.admin?.path || defaultDemoLinks.adminPath;
+      const userPaths = Array.isArray(response?.links?.users)
+        ? response.links.users
+            .map((link) => link?.path)
+            .filter((pathValue) => typeof pathValue === "string")
+            .slice(0, 2)
+        : [];
+      landingState.demoLinks = {
+        adminPath,
+        userPaths: userPaths.length ? userPaths : defaultDemoLinks.userPaths,
+      };
+      renderLanding();
+    } catch {
+      landingState.demoLinks = {
+        ...defaultDemoLinks,
+      };
+    }
+  };
+
   const renderLanding = () => {
     clearElement(app);
+    const userOnePath = landingState.demoLinks.userPaths[0] || defaultDemoLinks.userPaths[0];
+    const userTwoPath = landingState.demoLinks.userPaths[1] || defaultDemoLinks.userPaths[1];
+    const adminPath = landingState.demoLinks.adminPath || defaultDemoLinks.adminPath;
+    const userOneDemoUrl = `${window.location.origin}${userOnePath}`;
+    const userOneDemoQrImageUrl = buildQrImageUrl(userOneDemoUrl, 320);
     const landing = createElement("div", {
       className: "landing-page",
       children: [
@@ -2816,7 +2883,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         className: "landing-card-text",
                         text: "Se hur en boende bokar tvättstuga eller lokal.",
                       }),
-                      createLandingButton("Logga in som användare 1", "/user/user-demo-token-anna", "secondary"),
+                      createLandingButton("Logga in som användare 1", userOnePath, "secondary"),
                     ],
                   }),
                   createElement("article", {
@@ -2827,7 +2894,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         className: "landing-card-text",
                         text: "Testa flera användare och se bokningar i praktiken.",
                       }),
-                      createLandingButton("Logga in som användare 2", "/user/user-demo-token-erik", "secondary"),
+                      createLandingButton("Logga in som användare 2", userTwoPath, "secondary"),
                     ],
                   }),
                   createElement("article", {
@@ -2838,7 +2905,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                         className: "landing-card-text",
                         text: "Hantera bokningsobjekt, inställningar och översikt.",
                       }),
-                      createLandingButton("Logga in som Administratör", "/admin/admin-demo-token", "secondary"),
+                      createLandingButton("Logga in som Administratör", adminPath, "secondary"),
                     ],
                   }),
                 ],
@@ -2964,7 +3031,7 @@ const loadWeekAvailability = async (service, weekStart) => {
                       createElement("img", {
                         className: "landing-qr-image",
                         attrs: {
-                          src: annaDemoQrImageUrl,
+                          src: userOneDemoQrImageUrl,
                           alt: "QR-kod till demo-användare 1",
                           loading: "lazy",
                         },
@@ -3027,4 +3094,5 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   renderLanding();
+  void initLanding();
 }
