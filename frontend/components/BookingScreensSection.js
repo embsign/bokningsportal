@@ -56,6 +56,7 @@ const createPairCodeBoxes = (pairingCode, onCodeInput) =>
           value: pairingCode[index] || "",
           maxlength: "1",
           "data-index": String(index),
+          "data-focus-key": `pairingCode-${index}`,
           inputmode: "text",
           autocomplete: "off",
         },
@@ -93,7 +94,7 @@ const createPairModal = ({ open, pairingCode, pairName, onCodeInput, onNameInput
               createElement("div", { className: "form-label", text: "Namn på bokningsskärm" }),
               createElement("input", {
                 className: "input",
-                attrs: { value: pairName, placeholder: "Ex. Entréplan" },
+                attrs: { value: pairName, placeholder: "Ex. Entréplan", "data-focus-key": "pairScreenName" },
                 onInput: (event) => onNameInput(event.target.value),
               }),
             ],
@@ -136,7 +137,7 @@ const createEditModal = ({ open, editName, onNameInput, onCancel, onSave }) => {
               createElement("div", { className: "form-label", text: "Namn" }),
               createElement("input", {
                 className: "input",
-                attrs: { value: editName },
+                attrs: { value: editName, "data-focus-key": "editScreenName" },
                 onInput: (event) => onNameInput(event.target.value),
               }),
             ],

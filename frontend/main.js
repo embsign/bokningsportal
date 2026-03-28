@@ -982,6 +982,22 @@ if (routePath.startsWith("/admin/")) {
       }
     }
 
+    if (state.pairScreenModalOpen) {
+      const input = app.querySelector('[data-autofocus="booking-screen-name"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+
+    if (state.editScreenModalOpen) {
+      const input = app.querySelector('[data-autofocus="booking-screen-edit-name"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+
     if (state.importOpen && state.importFocus) {
       const input = app.querySelector(`[data-autofocus="${state.importFocus}"]`);
       if (input) {
