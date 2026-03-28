@@ -243,6 +243,46 @@ const sha1Hex = async (value: string) => {
 const getAppConfig = async (db: D1Database, key: string) =>
   (await db.prepare("SELECT value FROM app_config WHERE key = ?").bind(key).first()) as any;
 
+const verifyTurnstileToken = async (request: Request, env: Env, token: string) => {
+  const secret = env.TURNSTILE_SECRET?.trim();
+  if (!secret) {
+    return { ok: false, error: "missing_turnstile_secret" as const };
+  }
+  try {
+    const ip =
+      request.headers.get("cf-connecting-ip") ||
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      undefined;
+    const form = new URLSearchParams();
+    form.set("secret", secret);
+    form.set("response", token);
+    if (ip) {
+      form.set("remoteip", ip);
+    }
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+    if (!response.ok) {
+      return { ok: false, error: "turnstile_unavailable" as const };
+    }
+    const payload = (await response.json()) as {
+      success?: boolean;
+      "error-codes"?: string[];
+      action?: string;
+    };
+    if (!payload?.success) {
+      return { ok: false, error: "turnstile_invalid" as const, codes: payload?.["error-codes"] || [] };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "turnstile_unavailable" as const };
+  }
+};
+
 const sendResendEmail = async (env: Env, to: string, subject: string, html: string) => {
   if (!env.RESEND_API_KEY || !env.MAIL_FROM) {
     const missing: string[] = [];
@@ -342,9 +382,24 @@ const handleBrfRegister = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
   const associationName = body?.association_name?.trim();
   const email = body?.email?.trim();
+  const turnstileToken = body?.turnstile_token?.trim();
   const frontendBaseUrl = body?.frontend_base_url?.trim();
-  if (!associationName || !email) {
+  if (!associationName || !email || !turnstileToken) {
     return errorResponse(400, "invalid_payload");
+  }
+  const turnstile = await verifyTurnstileToken(request, env, turnstileToken);
+  if (!turnstile.ok) {
+    const details =
+      turnstile.error === "turnstile_invalid" && "codes" in turnstile && turnstile.codes?.length
+        ? `turnstile_invalid:${turnstile.codes.join(",")}`
+        : turnstile.error;
+    if (turnstile.error === "turnstile_invalid") {
+      return errorResponse(400, details);
+    }
+    if (turnstile.error === "missing_turnstile_secret") {
+      return errorResponse(500, details);
+    }
+    return errorResponse(502, details);
   }
 
   const saltRow = await getAppConfig(env.DB, "setup_link_salt");

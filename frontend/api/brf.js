@@ -1,11 +1,12 @@
 import { apiRequest } from "./client.js";
 
-export const registerBrf = (associationName, email) =>
+export const registerBrf = (associationName, email, turnstileToken) =>
   apiRequest("/brf/register", {
     method: "POST",
     body: JSON.stringify({
       association_name: associationName,
       email,
+      turnstile_token: turnstileToken,
       frontend_base_url: typeof window !== "undefined" ? window.location.origin : undefined,
     }),
   });
