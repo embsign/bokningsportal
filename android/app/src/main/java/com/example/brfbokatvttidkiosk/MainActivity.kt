@@ -30,8 +30,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
@@ -79,6 +81,7 @@ class MainActivity : ComponentActivity() {
     private var kioskConfig: KioskConfig? = null
     private var uiState by mutableStateOf<UiState>(UiState.Pairing)
     private var pairingCodeDisplay by mutableStateOf("")
+    private var pairingCodeExpiresAtMs by mutableStateOf<Long?>(null)
     private var pairingStatusMessage by mutableStateOf("Initierar koppling...")
     private var pairingErrorMessage by mutableStateOf<String?>(null)
     private var isPairingBusy by mutableStateOf(false)
@@ -91,7 +94,7 @@ class MainActivity : ComponentActivity() {
     private val verifyIntervalMs = 90_000L
     private val pairingPollIntervalMs = 3_000L
     private val pairingAnnounceIntervalMs = 25_000L
-    private val pairingSessionMaxPolls = 100
+    private val pairingCodeValidityMs = 30 * 60_000L
     private val pairingCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     private val verifyHandler = Handler(Looper.getMainLooper())
     private val verifyRunnable = object : Runnable {
@@ -140,6 +143,7 @@ class MainActivity : ComponentActivity() {
                 when (val state = uiState) {
                     UiState.Pairing -> PairingScreen(
                         codeValue = pairingCodeDisplay,
+                        expiresAtMs = pairingCodeExpiresAtMs,
                         isBusy = isPairingBusy,
                         statusMessage = pairingStatusMessage,
                         errorMessage = pairingErrorMessage,
@@ -357,13 +361,17 @@ class MainActivity : ComponentActivity() {
             pairingErrorMessage = null
             while (isActive && uiState == UiState.Pairing) {
                 val code = generatePairingCode()
+                val expiresAtMs = System.currentTimeMillis() + pairingCodeValidityMs
                 pairingCodeDisplay = code
-                pairingStatusMessage = "Skriv in koden i admin för att koppla skärmen."
-                val pairedConfig = runPairingFlow(code)
+                pairingCodeExpiresAtMs = expiresAtMs
+                pairingStatusMessage = "Skriv in koden i admin för att koppla skärmen. Koden gäller i 30 minuter."
+                pairingErrorMessage = null
+                val pairedConfig = runPairingFlow(code, expiresAtMs)
                 if (pairedConfig != null) {
                     applyKioskConfig(pairedConfig)
                     withContext(Dispatchers.IO) { kioskConfigStore.save(pairedConfig) }
                     pairingCodeDisplay = ""
+                    pairingCodeExpiresAtMs = null
                     pairingStatusMessage = "Skärmen är kopplad."
                     pairingErrorMessage = null
                     isPairingBusy = false
@@ -374,7 +382,7 @@ class MainActivity : ComponentActivity() {
                 if (!isActive || uiState != UiState.Pairing) {
                     break
                 }
-                pairingErrorMessage = "Ingen koppling ännu. Ny kod skapas..."
+                pairingErrorMessage = "Koden gick ut. Ny kod skapas..."
                 delay(1500)
             }
             isPairingBusy = false
@@ -382,9 +390,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun runPairingFlow(code: String): KioskConfig? {
+    private suspend fun runPairingFlow(code: String, expiresAtMs: Long): KioskConfig? {
         var lastAnnounceAt = 0L
-        repeat(pairingSessionMaxPolls) {
+        while (uiState == UiState.Pairing && System.currentTimeMillis() < expiresAtMs) {
             if (uiState != UiState.Pairing) return null
 
             val now = System.currentTimeMillis()
@@ -397,9 +405,12 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 if (!announceResult.ok) {
-                    return null
+                    pairingErrorMessage = "Kunde inte kontakta servern. Försöker igen..."
+                    delay(2_000)
+                    continue
                 }
                 lastAnnounceAt = now
+                pairingErrorMessage = null
             }
 
             pairingStatusMessage = "Väntar på koppling från admin..."
@@ -410,32 +421,40 @@ class MainActivity : ComponentActivity() {
                 )
             }
             if (claimResult.ok && !claimResult.body.isNullOrBlank()) {
-                return try {
-                    val payload = JSONObject(claimResult.body)
-                    val screen = payload.optJSONObject("screen") ?: return null
-                    val tenantId = screen.optString("tenant_id")
-                    val tenantName = screen.optString("tenant_name")
-                    val screenToken = screen.optString("screen_token")
-                    if (tenantId.isBlank() || screenToken.isBlank()) {
-                        null
-                    } else {
-                        KioskConfig(
-                            tenantId = tenantId,
-                            tenantName = tenantName,
-                            screenToken = screenToken,
-                            screenName = screen.optString("name").ifBlank { null }
-                        )
-                    }
-                } catch (_: Exception) {
-                    null
+                val parsed = parseClaimedKioskConfig(claimResult.body)
+                if (parsed != null) {
+                    return parsed
                 }
+                pairingErrorMessage = "Ogiltigt svar från servern. Försöker igen..."
             }
             if (claimResult.statusCode != null && claimResult.statusCode !in setOf(404, 409)) {
-                return null
+                pairingErrorMessage = "Tillfälligt serverfel (${claimResult.statusCode}). Försöker igen..."
             }
             delay(pairingPollIntervalMs)
         }
         return null
+    }
+
+    private fun parseClaimedKioskConfig(responseBody: String): KioskConfig? {
+        return try {
+            val payload = JSONObject(responseBody)
+            val screen = payload.optJSONObject("screen") ?: return null
+            val tenantId = screen.optString("tenant_id")
+            val tenantName = screen.optString("tenant_name")
+            val screenToken = screen.optString("screen_token")
+            if (tenantId.isBlank() || screenToken.isBlank()) {
+                null
+            } else {
+                KioskConfig(
+                    tenantId = tenantId,
+                    tenantName = tenantName,
+                    screenToken = screenToken,
+                    screenName = screen.optString("name").ifBlank { null }
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun generatePairingCode(): String {
@@ -476,6 +495,7 @@ class MainActivity : ComponentActivity() {
         applyKioskConfig(null)
         resetToIdle()
         pairingCodeDisplay = ""
+        pairingCodeExpiresAtMs = null
         pairingStatusMessage = "Initierar koppling..."
         pairingErrorMessage = null
         uiState = UiState.Pairing
@@ -643,10 +663,22 @@ private fun LoadingScreen() {
 @Composable
 private fun PairingScreen(
     codeValue: String,
+    expiresAtMs: Long?,
     isBusy: Boolean,
     statusMessage: String,
     errorMessage: String?,
 ) {
+    var nowMs by remember(expiresAtMs) { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(expiresAtMs) {
+        if (expiresAtMs == null) return@LaunchedEffect
+        while (true) {
+            nowMs = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val remainingSeconds = ((expiresAtMs ?: nowMs) - nowMs).coerceAtLeast(0L) / 1000
+    val countdownText = "Koden gäller i ${remainingSeconds / 60}:${(remainingSeconds % 60).toString().padStart(2, '0')}"
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -701,6 +733,14 @@ private fun PairingScreen(
                 color = Color(0xFFD1D5DB),
                 textAlign = TextAlign.Center
             )
+            if (expiresAtMs != null) {
+                Text(
+                    text = countdownText,
+                    color = Color(0xFF93C5FD),
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             if (!errorMessage.isNullOrBlank()) {
                 Text(
                     text = errorMessage,
