@@ -208,6 +208,24 @@ body {
   width: min(640px, 100%);
 }
 
+.booking-screen-modal {
+  width: min(640px, 100%);
+}
+
+.pairing-code-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pairing-code-cell {
+  text-transform: uppercase;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 14px 0;
+}
+
 .user-search {
   margin: 12px 0 6px;
 }

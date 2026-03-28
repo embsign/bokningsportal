@@ -29,6 +29,7 @@ import {
 import {
   getBookingGroups,
   getBookingObjects,
+  getBookingScreens,
   getUsers,
   updateUser,
   createUser,
@@ -44,6 +45,10 @@ import {
   previewImport,
   applyImport,
   downloadReportCsv,
+  orderBookingScreens,
+  pairBookingScreen,
+  updateBookingScreen,
+  deleteBookingScreen,
 } from "./api/admin.js";
 import { createStore } from "./hooks/useStore.js";
 import { createElement, clearElement } from "./hooks/dom.js";
@@ -301,6 +306,14 @@ if (routePath.startsWith("/admin/")) {
     reportStep: 1,
     reportMonth: "",
     reportBookingObjectId: "",
+    bookingScreens: [],
+    orderScreensModalOpen: false,
+    pairScreenModalOpen: false,
+    editScreenModalOpen: false,
+    pairScreenCode: "",
+    pairScreenName: "",
+    editScreenId: null,
+    editScreenName: "",
     modalForm: {
       name: "",
       type: "Tidspass",
@@ -406,12 +419,13 @@ if (routePath.startsWith("/admin/")) {
 
   const loadAdminData = async () => {
     try {
-      const [bookingObjectsData, bookingGroupsData, usersData, rulesData, accessGroupsData] = await Promise.all([
+      const [bookingObjectsData, bookingGroupsData, usersData, rulesData, accessGroupsData, bookingScreensData] = await Promise.all([
         getBookingObjects(),
         getBookingGroups(),
         getUsers(),
         getImportRules(),
         getAccessGroups(),
+        getBookingScreens(),
       ]);
       const rules = rulesData?.rules || null;
       adminStore.setState({
@@ -430,6 +444,7 @@ if (routePath.startsWith("/admin/")) {
         apartmentRegex: rules?.apartment_regex,
         groupSeparator: rules?.group_separator,
         adminGroups: rules?.admin_groups ? rules.admin_groups.split("|").filter(Boolean) : [],
+        bookingScreens: bookingScreensData,
       });
     } catch (error) {
       if (error.status === 403) {
@@ -859,12 +874,83 @@ if (routePath.startsWith("/admin/")) {
       AdminDashboard({
         adminUser: state.adminUser,
         bookingObjects: state.bookingObjects,
+        bookingScreens: state.bookingScreens,
         onAdd: () => openModal("add"),
         onCopy: (item) => openModal("copy", item),
         onEdit: (item) => openModal("edit", item),
         onImportUsers: () => adminStore.setState({ importOpen: true, importStep: 1 }),
         onEditUsers: () => adminStore.setState({ userPickerOpen: true }),
         onCreateReport: () => adminStore.setState({ reportOpen: true, reportStep: 1 }),
+        onOpenOrderScreens: () => adminStore.setState({ orderScreensModalOpen: true }),
+        onOpenPairScreen: () =>
+          adminStore.setState({ pairScreenModalOpen: true, pairScreenCode: "", pairScreenName: "" }),
+        onCloseOrderScreens: () => adminStore.setState({ orderScreensModalOpen: false }),
+        onConfirmOrderScreens: async () => {
+          try {
+            await orderBookingScreens({ quantity: 1 });
+            adminStore.setState({ orderScreensModalOpen: false });
+            alert(
+              "Beställningsförfrågan skickad till info@embsign.se. En säljare kommer kontakta er."
+            );
+          } catch (error) {
+            alert("Kunde inte skicka beställningsförfrågan just nu.");
+          }
+        },
+        onClosePairScreen: () =>
+          adminStore.setState({ pairScreenModalOpen: false, pairScreenCode: "", pairScreenName: "" }),
+        onConfirmPairScreen: async () => {
+          const current = adminStore.getState();
+          const pairingCode = String(current.pairScreenCode || "").trim().toUpperCase();
+          const name = String(current.pairScreenName || "").trim();
+          if (pairingCode.length !== 6) {
+            alert("Ange sex tecken i kopplingskoden.");
+            return;
+          }
+          if (!name) {
+            alert("Ange ett namn för bokningsskärmen.");
+            return;
+          }
+          try {
+            await pairBookingScreen({ pairingCode, name });
+            await loadAdminData();
+            adminStore.setState({ pairScreenModalOpen: false, pairScreenCode: "", pairScreenName: "" });
+            alert("Bokningsskärmen är nu kopplad.");
+          } catch (error) {
+            alert("Koden kunde inte kopplas. Kontrollera att plattan är i kopplingsläge.");
+          }
+        },
+        onPairCodeInput: (value) =>
+          adminStore.setState({ pairScreenCode: String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) }),
+        onPairNameInput: (value) => adminStore.setState({ pairScreenName: value }),
+        onEditScreen: (screen) =>
+          adminStore.setState({ editScreenModalOpen: true, editScreenId: screen.id, editScreenName: screen.name }),
+        onDeleteScreen: async (screen) => {
+          if (!window.confirm(`Ta bort bokningsskärmen "${screen.name}"?`)) {
+            return;
+          }
+          await deleteBookingScreen(screen.id);
+          await loadAdminData();
+        },
+        onCloseEditScreen: () =>
+          adminStore.setState({ editScreenModalOpen: false, editScreenId: null, editScreenName: "" }),
+        onConfirmEditScreen: async () => {
+          const current = adminStore.getState();
+          const name = String(current.editScreenName || "").trim();
+          if (!current.editScreenId || !name) {
+            alert("Ange ett giltigt namn.");
+            return;
+          }
+          await updateBookingScreen(current.editScreenId, { name });
+          await loadAdminData();
+          adminStore.setState({ editScreenModalOpen: false, editScreenId: null, editScreenName: "" });
+        },
+        onEditScreenNameInput: (value) => adminStore.setState({ editScreenName: value }),
+        orderScreensModalOpen: state.orderScreensModalOpen,
+        pairScreenModalOpen: state.pairScreenModalOpen,
+        editScreenModalOpen: state.editScreenModalOpen,
+        pairScreenCode: state.pairScreenCode,
+        pairScreenName: state.pairScreenName,
+        editScreenName: state.editScreenName,
         modal,
         importModal,
         userPickerModal,

@@ -215,6 +215,37 @@ const parseBearerToken = (value: string | null) => {
   return token.trim() || null;
 };
 
+const PAIRING_CODE_REGEX = /^[A-Z0-9]{6}$/;
+const PAIRING_CODE_TTL_MINUTES = 30;
+const ORDER_EMAIL_TO = "info@embsign.se";
+
+const normalizePairingCode = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+
+const isValidPairingCode = (value: string) => PAIRING_CODE_REGEX.test(value);
+
+const getScreenByToken = async (db: D1Database, token: string) =>
+  (await db
+    .prepare(
+      `SELECT bs.*, t.name AS tenant_name
+       FROM booking_screens bs
+       JOIN tenants t ON t.id = bs.tenant_id
+       WHERE bs.screen_token = ?
+         AND bs.is_active = 1
+       LIMIT 1`
+    )
+    .bind(token)
+    .first()) as any;
+
+const getPairingExpiryIso = () => {
+  const expiry = new Date();
+  expiry.setMinutes(expiry.getMinutes() + PAIRING_CODE_TTL_MINUTES);
+  return expiry.toISOString();
+};
+
 const base64UrlEncode = (input: string) => {
   const bytes = new TextEncoder().encode(input);
   let binary = "";
@@ -691,12 +722,28 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
 const handleRfidLogin = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
   const uid = body?.uid;
+  const screenToken = parseBearerToken(request.headers.get("authorization"));
   if (!uid) {
     return errorResponse(401, "invalid_rfid");
   }
+
+  let tenantIdFilter: string | null = null;
+  let screenContext: any = null;
+  if (screenToken) {
+    const screen = await getScreenByToken(env.DB, screenToken);
+    if (!screen) {
+      return errorResponse(401, "invalid_screen_token");
+    }
+    tenantIdFilter = String(screen.tenant_id);
+    screenContext = screen;
+  }
+
   const tag = await env.DB.prepare("SELECT * FROM rfid_tags WHERE uid = ? AND is_active = 1").bind(uid).first();
   if (!tag) {
     return errorResponse(401, "invalid_rfid");
+  }
+  if (tenantIdFilter && String(tag.tenant_id) !== tenantIdFilter) {
+    return errorResponse(403, "rfid_not_allowed_for_screen");
   }
   const user = await getUser(env.DB, tag.user_id as string);
   if (!user) {
@@ -723,6 +770,7 @@ const handleRfidLogin = async (request: Request, env: Env) => {
     {
       booking_url: `/user/${accessToken}`,
       user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
+      tenant: screenContext ? { id: screenContext.tenant_id, name: screenContext.tenant_name } : undefined,
     }
   );
 };
@@ -800,6 +848,325 @@ const handleDemoLinks = async (request: Request, env: Env) => {
   });
 };
 
+const requireScreenAuth = async (request: Request, env: Env) => {
+  const token = parseBearerToken(request.headers.get("authorization"));
+  if (!token) {
+    return { error: errorResponse(401, "unauthorized") };
+  }
+  const screen = await getScreenByToken(env.DB, token);
+  if (!screen) {
+    return { error: errorResponse(401, "unauthorized") };
+  }
+  return { screen };
+};
+
+const handleKioskPairingAnnounce = async (request: Request, env: Env) => {
+  const body = await getJsonBody(request);
+  const pairingCode = normalizePairingCode(body?.pairing_code || body?.code);
+  if (!isValidPairingCode(pairingCode)) {
+    return errorResponse(400, "invalid_pairing_code");
+  }
+
+  const existing = await env.DB.prepare("SELECT code FROM kiosk_pairing_codes WHERE code = ?").bind(pairingCode).first();
+  if (existing) {
+    await env.DB
+      .prepare(
+        `UPDATE kiosk_pairing_codes
+         SET status = CASE WHEN status = 'paired' THEN status ELSE 'pending' END,
+             last_seen_at = CURRENT_TIMESTAMP,
+             expires_at = ?,
+             paired_screen_id = CASE WHEN status = 'paired' THEN paired_screen_id ELSE NULL END
+         WHERE code = ?`
+      )
+      .bind(getPairingExpiryIso(), pairingCode)
+      .run();
+  } else {
+    await env.DB
+      .prepare(
+        `INSERT INTO kiosk_pairing_codes (code, status, first_seen_at, last_seen_at, expires_at)
+         VALUES (?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)`
+      )
+      .bind(pairingCode, getPairingExpiryIso())
+      .run();
+  }
+
+  return json({ pairing_code: pairingCode, status: "pending" });
+};
+
+const handleAdminOrderBookingScreens = async (request: Request, env: Env) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+
+  const body = await getJsonBody(request);
+  const quantity = Math.max(1, Math.min(50, Number(body?.quantity || 1)));
+  const contactEmail = String(body?.contact_email || "").trim() || String((auth.tenant as any)?.admin_email || "").trim();
+  const contactName = String(body?.contact_name || "").trim() || String(auth.user.apartment_id || "");
+  const tenantName = String(auth.tenant.name || "");
+
+  const subject = `Beställningsförfrågan bokningsskärmar - ${tenantName}`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5">
+      <h2>Beställningsförfrågan bokningsskärmar</h2>
+      <p><strong>Förening:</strong> ${tenantName}</p>
+      <p><strong>Tenant-ID:</strong> ${auth.tenant.id}</p>
+      <p><strong>Antal:</strong> ${quantity}</p>
+      <p><strong>Pris:</strong> 6 000 kr/st inklusive moms</p>
+      <p><strong>Kontaktperson:</strong> ${contactName || "Ej angiven"}</p>
+      <p><strong>Kontakt e-post:</strong> ${contactEmail || "Ej angiven"}</p>
+      <p>Vänligen återkom till kunden för fortsatt hantering.</p>
+    </div>
+  `;
+
+  const mailResult = await sendResendEmail(env, ORDER_EMAIL_TO, subject, html);
+  if (!mailResult.ok) {
+    const detail =
+      mailResult.error === "missing_email_config" && (mailResult as any).missing
+        ? `missing_email_config:${(mailResult as any).missing.join(",")}`
+        : mailResult.error || "resend_failed";
+    return errorResponse(502, detail);
+  }
+  return json({ ok: true, sent_to: ORDER_EMAIL_TO });
+};
+
+const handleAdminBookingScreens = async (request: Request, env: Env) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+
+  const rows = await env.DB
+    .prepare(
+      `SELECT id, tenant_id, name, pairing_code, screen_token, is_active, created_at, updated_at, paired_at, last_seen_at, last_verified_at
+       FROM booking_screens
+       WHERE tenant_id = ? AND is_active = 1
+       ORDER BY datetime(created_at) DESC`
+    )
+    .bind(auth.tenant.id)
+    .all();
+  return json({ booking_screens: rows.results });
+};
+
+const handleAdminPairBookingScreen = async (request: Request, env: Env) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+  const body = await getJsonBody(request);
+
+  const pairingCode = normalizePairingCode(body?.pairing_code || body?.code);
+  const name = String(body?.name || "").trim();
+  if (!isValidPairingCode(pairingCode)) {
+    return errorResponse(400, "invalid_pairing_code");
+  }
+  if (!name) {
+    return errorResponse(400, "invalid_name");
+  }
+
+  const pairingRow = await env.DB
+    .prepare(
+      `SELECT code, status, expires_at
+       FROM kiosk_pairing_codes
+       WHERE code = ?`
+    )
+    .bind(pairingCode)
+    .first();
+  if (!pairingRow) {
+    return errorResponse(404, "pairing_code_not_found");
+  }
+  if (String(pairingRow.status) === "paired") {
+    return errorResponse(409, "pairing_code_already_used");
+  }
+  const expiresAt = new Date(String(pairingRow.expires_at));
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+    return errorResponse(409, "pairing_code_expired");
+  }
+
+  const screenId = `screen-${crypto.randomUUID()}`;
+  const screenToken = crypto.randomUUID();
+
+  await env.DB
+    .prepare(
+      `INSERT INTO booking_screens (
+         id, tenant_id, name, pairing_code, screen_token, is_active, created_at, updated_at, paired_at, last_seen_at, last_verified_at
+       ) VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    .bind(screenId, auth.tenant.id, name, pairingCode, screenToken)
+    .run();
+
+  await env.DB
+    .prepare(
+      `UPDATE kiosk_pairing_codes
+       SET status = 'paired',
+           paired_screen_id = ?,
+           paired_at = CURRENT_TIMESTAMP,
+           last_seen_at = CURRENT_TIMESTAMP
+       WHERE code = ?`
+    )
+    .bind(screenId, pairingCode)
+    .run();
+
+  return json({
+    id: screenId,
+    name,
+    pairing_code: pairingCode,
+    tenant_id: auth.tenant.id,
+    tenant_name: auth.tenant.name,
+  });
+};
+
+const handleAdminUpdateBookingScreen = async (request: Request, env: Env, screenId: string) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+  const body = await getJsonBody(request);
+  const name = String(body?.name || "").trim();
+  if (!name) {
+    return errorResponse(400, "invalid_name");
+  }
+  const result = await env.DB
+    .prepare(
+      `UPDATE booking_screens
+       SET name = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND tenant_id = ? AND is_active = 1`
+    )
+    .bind(name, screenId, auth.tenant.id)
+    .run();
+  if (!result?.success) {
+    return errorResponse(404, "not_found");
+  }
+  return json({ id: screenId, name });
+};
+
+const handleAdminDeleteBookingScreen = async (request: Request, env: Env, screenId: string) => {
+  const auth = await requireAdmin(request, env);
+  if ("error" in auth) return auth.error;
+
+  const screen = await env.DB
+    .prepare("SELECT pairing_code FROM booking_screens WHERE id = ? AND tenant_id = ? AND is_active = 1")
+    .bind(screenId, auth.tenant.id)
+    .first();
+  if (!screen) {
+    return errorResponse(404, "not_found");
+  }
+
+  await env.DB
+    .prepare(
+      `UPDATE booking_screens
+       SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND tenant_id = ?`
+    )
+    .bind(screenId, auth.tenant.id)
+    .run();
+  await env.DB.prepare("DELETE FROM kiosk_pairing_codes WHERE code = ?").bind(String(screen.pairing_code)).run();
+  return json({ id: screenId, deleted: true });
+};
+
+const handleKioskPairingClaim = async (request: Request, env: Env) => {
+  const body = await getJsonBody(request);
+  const pairingCode = normalizePairingCode(body?.pairing_code || body?.code);
+  if (!isValidPairingCode(pairingCode)) {
+    return errorResponse(400, "invalid_pairing_code");
+  }
+
+  const row = await env.DB
+    .prepare(
+      `SELECT bs.id, bs.name, bs.tenant_id, bs.screen_token, t.name AS tenant_name
+       FROM booking_screens bs
+       JOIN tenants t ON t.id = bs.tenant_id
+       WHERE bs.pairing_code = ? AND bs.is_active = 1
+       LIMIT 1`
+    )
+    .bind(pairingCode)
+    .first();
+  if (!row) {
+    return errorResponse(404, "not_paired");
+  }
+
+  await env.DB
+    .prepare(
+      `UPDATE booking_screens
+       SET last_seen_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+    .bind(row.id)
+    .run();
+
+  return json({
+    paired: true,
+    screen: {
+      id: row.id,
+      name: row.name,
+      screen_token: row.screen_token,
+      tenant_id: row.tenant_id,
+      tenant_name: row.tenant_name,
+    },
+  });
+};
+
+const handleKioskScreenStatus = async (request: Request, env: Env) => {
+  const auth = await requireScreenAuth(request, env);
+  if ("error" in auth) return auth.error;
+  await env.DB
+    .prepare("UPDATE booking_screens SET last_seen_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .bind(auth.screen.id)
+    .run();
+  return json({
+    connected: true,
+    screen: {
+      id: auth.screen.id,
+      name: auth.screen.name,
+      tenant_id: auth.screen.tenant_id,
+      tenant_name: auth.screen.tenant_name,
+    },
+  });
+};
+
+const handleKioskRfidLogin = async (request: Request, env: Env) => {
+  const auth = await requireScreenAuth(request, env);
+  if ("error" in auth) return auth.error;
+
+  const body = await getJsonBody(request);
+  const uid = String(body?.uid || "").trim();
+  if (!uid) {
+    return errorResponse(401, "invalid_rfid");
+  }
+
+  const tag = await env.DB
+    .prepare("SELECT * FROM rfid_tags WHERE uid = ? AND is_active = 1 AND tenant_id = ?")
+    .bind(uid, auth.screen.tenant_id)
+    .first();
+  if (!tag) {
+    return errorResponse(401, "invalid_rfid");
+  }
+
+  const user = await getUser(env.DB, tag.user_id as string);
+  if (!user) {
+    return errorResponse(401, "invalid_rfid");
+  }
+
+  const existingAccessToken = await env.DB.prepare("SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1").bind(user.id).first();
+  const accessToken = (existingAccessToken?.token as string | undefined) || crypto.randomUUID();
+  if (!existingAccessToken) {
+    await env.DB
+      .prepare(
+        `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
+      )
+      .bind(accessToken, tag.tenant_id, user.id)
+      .run();
+  } else {
+    await env.DB
+      .prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
+      .bind(accessToken)
+      .run();
+  }
+
+  await env.DB
+    .prepare("UPDATE booking_screens SET last_seen_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .bind(auth.screen.id)
+    .run();
+
+  return json({
+    booking_url: `/user/${accessToken}`,
+    user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
+    tenant: { id: auth.screen.tenant_id, name: auth.screen.tenant_name },
+  });
+};
 const handleSession = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
@@ -1940,6 +2307,10 @@ export const router = async (request: Request, env: Env) => {
 
   if (request.method === "GET" && path === "/api/availability/month") return handleAvailabilityMonth(request, env, url);
   if (request.method === "GET" && path === "/api/availability/week") return handleAvailabilityWeek(request, env, url);
+  if (request.method === "POST" && path === "/api/kiosk/pairing/announce") return handleKioskPairingAnnounce(request, env);
+  if (request.method === "POST" && path === "/api/kiosk/pairing/claim") return handleKioskPairingClaim(request, env);
+  if (request.method === "GET" && path === "/api/kiosk/screen/status") return handleKioskScreenStatus(request, env);
+  if (request.method === "POST" && path === "/api/kiosk/rfid-login") return handleKioskRfidLogin(request, env);
 
   if (request.method === "GET" && path === "/api/admin/users") return handleAdminUsers(request, env);
   if (request.method === "POST" && path === "/api/admin/users") return handleAdminCreateUser(request, env);
@@ -1966,6 +2337,15 @@ export const router = async (request: Request, env: Env) => {
   }
   if (request.method === "GET" && path === "/api/admin/booking-groups") return handleAdminBookingGroups(request, env);
   if (request.method === "POST" && path === "/api/admin/booking-groups") return handleAdminCreateBookingGroup(request, env);
+  if (request.method === "GET" && path === "/api/admin/booking-screens") return handleAdminBookingScreens(request, env);
+  if (request.method === "POST" && path === "/api/admin/booking-screens/order") return handleAdminOrderBookingScreens(request, env);
+  if (request.method === "POST" && path === "/api/admin/booking-screens/pair") return handleAdminPairBookingScreen(request, env);
+  if (request.method === "PUT" && path.startsWith("/api/admin/booking-screens/")) {
+    return handleAdminUpdateBookingScreen(request, env, path.split("/").pop() || "");
+  }
+  if (request.method === "DELETE" && path.startsWith("/api/admin/booking-screens/")) {
+    return handleAdminDeleteBookingScreen(request, env, path.split("/").pop() || "");
+  }
   if (request.method === "GET" && path === "/api/admin/reports/csv") return handleReportCsv(request, env, url);
 
   return errorResponse(404, "not_found");
