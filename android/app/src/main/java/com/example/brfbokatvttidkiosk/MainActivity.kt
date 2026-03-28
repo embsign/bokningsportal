@@ -64,7 +64,7 @@ import kotlin.random.Random
 class MainActivity : ComponentActivity() {
 
     private val defaultFrontendBaseUrl = "https://bokningsportal.app"
-    private val defaultApiBaseUrl = "https://bokningsportal.embsign.workers.dev"
+    private val defaultApiBaseUrl = "https://bokningsportal.app"
     private var frontendBaseUrl = defaultFrontendBaseUrl
     private var apiBaseUrl = defaultApiBaseUrl
     private var loginEndpoint = "$apiBaseUrl/api/rfid-login"

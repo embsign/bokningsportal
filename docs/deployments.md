@@ -1,7 +1,7 @@
-# Deployments (Workers + D1)
+# Deployments (Pages Functions + D1)
 
 ## Översikt
-- Backend API körs som Cloudflare Worker.
+- Backend API körs som Cloudflare Pages Functions.
 - D1 används som databas.
 - Produktion använder `booking-prod`.
 - Preview för PR använder `booking-pr-{PR_NUMBER}`.
@@ -9,12 +9,12 @@
 ## Preview vs Production
 
 ### Produktion
-- Worker‑namn: `bokningsportal`
+- Pages project: `bokningsportal`
 - DB‑namn: `booking-prod`
 - Deploy triggas på `main`.
 
 ### Preview (PR)
-- Worker‑namn: `{BRANCH_SLUG}-bokningsportal` (fallback `pr-{PR_NUMBER}-bokningsportal`)
+- Pages preview för branch/PR
 - DB‑namn: `booking-{BRANCH_SLUG}` (fallback `booking-pr-{PR_NUMBER}`)
 - Deploy triggas på `pull_request`.
 - Branch‑namn används primärt för att matcha Pages preview‑builds.
@@ -47,21 +47,11 @@ Frontend läser API‑bas från:
 2) `<meta name="api-base" content="...">`
 3) fallback `/api`
 
-I produktion/preview bör `API_BASE` injiceras i HTML.
-Exempel:
-```html
-<meta name="api-base" content="https://bokningsportal.example.workers.dev/api" />
-```
+I produktion/preview kan frontend använda standardvärdet `/api` (samma origin).
 
 ### Auto‑resolution i build
 
-`scripts/prepare_pages_api_base.mjs` räknar ut rätt API‑bas automatiskt:
-- Production (`main`/`master`) → `https://bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- Preview branch → `https://<branch-slug>-bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- PR fallback (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`) → `https://pr-123-bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- Om preview‑namn inte kan härledas failar builden (ingen fallback till production).
-
-Detta gör att frontend kan deployas med rätt worker‑namn även för PR‑previews.
+`scripts/prepare_pages_api_base.mjs` injicerar `/api` som standard (eller explicit `API_BASE` om satt).
 
 ## Cloudflare Turnstile (registrering av ny BRF)
 
