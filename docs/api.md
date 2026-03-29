@@ -80,6 +80,14 @@ Returnerar aktuell användare och tenant.
 **Response**:
 `{ "tenant": { "id": "...", "name": "..." }, "user": { "id": "...", "apartment_id": "1001", "is_admin": false } }`
 
+### GET /api/bootstrap
+Returnerar bootstrap-data för användarstartsidan i ett anrop.
+
+**Auth**: `Authorization: Bearer <access_token>`
+
+**Response**:
+`{ "tenant": { "id": "...", "name": "..." }, "user": { "id": "...", "apartment_id": "1001", "is_admin": false }, "services": [...], "bookings": [...] }`
+
 ### GET /api/services
 Lista bokningsobjekt som användaren får boka.
 

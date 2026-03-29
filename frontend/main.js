@@ -14,7 +14,7 @@ import { ReportModal } from "./components/ReportModal.js";
 import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
-import { getSession, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
+import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
 import { getServices } from "./api/services.js";
@@ -1330,25 +1330,84 @@ const getWeekNumber = (date) => {
   );
 };
 
-const loadUserData = async () => {
-  store.setState((prev) => ({ dataLoading: true, uiStates: { ...prev.uiStates, service: "loading" } }));
-  try {
-    const [servicesData, bookingsData] = await Promise.all([getServices(), getCurrentBookings()]);
-    store.setState({
-      services: servicesData,
-      bookings: bookingsData.filter(isBookingCurrentOrFuture),
-      dataLoading: false,
-      uiStates: {
-        ...store.getState().uiStates,
-        service: servicesData.length ? "normal" : "empty",
-      },
-    });
-  } catch (error) {
-    store.setState((prev) => ({
-      dataLoading: false,
-      uiStates: { ...prev.uiStates, service: "error" },
-    }));
-  }
+const applyBootstrapData = (bootstrap) => {
+  const servicesData = Array.isArray(bootstrap?.services)
+    ? bootstrap.services.map((service) => ({
+        id: service.id,
+        name: service.name,
+        description: service.description || "",
+        duration: service.booking_type === "full-day"
+          ? "1 dygn"
+          : service.slot_duration_minutes
+            ? (() => {
+                const hours = service.slot_duration_minutes / 60;
+                return hours % 1 === 0
+                  ? `${hours} timmar`
+                  : `${hours.toString().replace(".", ",")} timmar`;
+              })()
+            : "",
+        nextAvailable: service.next_available || "",
+        priceText: (() => {
+          const weekdayCents = Number(service.price_weekday_cents || 0);
+          const weekendCents = Number(service.price_weekend_cents || 0);
+          if (weekdayCents <= 0 && weekendCents <= 0) return "";
+          const weekday = Math.round(weekdayCents / 100);
+          const weekend = Math.round(weekendCents / 100);
+          if (weekday === weekend) return `Debiteras: ${weekday} kr`;
+          const low = Math.min(weekday, weekend);
+          const high = Math.max(weekday, weekend);
+          return `Debiteras: ${low}-${high} kr`;
+        })(),
+        bookingType: service.booking_type,
+        slotDuration: service.slot_duration_minutes || "",
+        fullDayStartTime: /^\d{2}:\d{2}$/.test(service.full_day_start_time || "") ? service.full_day_start_time : "12:00",
+        fullDayEndTime: /^\d{2}:\d{2}$/.test(service.full_day_end_time || "") ? service.full_day_end_time : "12:00",
+        timeSlotStartTime: /^\d{2}:\d{2}$/.test(service.time_slot_start_time || "") ? service.time_slot_start_time : "08:00",
+        timeSlotEndTime: /^\d{2}:\d{2}$/.test(service.time_slot_end_time || "") ? service.time_slot_end_time : "20:00",
+        maxBookings: Number(service.max_bookings_limit || service.max_bookings || 0),
+        maxBookingsLimit: Number(service.max_bookings_limit || service.max_bookings || 0),
+        maxBookingsReached: service.max_bookings_reached === true,
+        bookingGroupId: service.group_id || "",
+        priceWeekday: service.price_weekday_cents || 0,
+        priceWeekend: service.price_weekend_cents || 0,
+      }))
+    : [];
+
+  const bookingsData = Array.isArray(bootstrap?.bookings)
+    ? bootstrap.bookings.map((booking) => {
+        const date = new Date(booking.date);
+        return {
+          id: booking.id,
+          bookingObjectId: booking.booking_object_id,
+          groupId: booking.booking_group_id || "",
+          startTime: booking.start_time || "",
+          endTime: booking.end_time || "",
+          serviceName: booking.service_name,
+          dayLabel: date
+            .toLocaleDateString("sv-SE", { weekday: "short" })
+            .replace(".", "")
+            .replace(/^./, (char) => char.toUpperCase()),
+          dateLabel: `${date.getDate()}/${date.getMonth() + 1}`,
+          timeLabel: booking.time_label,
+          status: booking.status,
+          startTime: booking.start_time,
+          endTime: booking.end_time,
+        };
+      })
+    : [];
+
+  store.setState({
+    sessionUser: bootstrap?.user || null,
+    sessionTenant: bootstrap?.tenant || null,
+    sessionLoading: false,
+    services: servicesData,
+    bookings: bookingsData.filter(isBookingCurrentOrFuture),
+    dataLoading: false,
+    uiStates: {
+      ...store.getState().uiStates,
+      service: servicesData.length ? "normal" : "empty",
+    },
+  });
 };
 
 let userInitialized = false;
@@ -1361,20 +1420,41 @@ const initUser = async () => {
   if (token) {
     setAccessToken(token);
   }
+  store.setState((prev) => ({ dataLoading: true, uiStates: { ...prev.uiStates, service: "loading" } }));
   try {
-    const session = await getSession();
-    store.setState({
-      sessionUser: session.user,
-      sessionTenant: session.tenant,
-      sessionLoading: false,
-    });
-    await loadUserData();
+    const bootstrap = await getBootstrap();
+    applyBootstrapData(bootstrap);
   } catch (error) {
-    store.setState({
+    if (error?.status === 404) {
+      // Backward compatibility for environments without /api/bootstrap yet.
+      try {
+        const session = await getSession();
+        store.setState({
+          sessionUser: session.user,
+          sessionTenant: session.tenant,
+          sessionLoading: false,
+        });
+        const [servicesData, bookingsData] = await Promise.all([getServices(), getCurrentBookings()]);
+        store.setState({
+          services: servicesData,
+          bookings: bookingsData.filter(isBookingCurrentOrFuture),
+          dataLoading: false,
+          uiStates: {
+            ...store.getState().uiStates,
+            service: servicesData.length ? "normal" : "empty",
+          },
+        });
+        return;
+      } catch {
+        // Fall through to unauthorized/error state.
+      }
+    }
+    store.setState((prev) => ({
       sessionError: "unauthorized",
       sessionLoading: false,
-      uiStates: { ...store.getState().uiStates, service: "error" },
-    });
+      dataLoading: false,
+      uiStates: { ...prev.uiStates, service: "error" },
+    }));
   }
 };
 

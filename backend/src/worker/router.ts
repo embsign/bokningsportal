@@ -870,6 +870,126 @@ const getActiveRfidTagUserContext = async (db: D1Database, uid: string, tenantId
   return (await bound.first()) as any;
 };
 
+const buildServicesForAuth = async (db: D1Database, auth: { user: any; tenant: any }, env: Env) => {
+  const nowUtc = getUtcNowFromEnv(env);
+  const nowIso = new Date().toISOString();
+  const bookingObjects = await db
+    .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
+    .bind(auth.tenant.id)
+    .all();
+  let filtered: any[] = bookingObjects.results;
+  if (auth.user.is_admin !== 1) {
+    const [userGroups, permissionRows] = await Promise.all([
+      listUserGroups(db, auth.user.id),
+      db
+        .prepare(
+          `SELECT bop.booking_object_id, bop.mode, bop.scope, bop.value
+           FROM booking_object_permissions bop
+           JOIN booking_objects bo ON bo.id = bop.booking_object_id
+           WHERE bo.tenant_id = ?
+             AND bo.is_active = 1`
+        )
+        .bind(auth.tenant.id)
+        .all(),
+    ]);
+    const permissionsByObject = new Map<string, any[]>();
+    for (const permission of permissionRows.results) {
+      const objectId = permission.booking_object_id as string;
+      if (!permissionsByObject.has(objectId)) {
+        permissionsByObject.set(objectId, []);
+      }
+      permissionsByObject.get(objectId)!.push(permission);
+    }
+    filtered = bookingObjects.results.filter((obj: any) =>
+      canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
+    );
+  }
+  const groupIds = toUniqueTrimmedStrings(filtered.map((obj: any) => obj.group_id));
+  const groupLimitsById = await getBookingGroupMaxBookings(db, auth.tenant.id, groupIds);
+
+  const maxConfigByObjectId = new Map<
+    string,
+    { limit: number | null; scope: MaxBookingScope }
+  >();
+  const limitedObjectIds: string[] = [];
+  const limitedGroupIds = new Set<string>();
+  for (const obj of filtered as any[]) {
+    const config = getEffectiveMaxBookingsConfigFromGroupLimits(obj, groupLimitsById);
+    const objectId = String(obj.id);
+    maxConfigByObjectId.set(objectId, config);
+    if (config.limit !== null) {
+      if (config.scope === "group" && obj.group_id) {
+        limitedGroupIds.add(String(obj.group_id));
+      } else {
+        limitedObjectIds.push(objectId);
+      }
+    }
+  }
+
+  const [activeCountsByObjectId, activeCountsByGroupId] = await Promise.all([
+    getActiveBookingCountsByObject(db, auth.user.id, nowIso, limitedObjectIds),
+    getActiveBookingCountsByGroup(db, auth.user.id, auth.tenant.id, nowIso, Array.from(limitedGroupIds)),
+  ]);
+
+  return filtered.map((obj: any) => {
+      const maxBookings =
+        maxConfigByObjectId.get(String(obj.id)) || {
+          limit: null,
+          scope: null as MaxBookingScope,
+        };
+      const activeCount =
+        maxBookings.limit !== null
+          ? maxBookings.scope === "group" && obj.group_id
+            ? Number(activeCountsByGroupId.get(String(obj.group_id)) || 0)
+            : Number(activeCountsByObjectId.get(String(obj.id)) || 0)
+          : 0;
+      const maxBookingsReached = maxBookings.limit !== null && activeCount >= maxBookings.limit;
+      return {
+      id: obj.id,
+      name: obj.name,
+      description: obj.description || "",
+      booking_type: obj.booking_type,
+      slot_duration_minutes: obj.slot_duration_minutes,
+      full_day_start_time: normalizeClockTime(obj.full_day_start_time),
+      full_day_end_time: normalizeClockTime(obj.full_day_end_time),
+      time_slot_start_time: normalizeClockTime(obj.time_slot_start_time, "08:00"),
+      time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
+      window_min_days: obj.window_min_days,
+      window_max_days: obj.window_max_days,
+      next_available: formatDate(getNextAvailableStart(obj, nowUtc)),
+      price_weekday_cents: obj.price_weekday_cents,
+      price_weekend_cents: obj.price_weekend_cents,
+      group_id: obj.group_id || null,
+      max_bookings_limit: maxBookings.limit,
+      max_bookings_scope: maxBookings.scope,
+      max_bookings_reached: maxBookingsReached,
+      };
+    });
+};
+
+const getCurrentBookingsForUser = async (db: D1Database, userId: string) => {
+  const rows = await db
+    .prepare(
+      `SELECT b.id, b.start_time, b.end_time, b.booking_object_id, bo.group_id AS booking_group_id, bo.name AS booking_object_name
+       FROM bookings b
+       JOIN booking_objects bo ON bo.id = b.booking_object_id
+       WHERE b.user_id = ? AND b.cancelled_at IS NULL
+         AND datetime(b.end_time) > datetime('now')
+       ORDER BY b.start_time ASC`
+    )
+    .bind(userId)
+    .all();
+  return rows.results.map((row: any) => ({
+    id: row.id,
+    service_name: row.booking_object_name,
+    booking_object_id: row.booking_object_id,
+    booking_group_id: row.booking_group_id,
+    date: (row.start_time as string).slice(0, 10),
+    time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
+    status: "mine",
+  }));
+};
+
 const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string, nowUtc: Date) => {
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
@@ -1478,127 +1598,33 @@ const handleSession = async (request: Request, env: Env) => {
 const handleServices = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
-  const nowUtc = getUtcNowFromEnv(env);
-  const nowIso = new Date().toISOString();
-  const bookingObjects = await env.DB
-    .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
-    .bind(auth.tenant.id)
-    .all();
-  let filtered: any[] = bookingObjects.results;
-  if (auth.user.is_admin !== 1) {
-    const [userGroups, permissionRows] = await Promise.all([
-      listUserGroups(env.DB, auth.user.id),
-      env.DB
-        .prepare(
-          `SELECT bop.booking_object_id, bop.mode, bop.scope, bop.value
-           FROM booking_object_permissions bop
-           JOIN booking_objects bo ON bo.id = bop.booking_object_id
-           WHERE bo.tenant_id = ?
-             AND bo.is_active = 1`
-        )
-        .bind(auth.tenant.id)
-        .all(),
-    ]);
-    const permissionsByObject = new Map<string, any[]>();
-    for (const permission of permissionRows.results) {
-      const objectId = permission.booking_object_id as string;
-      if (!permissionsByObject.has(objectId)) {
-        permissionsByObject.set(objectId, []);
-      }
-      permissionsByObject.get(objectId)!.push(permission);
-    }
-    filtered = bookingObjects.results.filter((obj: any) =>
-      canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
-    );
-  }
-  const groupIds = toUniqueTrimmedStrings(filtered.map((obj: any) => obj.group_id));
-  const groupLimitsById = await getBookingGroupMaxBookings(env.DB, auth.tenant.id, groupIds);
-
-  const maxConfigByObjectId = new Map<
-    string,
-    { limit: number | null; scope: MaxBookingScope }
-  >();
-  const limitedObjectIds: string[] = [];
-  const limitedGroupIds = new Set<string>();
-  for (const obj of filtered as any[]) {
-    const config = getEffectiveMaxBookingsConfigFromGroupLimits(obj, groupLimitsById);
-    const objectId = String(obj.id);
-    maxConfigByObjectId.set(objectId, config);
-    if (config.limit !== null) {
-      if (config.scope === "group" && obj.group_id) {
-        limitedGroupIds.add(String(obj.group_id));
-      } else {
-        limitedObjectIds.push(objectId);
-      }
-    }
-  }
-
-  const [activeCountsByObjectId, activeCountsByGroupId] = await Promise.all([
-    getActiveBookingCountsByObject(env.DB, auth.user.id, nowIso, limitedObjectIds),
-    getActiveBookingCountsByGroup(env.DB, auth.user.id, auth.tenant.id, nowIso, Array.from(limitedGroupIds)),
-  ]);
-
-  const services = filtered.map((obj: any) => {
-      const maxBookings =
-        maxConfigByObjectId.get(String(obj.id)) || {
-          limit: null,
-          scope: null as MaxBookingScope,
-        };
-      const activeCount =
-        maxBookings.limit !== null
-          ? maxBookings.scope === "group" && obj.group_id
-            ? Number(activeCountsByGroupId.get(String(obj.group_id)) || 0)
-            : Number(activeCountsByObjectId.get(String(obj.id)) || 0)
-          : 0;
-      const maxBookingsReached = maxBookings.limit !== null && activeCount >= maxBookings.limit;
-      return {
-      id: obj.id,
-      name: obj.name,
-      description: obj.description || "",
-      booking_type: obj.booking_type,
-      slot_duration_minutes: obj.slot_duration_minutes,
-      full_day_start_time: normalizeClockTime(obj.full_day_start_time),
-      full_day_end_time: normalizeClockTime(obj.full_day_end_time),
-      time_slot_start_time: normalizeClockTime(obj.time_slot_start_time, "08:00"),
-      time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
-      window_min_days: obj.window_min_days,
-      window_max_days: obj.window_max_days,
-      next_available: formatDate(getNextAvailableStart(obj, nowUtc)),
-      price_weekday_cents: obj.price_weekday_cents,
-      price_weekend_cents: obj.price_weekend_cents,
-      group_id: obj.group_id || null,
-      max_bookings_limit: maxBookings.limit,
-      max_bookings_scope: maxBookings.scope,
-      max_bookings_reached: maxBookingsReached,
-      };
-    });
+  const services = await buildServicesForAuth(env.DB, auth, env);
   return json({ services });
 };
 
 const handleCurrentBookings = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
-  const rows = await env.DB
-    .prepare(
-      `SELECT b.id, b.start_time, b.end_time, b.booking_object_id, bo.group_id AS booking_group_id, bo.name AS booking_object_name
-       FROM bookings b
-       JOIN booking_objects bo ON bo.id = b.booking_object_id
-       WHERE b.user_id = ? AND b.cancelled_at IS NULL
-         AND datetime(b.end_time) > datetime('now')
-       ORDER BY b.start_time ASC`
-    )
-    .bind(auth.user.id)
-    .all();
-  const bookings = rows.results.map((row: any) => ({
-    id: row.id,
-    service_name: row.booking_object_name,
-    booking_object_id: row.booking_object_id,
-    booking_group_id: row.booking_group_id,
-    date: (row.start_time as string).slice(0, 10),
-    time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
-    status: "mine",
-  }));
+  const bookings = await getCurrentBookingsForUser(env.DB, auth.user.id);
   return json({ bookings });
+};
+
+const handleBootstrap = async (request: Request, env: Env) => {
+  const auth = await requireAuth(request, env);
+  if ("error" in auth) return auth.error;
+  if (auth.tenant.is_setup_complete === 0) {
+    return errorResponse(401, "setup_incomplete");
+  }
+  const [services, bookings] = await Promise.all([
+    buildServicesForAuth(env.DB, auth, env),
+    getCurrentBookingsForUser(env.DB, auth.user.id),
+  ]);
+  return json({
+    tenant: { id: auth.tenant.id, name: auth.tenant.name },
+    user: { id: auth.user.id, apartment_id: auth.user.apartment_id, is_admin: auth.user.is_admin === 1 },
+    services,
+    bookings,
+  });
 };
 
 const handleCreateBooking = async (request: Request, env: Env) => {
@@ -2529,6 +2555,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
   if (request.method === "GET" && path === "/api/demo-links") return handleDemoLinks(request, env);
 
+  if (request.method === "GET" && path === "/api/bootstrap") return handleBootstrap(request, env);
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
   if (request.method === "GET" && path === "/api/services") return handleServices(request, env);
   if (request.method === "GET" && path === "/api/bookings/current") return handleCurrentBookings(request, env);
