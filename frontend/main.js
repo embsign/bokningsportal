@@ -17,8 +17,7 @@ import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/c
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
-import { getServices } from "./api/services.js";
-import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
+import { createBooking, cancelBooking } from "./api/bookings.js";
 import {
   getMonthAvailability,
   getMonthLabel,
@@ -1425,30 +1424,6 @@ const initUser = async () => {
     const bootstrap = await getBootstrap();
     applyBootstrapData(bootstrap);
   } catch (error) {
-    if (error?.status === 404) {
-      // Backward compatibility for environments without /api/bootstrap yet.
-      try {
-        const session = await getSession();
-        store.setState({
-          sessionUser: session.user,
-          sessionTenant: session.tenant,
-          sessionLoading: false,
-        });
-        const [servicesData, bookingsData] = await Promise.all([getServices(), getCurrentBookings()]);
-        store.setState({
-          services: servicesData,
-          bookings: bookingsData.filter(isBookingCurrentOrFuture),
-          dataLoading: false,
-          uiStates: {
-            ...store.getState().uiStates,
-            service: servicesData.length ? "normal" : "empty",
-          },
-        });
-        return;
-      } catch {
-        // Fall through to unauthorized/error state.
-      }
-    }
     store.setState((prev) => ({
       sessionError: "unauthorized",
       sessionLoading: false,
