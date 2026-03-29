@@ -1282,25 +1282,29 @@ const getSelectedServiceBookingLimit = (service) => {
 
 const isBookingCountLimited = (service) => getSelectedServiceBookingLimit(service) !== null;
 
-const isServiceMarkedAsMaxReached = (service) => Boolean(service?.maxBookingsReached === true);
-
-const getActiveBookingsForSelectedService = (state) =>
-  (state.bookings || []).filter((booking) => booking.bookingObjectId === state.selectedService?.id);
+const getActiveBookingsForSelectedService = (state) => {
+  const selectedService = state.selectedService;
+  if (!selectedService) {
+    return [];
+  }
+  const scope = selectedService.maxBookingsScope;
+  const groupId = selectedService.bookingGroupId || "";
+  if (scope === "group" && groupId) {
+    return (state.bookings || []).filter((booking) => booking.groupId === groupId);
+  }
+  return (state.bookings || []).filter((booking) => booking.bookingObjectId === selectedService.id);
+};
 
 const isSelectedServiceMaxReached = (state) => {
   if (!state.selectedService) {
     return false;
-  }
-  if (isServiceMarkedAsMaxReached(state.selectedService)) {
-    return true;
   }
   const bookingLimit = getSelectedServiceBookingLimit(state.selectedService);
   if (bookingLimit === null) {
     return false;
   }
   const activeBookings = getActiveBookingsForSelectedService(state);
-  const reached = activeBookings.length >= bookingLimit;
-  return reached;
+  return activeBookings.length >= bookingLimit;
 };
 
 const buildConfirmationCalendarEvent = (state, range) => {
@@ -1394,7 +1398,7 @@ const applyBootstrapData = (bootstrap) => {
         timeSlotEndTime: /^\d{2}:\d{2}$/.test(service.time_slot_end_time || "") ? service.time_slot_end_time : "20:00",
         maxBookings: Number(service.max_bookings_limit || service.max_bookings || 0),
         maxBookingsLimit: Number(service.max_bookings_limit || service.max_bookings || 0),
-        maxBookingsReached: service.max_bookings_reached === true,
+        maxBookingsScope: service.max_bookings_scope || null,
         bookingGroupId: service.group_id || "",
         priceWeekday: service.price_weekday_cents || 0,
         priceWeekend: service.price_weekend_cents || 0,
@@ -1897,7 +1901,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       isKioskMode: !isMobile,
       calendarQrImageUrl,
       calendarDownloadUrl: calendarPageUrl,
-      onBack: () => store.setState({ step: 2 }),
+      onBack: () =>
+        store.setState((prev) => ({
+          step: 2,
+          bookingErrorDetail: "",
+          uiStates: { ...prev.uiStates, confirmation: "normal" },
+        })),
       onAcknowledge: () =>
         store.setState({
           step: 2,
@@ -1952,16 +1961,6 @@ const loadWeekAvailability = async (service, weekStart) => {
             console.error("Kunde inte uppdatera aktuella bokningar efter bokning.", refreshError);
           }
         } catch (error) {
-          if (error.status === 409) {
-            if (error.detail === "max_bookings_reached") {
-              alert("Du har nått max antal aktiva bokningar för detta objekt.");
-            } else {
-              alert("Tiden är redan bokad.");
-            }
-          }
-          if (error.status === 403) {
-            alert("Du saknar behörighet att boka.");
-          }
           store.setState((prev) => ({
             confirmed: false,
             confirmationCalendarEvent: null,
