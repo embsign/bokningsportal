@@ -111,6 +111,18 @@ const openHelp = () => {
     "Hjälp\n\nBoka genom att välja objekt, vecka/datum och tid.\nVid problem med behörighet eller bokning, kontakta styrelsen/förvaltaren."
   );
 };
+const DEFAULT_MAX_BOOKINGS = "2";
+const parseRequiredPositiveInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+};
+const normalizeRequiredMaxBookings = (value) => {
+  const parsed = parseRequiredPositiveInt(value);
+  return parsed === null ? null : String(parsed);
+};
 const logout = () => {
   setAccessToken(null);
   window.location.assign("/");
@@ -361,6 +373,7 @@ if (routePath.startsWith("/admin/")) {
     pairScreenName: "",
     editScreenId: null,
     editScreenName: "",
+    modalValidationError: "",
     modalForm: {
       name: "",
       type: "Tidspass",
@@ -371,7 +384,7 @@ if (routePath.startsWith("/admin/")) {
       slotEndTime: "20:00",
       windowMin: "",
       windowMax: "",
-      maxBookings: "",
+      maxBookings: DEFAULT_MAX_BOOKINGS,
       groupId: "",
       priceWeekday: "",
       priceWeekend: "",
@@ -391,6 +404,7 @@ if (routePath.startsWith("/admin/")) {
       modalOpen: true,
       modalMode: mode,
       editId: item?.id || null,
+      modalValidationError: "",
       modalForm: item
         ? {
             name: item.name,
@@ -424,7 +438,7 @@ if (routePath.startsWith("/admin/")) {
             slotEndTime: "20:00",
             windowMin: "",
             windowMax: "",
-            maxBookings: "",
+            maxBookings: DEFAULT_MAX_BOOKINGS,
             groupId: "",
             priceWeekday: "",
             priceWeekend: "",
@@ -554,9 +568,12 @@ if (routePath.startsWith("/admin/")) {
       open: state.modalOpen,
       mode: state.modalMode,
       form: state.modalForm,
+      validationError: state.modalValidationError || "",
+      groupValidationError: state.modalValidationError || "",
       bookingGroups: state.bookingGroups,
       onChange: (field, value) =>
         adminStore.setState((prev) => ({
+          modalValidationError: field === "maxBookings" ? "" : prev.modalValidationError,
           modalForm: { ...prev.modalForm, [field]: value },
         })),
       onSelectGroup: (groupId) =>
@@ -569,7 +586,7 @@ if (routePath.startsWith("/admin/")) {
             modalForm: {
               ...prev.modalForm,
               groupId,
-              maxBookings: group?.maxBookings || prev.modalForm.maxBookings,
+              maxBookings: group?.maxBookings || prev.modalForm.maxBookings || DEFAULT_MAX_BOOKINGS,
             },
           };
         }),
@@ -596,23 +613,35 @@ if (routePath.startsWith("/admin/")) {
           adminStore.setState({ groupModalOpen: false });
           return;
         }
-        await createBookingGroup({ name, max_bookings: Number(adminStore.getState().modalForm.maxBookings || 1) });
+        const maxBookings = parseRequiredPositiveInt(adminStore.getState().modalForm.maxBookings);
+        if (maxBookings === null) {
+          adminStore.setState({ modalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          return;
+        }
+        await createBookingGroup({ name, max_bookings: maxBookings });
         await loadAdminData();
-        adminStore.setState({ groupModalOpen: false, groupNameDraft: "" });
+        adminStore.setState({ groupModalOpen: false, groupNameDraft: "", modalValidationError: "" });
       },
-      onClose: () => adminStore.setState({ modalOpen: false }),
+      onClose: () => adminStore.setState({ modalOpen: false, modalValidationError: "" }),
       selectorOpenKey: state.selectorOpenKey,
       onOpenSelector: (key) => adminStore.setState({ selectorOpenKey: key }),
       onCloseSelector: () => adminStore.setState({ selectorOpenKey: null }),
       onSave: async () => {
         const form = adminStore.getState().modalForm;
+        const normalizedMaxBookings = normalizeRequiredMaxBookings(form.maxBookings);
+        if (!normalizedMaxBookings) {
+          adminStore.setState({ modalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          return;
+        }
+        adminStore.setState({ modalValidationError: "" });
+        const payload = { ...form, maxBookings: normalizedMaxBookings };
         if (adminStore.getState().modalMode === "edit") {
-          await updateBookingObject(adminStore.getState().editId, form);
+          await updateBookingObject(adminStore.getState().editId, payload);
         } else {
-          await createBookingObject(form);
+          await createBookingObject(payload);
         }
         await loadAdminData();
-        adminStore.setState({ modalOpen: false });
+        adminStore.setState({ modalOpen: false, modalValidationError: "" });
       },
     });
 
@@ -1253,25 +1282,29 @@ const getSelectedServiceBookingLimit = (service) => {
 
 const isBookingCountLimited = (service) => getSelectedServiceBookingLimit(service) !== null;
 
-const isServiceMarkedAsMaxReached = (service) => Boolean(service?.maxBookingsReached === true);
-
-const getActiveBookingsForSelectedService = (state) =>
-  (state.bookings || []).filter((booking) => booking.bookingObjectId === state.selectedService?.id);
+const getActiveBookingsForSelectedService = (state) => {
+  const selectedService = state.selectedService;
+  if (!selectedService) {
+    return [];
+  }
+  const scope = selectedService.maxBookingsScope;
+  const groupId = selectedService.bookingGroupId || "";
+  if (scope === "group" && groupId) {
+    return (state.bookings || []).filter((booking) => booking.groupId === groupId);
+  }
+  return (state.bookings || []).filter((booking) => booking.bookingObjectId === selectedService.id);
+};
 
 const isSelectedServiceMaxReached = (state) => {
   if (!state.selectedService) {
     return false;
-  }
-  if (isServiceMarkedAsMaxReached(state.selectedService)) {
-    return true;
   }
   const bookingLimit = getSelectedServiceBookingLimit(state.selectedService);
   if (bookingLimit === null) {
     return false;
   }
   const activeBookings = getActiveBookingsForSelectedService(state);
-  const reached = activeBookings.length >= bookingLimit;
-  return reached;
+  return activeBookings.length >= bookingLimit;
 };
 
 const buildConfirmationCalendarEvent = (state, range) => {
@@ -1365,7 +1398,7 @@ const applyBootstrapData = (bootstrap) => {
         timeSlotEndTime: /^\d{2}:\d{2}$/.test(service.time_slot_end_time || "") ? service.time_slot_end_time : "20:00",
         maxBookings: Number(service.max_bookings_limit || service.max_bookings || 0),
         maxBookingsLimit: Number(service.max_bookings_limit || service.max_bookings || 0),
-        maxBookingsReached: service.max_bookings_reached === true,
+        maxBookingsScope: service.max_bookings_scope || null,
         bookingGroupId: service.group_id || "",
         priceWeekday: service.price_weekday_cents || 0,
         priceWeekend: service.price_weekend_cents || 0,
@@ -1868,7 +1901,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       isKioskMode: !isMobile,
       calendarQrImageUrl,
       calendarDownloadUrl: calendarPageUrl,
-      onBack: () => store.setState({ step: 2 }),
+      onBack: () =>
+        store.setState((prev) => ({
+          step: 2,
+          bookingErrorDetail: "",
+          uiStates: { ...prev.uiStates, confirmation: "normal" },
+        })),
       onAcknowledge: () =>
         store.setState({
           step: 2,
@@ -1923,16 +1961,6 @@ const loadWeekAvailability = async (service, weekStart) => {
             console.error("Kunde inte uppdatera aktuella bokningar efter bokning.", refreshError);
           }
         } catch (error) {
-          if (error.status === 409) {
-            if (error.detail === "max_bookings_reached") {
-              alert("Du har nått max antal aktiva bokningar för detta objekt.");
-            } else {
-              alert("Tiden är redan bokad.");
-            }
-          }
-          if (error.status === 403) {
-            alert("Du saknar behörighet att boka.");
-          }
           store.setState((prev) => ({
             confirmed: false,
             confirmationCalendarEvent: null,
@@ -2043,7 +2071,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       slotEndTime: "20:00",
       windowMin: "0",
       windowMax: "30",
-      maxBookings: "",
+      maxBookings: DEFAULT_MAX_BOOKINGS,
       groupId: "",
       priceWeekday: "",
       priceWeekend: "",
@@ -2058,6 +2086,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     selectorOpenKey: null,
     groupModalOpen: false,
     bookingGroupDraft: "",
+    bookingModalValidationError: "",
     importOpen: false,
     importStep: 1,
     importFileName: "",
@@ -2275,6 +2304,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       bookingModalOpen: true,
       bookingModalMode: mode,
       editBookingId: item?.id || null,
+      bookingModalValidationError: "",
       bookingForm: item
         ? {
             name: item.name,
@@ -2308,7 +2338,7 @@ const loadWeekAvailability = async (service, weekStart) => {
             slotEndTime: "20:00",
             windowMin: "0",
             windowMax: "30",
-            maxBookings: "",
+            maxBookings: DEFAULT_MAX_BOOKINGS,
             groupId: "",
             priceWeekday: "",
             priceWeekend: "",
@@ -2595,13 +2625,32 @@ const loadWeekAvailability = async (service, weekStart) => {
       open: setupState.bookingModalOpen,
       mode: setupState.bookingModalMode,
       form: setupState.bookingForm,
-      onChange: (field, value) => setSetupState({ bookingForm: { ...setupState.bookingForm, [field]: value } }),
-      onClose: () => setSetupState({ bookingModalOpen: false }),
+      validationError: setupState.bookingModalValidationError || "",
+      groupValidationError: setupState.bookingModalValidationError || "",
+      onChange: (field, value) =>
+        setSetupState({
+          bookingForm: { ...setupState.bookingForm, [field]: value },
+          bookingModalValidationError: field === "maxBookings" ? "" : setupState.bookingModalValidationError,
+        }),
+      onClose: () => setSetupState({ bookingModalOpen: false, bookingModalValidationError: "" }),
       selectorOpenKey: setupState.selectorOpenKey,
       onOpenSelector: (key) => setSetupState({ selectorOpenKey: key }),
       onCloseSelector: () => setSetupState({ selectorOpenKey: null }),
       bookingGroups: setupState.bookingGroups,
-      onSelectGroup: (value) => setSetupState({ bookingForm: { ...setupState.bookingForm, groupId: value } }),
+      onSelectGroup: (value) => {
+        if (!value) {
+          setSetupState({ bookingForm: { ...setupState.bookingForm, groupId: "" } });
+          return;
+        }
+        const selectedGroup = (setupState.bookingGroups || []).find((group) => group.id === value);
+        setSetupState({
+          bookingForm: {
+            ...setupState.bookingForm,
+            groupId: value,
+            maxBookings: selectedGroup?.maxBookings || setupState.bookingForm.maxBookings || DEFAULT_MAX_BOOKINGS,
+          },
+        });
+      },
       onUpdateGroupMax: (value) => setSetupState({ bookingForm: { ...setupState.bookingForm, maxBookings: value } }),
       groupModalOpen: setupState.groupModalOpen,
       groupNameDraft: setupState.bookingGroupDraft,
@@ -2610,21 +2659,33 @@ const loadWeekAvailability = async (service, weekStart) => {
       onCloseGroupModal: () => setSetupState({ groupModalOpen: false }),
       onCreateGroup: async () => {
         if (!setupState.bookingGroupDraft?.trim()) return;
+        const maxBookings = parseRequiredPositiveInt(setupState.bookingForm.maxBookings);
+        if (maxBookings === null) {
+          setSetupState({ bookingModalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          return;
+        }
         await createBookingGroup({
           name: setupState.bookingGroupDraft.trim(),
-          max_bookings: Number(setupState.bookingForm.maxBookings || 1),
+          max_bookings: maxBookings,
         });
-        setSetupState({ groupModalOpen: false, bookingGroupDraft: "" });
+        setSetupState({ groupModalOpen: false, bookingGroupDraft: "", bookingModalValidationError: "" });
         await loadSetupLists();
       },
       onSave: async () => {
+        const normalizedMaxBookings = normalizeRequiredMaxBookings(setupState.bookingForm.maxBookings);
+        if (!normalizedMaxBookings) {
+          setSetupState({ bookingModalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          return;
+        }
+        setSetupState({ bookingModalValidationError: "" });
+        const payload = { ...setupState.bookingForm, maxBookings: normalizedMaxBookings };
         if (setupState.bookingModalMode === "edit") {
-          await updateBookingObject(setupState.editBookingId, setupState.bookingForm);
+          await updateBookingObject(setupState.editBookingId, payload);
         } else {
-          await createBookingObject(setupState.bookingForm);
+          await createBookingObject(payload);
         }
         await loadSetupLists();
-        setSetupState({ bookingModalOpen: false });
+        setSetupState({ bookingModalOpen: false, bookingModalValidationError: "" });
       },
     });
 

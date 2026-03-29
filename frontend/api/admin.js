@@ -10,6 +10,14 @@ const toCents = (value) => {
   return Math.round(parsed * 100);
 };
 
+const toRequiredPositiveInt = (value, fallback = 2) => {
+  const parsed = Number(value);
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+};
+
 export const getBookingObjects = async () => {
   const { booking_objects } = await apiRequest("/admin/booking-objects");
   return booking_objects.map((obj) => ({
@@ -30,7 +38,7 @@ export const getBookingObjects = async () => {
     slotEndTime: normalizeClockTime(obj.time_slot_end_time || "20:00"),
     windowMin: String(obj.window_min_days),
     windowMax: String(obj.window_max_days),
-    maxBookings: obj.max_bookings_override ? String(obj.max_bookings_override) : "",
+    maxBookings: String(obj.max_bookings_override || 2),
     priceWeekday: toKr(obj.price_weekday_cents),
     priceWeekend: toKr(obj.price_weekend_cents),
     groupId: obj.group_id || "",
@@ -60,7 +68,7 @@ export const createBookingObject = (payload) =>
       price_weekend_cents: toCents(payload.priceWeekend),
       is_active: payload.status !== "Inaktiv",
       group_id: payload.groupId || null,
-      max_bookings_override: payload.maxBookings ? Number(payload.maxBookings) : null,
+      max_bookings_override: toRequiredPositiveInt(payload.maxBookings),
     }),
   });
 
@@ -81,7 +89,7 @@ export const updateBookingObject = (id, payload) =>
       price_weekend_cents: toCents(payload.priceWeekend),
       is_active: payload.status !== "Inaktiv",
       group_id: payload.groupId || null,
-      max_bookings_override: payload.maxBookings ? Number(payload.maxBookings) : null,
+      max_bookings_override: toRequiredPositiveInt(payload.maxBookings),
     }),
   });
 

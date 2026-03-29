@@ -207,6 +207,14 @@ const getJsonBody = async (request: Request) => {
   }
 };
 
+const parseRequiredPositiveInt = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+};
+
 const parseBearerToken = (value: string | null) => {
   if (!value) return null;
   const [type, token] = value.split(" ");
@@ -1993,6 +2001,8 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body) return errorResponse(400, "invalid_payload");
+  const maxBookingsOverride = parseRequiredPositiveInt(body.max_bookings_override);
+  if (maxBookingsOverride === null) return errorResponse(400, "invalid_max_bookings");
   const id = `obj-${crypto.randomUUID()}`;
   await env.DB.prepare(
     `INSERT INTO booking_objects (
@@ -2018,7 +2028,7 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
     body.price_weekend_cents || 0,
     body.is_active ? 1 : 0,
     body.group_id || null,
-    body.max_bookings_override || null
+    maxBookingsOverride
   ).run();
   const permissions = getBookingObjectPermissionsFromPayload(body);
   await replaceBookingObjectPermissions(env.DB, id, permissions);
@@ -2030,6 +2040,8 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body) return errorResponse(400, "invalid_payload");
+  const maxBookingsOverride = parseRequiredPositiveInt(body.max_bookings_override);
+  if (maxBookingsOverride === null) return errorResponse(400, "invalid_max_bookings");
   await env.DB.prepare(
     `UPDATE booking_objects SET
       name = ?, description = ?, booking_type = ?, slot_duration_minutes = ?, full_day_start_time = ?, full_day_end_time = ?,
@@ -2052,7 +2064,7 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
     body.price_weekend_cents || 0,
     body.is_active ? 1 : 0,
     body.group_id || null,
-    body.max_bookings_override || null,
+    maxBookingsOverride,
     objectId
   ).run();
   const permissions = getBookingObjectPermissionsFromPayload(body);
@@ -2072,9 +2084,11 @@ const handleAdminCreateBookingGroup = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body?.name) return errorResponse(400, "invalid_payload");
+  const maxBookings = parseRequiredPositiveInt(body.max_bookings);
+  if (maxBookings === null) return errorResponse(400, "invalid_max_bookings");
   const id = `group-${crypto.randomUUID()}`;
   await env.DB.prepare("INSERT INTO booking_groups (id, tenant_id, name, max_bookings) VALUES (?, ?, ?, ?)")
-    .bind(id, auth.tenant.id, body.max_bookings || 1)
+    .bind(id, auth.tenant.id, maxBookings)
     .run();
   return json({ id });
 };

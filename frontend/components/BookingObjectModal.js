@@ -46,6 +46,7 @@ export const BookingObjectModal = ({
   open,
   mode,
   form,
+  validationError,
   onChange,
   onClose,
   onSave,
@@ -57,6 +58,7 @@ export const BookingObjectModal = ({
   onUpdateGroupMax,
   groupModalOpen,
   groupNameDraft,
+  groupValidationError,
   onGroupNameChange,
   onOpenGroupModal,
   onCloseGroupModal,
@@ -379,11 +381,19 @@ export const BookingObjectModal = ({
                   children: [
                     createElement("input", {
                       className: "input input-sm",
-                      attrs: { value: form.maxBookings || "", "data-focus-key": "maxBookings" },
+                      attrs: {
+                        type: "number",
+                        min: "1",
+                        step: "1",
+                        required: "required",
+                        value: form.maxBookings || "",
+                        "data-focus-key": "maxBookings",
+                      },
                       onInput: (event) => {
                         const value = event.target.value;
-                        onChange("maxBookings", value);
-                        onUpdateGroupMax?.(value);
+                        const normalized = value.trim() ? value : "2";
+                        onChange("maxBookings", normalized);
+                        onUpdateGroupMax?.(normalized);
                       },
                     }),
                     createElement("select", {
@@ -568,6 +578,12 @@ export const BookingObjectModal = ({
           createElement("div", {
             className: "modal-footer",
             children: [
+              validationError
+                ? createElement("div", {
+                    className: "form-error",
+                    text: validationError,
+                  })
+                : null,
               createElement("button", {
                 className: "secondary-button",
                 text: "Avbryt",
@@ -609,6 +625,12 @@ export const BookingObjectModal = ({
               createElement("div", {
                 className: "modal-footer",
                 children: [
+                  groupValidationError
+                    ? createElement("div", {
+                        className: "form-error",
+                        text: groupValidationError,
+                      })
+                    : null,
                   createElement("button", {
                     className: "secondary-button",
                     text: "Avbryt",
