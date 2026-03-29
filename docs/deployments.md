@@ -1,20 +1,21 @@
-# Deployments (Workers + D1)
+# Deployments (Pages Functions + D1)
 
 ## Översikt
-- Backend API körs som Cloudflare Worker.
+- Backend API körs som Cloudflare Pages Functions.
 - D1 används som databas.
 - Produktion använder `booking-prod`.
 - Preview för PR använder `booking-pr-{PR_NUMBER}`.
+- D1-binding för Pages sätts i Cloudflare Dashboard (Settings → Bindings), inte via placeholder i `wrangler.toml`.
 
 ## Preview vs Production
 
 ### Produktion
-- Worker‑namn: `bokningsportal`
+- Pages project: `bokningsportal`
 - DB‑namn: `booking-prod`
 - Deploy triggas på `main`.
 
 ### Preview (PR)
-- Worker‑namn: `{BRANCH_SLUG}-bokningsportal` (fallback `pr-{PR_NUMBER}-bokningsportal`)
+- Pages preview för branch/PR
 - DB‑namn: `booking-{BRANCH_SLUG}` (fallback `booking-pr-{PR_NUMBER}`)
 - Deploy triggas på `pull_request`.
 - Branch‑namn används primärt för att matcha Pages preview‑builds.
@@ -42,26 +43,11 @@ Sätt `PRINT_ENV=1` för att lista env‑variabler (hjälper att hitta PR‑numm
 
 ## Backend URL discovery
 
-Frontend läser API‑bas från:
-1) `window.API_BASE` (runtime)
-2) `<meta name="api-base" content="...">`
-3) fallback `/api`
-
-I produktion/preview bör `API_BASE` injiceras i HTML.
-Exempel:
-```html
-<meta name="api-base" content="https://bokningsportal.example.workers.dev/api" />
-```
+Frontend använder `/api` (same-origin) för API-anrop.
 
 ### Auto‑resolution i build
 
-`scripts/prepare_pages_api_base.mjs` räknar ut rätt API‑bas automatiskt:
-- Production (`main`/`master`) → `https://bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- Preview branch → `https://<branch-slug>-bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- PR fallback (`CF_PAGES_PULL_REQUEST_ID`, `PULL_REQUEST_NUMBER`, `PR_NUMBER`) → `https://pr-123-bokningsportal.<WORKER_BASE_DOMAIN>/api`
-- Om preview‑namn inte kan härledas failar builden (ingen fallback till production).
-
-Detta gör att frontend kan deployas med rätt worker‑namn även för PR‑previews.
+Ingen API-base-injektion krävs i build när backend körs som Pages Functions.
 
 ## Cloudflare Turnstile (registrering av ny BRF)
 
@@ -117,3 +103,42 @@ och blockerar registreringen om verifieringen misslyckas.
 ## Lokalt
 - Backend (Node): `npm run dev` i `backend/`
 - Frontend: `npx serve -s -l 5173` i `frontend/`
+
+## Pages bindings (Cloudflare Dashboard)
+
+För deploy i Pages måste D1 bindas i projektets settings:
+
+1) **Workers & Pages** → välj projektet  
+2) **Settings** → **Bindings**  
+3) **Add** → **D1 database bindings**  
+4) Variable name: `DB`  
+5) Välj rätt databas för miljön (Production/Preview)
+
+Detta ersätter tidigare Worker-flöde där `database_id` kunde injiceras i `wrangler.generated.toml`.
+
+## Automatiserad preview-D1 (PR)
+
+Workflow: `.github/workflows/pages-preview.yml`
+
+Vid varje PR (`opened`, `synchronize`, `reopened`) gör workflowen:
+1) Skapar/hittar databas `booking-pr-<PR_NUMBER>`
+2) Kör migrations
+3) Kör `db/seed.sql`
+4) Skriver korrekt D1-binding direkt i `wrangler.toml` i CI-jobbet
+5) Publicerar preview via `wrangler pages deploy frontend ...` (utan `--config`, eftersom Pages deploy inte stöder custom config path)
+
+När PR stängs (`closed`) tas preview-databasen bort automatiskt.
+
+### Nödvändiga GitHub Secrets
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+### Rekommenderat i Cloudflare Pages Settings
+
+- Root directory: `frontend`
+- Build command: tom
+- Build output directory: `.`
+- Functions directory: `functions`
+
+Workflowen hanterar D1-provisionering och deploy till preview, så manual DB-hantering för preview behövs inte.

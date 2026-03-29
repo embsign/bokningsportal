@@ -15,39 +15,7 @@ const parseError = async (response) => {
   return "internal_error";
 };
 
-const isLocalHost = (hostname) => hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-
-const isLocalApiBase = (value) => {
-  try {
-    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-    const url = new URL(value, origin);
-    return isLocalHost(url.hostname);
-  } catch {
-    return false;
-  }
-};
-
-export const getApiBase = () => {
-  if (typeof window !== "undefined" && window.API_BASE) {
-    return window.API_BASE.replace(/\/$/, "");
-  }
-  if (typeof document !== "undefined") {
-    const meta = document.querySelector('meta[name="api-base"]');
-    if (meta?.content) {
-      const value = meta.content.replace(/\/$/, "");
-      // Skyddar deploy-miljö mot felaktigt kvarlämnad localhost-konfiguration.
-      if (
-        typeof window !== "undefined" &&
-        !isLocalHost(window.location.hostname) &&
-        isLocalApiBase(value)
-      ) {
-        return "/api";
-      }
-      return value;
-    }
-  }
-  return "/api";
-};
+export const getApiBase = () => "/api";
 
 export const apiRequest = async (path, options = {}) => {
   const base = getApiBase();

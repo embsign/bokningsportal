@@ -1,7 +1,7 @@
 # Överblick
 
 BRF Bokningsportal är ett multi‑tenant bokningssystem för bostadsrättsföreningar (BRF) byggt på
-Cloudflare (Pages + Worker + D1).
+Cloudflare (Pages + Pages Functions + D1).
 
 ## Syfte (för LLM‑agenter)
 Dokumenten i `docs/` är skrivna för att ge en komplett, källnära beskrivning av systemet så att en

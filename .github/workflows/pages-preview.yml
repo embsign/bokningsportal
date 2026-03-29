@@ -1,0 +1,92 @@
+name: Pages Preview + D1
+
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+jobs:
+  provision-and-deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Provision preview D1 and seed
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_ENV: preview
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WRANGLER_PAGES_CONFIG: wrangler.toml
+        run: node scripts/provision_pages_d1.mjs
+
+      - name: Validate Cloudflare auth context
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler whoami
+
+      - name: Deploy Pages preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title }}
+        run: |
+          npx wrangler pages deploy frontend \
+            --project-name bokningsportal \
+            --branch "${{ github.head_ref }}" \
+            --commit-hash "${COMMIT_SHA}" \
+            --commit-message "${COMMIT_MESSAGE}"
+
+  cleanup-preview-db:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Compute preview DB name
+        id: db
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "db_name=booking-pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete preview D1 database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler d1 delete "${{ steps.db.outputs.db_name }}" -y || true
