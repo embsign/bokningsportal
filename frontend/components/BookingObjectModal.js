@@ -389,15 +389,9 @@ export const BookingObjectModal = ({
                       },
                       onInput: (event) => {
                         const value = event.target.value;
-                        onChange("maxBookings", value);
-                        onUpdateGroupMax?.(value);
-                      },
-                      onBlur: (event) => {
-                        if (event.target.value.trim()) {
-                          return;
-                        }
-                        onChange("maxBookings", "2");
-                        onUpdateGroupMax?.("2");
+                        const normalized = value.trim() ? value : "2";
+                        onChange("maxBookings", normalized);
+                        onUpdateGroupMax?.(normalized);
                       },
                     }),
                     createElement("select", {
