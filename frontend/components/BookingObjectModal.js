@@ -46,6 +46,7 @@ export const BookingObjectModal = ({
   open,
   mode,
   form,
+  validationError,
   onChange,
   onClose,
   onSave,
@@ -57,6 +58,7 @@ export const BookingObjectModal = ({
   onUpdateGroupMax,
   groupModalOpen,
   groupNameDraft,
+  groupValidationError,
   onGroupNameChange,
   onOpenGroupModal,
   onCloseGroupModal,
@@ -576,6 +578,12 @@ export const BookingObjectModal = ({
           createElement("div", {
             className: "modal-footer",
             children: [
+              validationError
+                ? createElement("div", {
+                    className: "form-error",
+                    text: validationError,
+                  })
+                : null,
               createElement("button", {
                 className: "secondary-button",
                 text: "Avbryt",
@@ -617,6 +625,12 @@ export const BookingObjectModal = ({
               createElement("div", {
                 className: "modal-footer",
                 children: [
+                  groupValidationError
+                    ? createElement("div", {
+                        className: "form-error",
+                        text: groupValidationError,
+                      })
+                    : null,
                   createElement("button", {
                     className: "secondary-button",
                     text: "Avbryt",
