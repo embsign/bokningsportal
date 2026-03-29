@@ -6,6 +6,7 @@ const explicitPr = process.env.PR_NUMBER;
 const workerPrefix = process.env.WORKER_NAME_PREFIX || "bokningsportal";
 const printEnv = process.env.PRINT_ENV === "1";
 const isWorkersCi = process.env.WORKERS_CI === "1";
+const d1LocationHint = process.env.D1_LOCATION_HINT || "weur";
 
 const normalizeBranchSuffix = (branch) =>
   (branch || "")
@@ -95,6 +96,9 @@ const parseUuidFromOutput = (text) => {
   return match ? match[0] : null;
 };
 
+const buildD1CreateCommand = (dbName, asJson = false) =>
+  `npx wrangler d1 create ${dbName} --location ${d1LocationHint}${asJson ? " --json" : ""}`;
+
 const listD1Databases = () => {
   try {
     const json = runWrangler("npx wrangler d1 list --json");
@@ -118,10 +122,10 @@ const existing = list.find((db) => db.name === dbName);
 let databaseId = existing?.uuid;
 if (!databaseId) {
   try {
-    const created = JSON.parse(runWrangler(`npx wrangler d1 create ${dbName} --json`));
+    const created = JSON.parse(runWrangler(buildD1CreateCommand(dbName, true)));
     databaseId = created?.uuid;
   } catch {
-    const output = runWrangler(`npx wrangler d1 create ${dbName}`);
+    const output = runWrangler(buildD1CreateCommand(dbName));
     databaseId = parseUuidFromOutput(output);
   }
 }

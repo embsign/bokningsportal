@@ -5,6 +5,7 @@ const deployEnv = process.env.DEPLOY_ENV || "preview";
 const explicitPr = process.env.PR_NUMBER;
 const dryRun = process.env.DRY_RUN === "1";
 const generatedConfigPath = process.env.WRANGLER_PAGES_CONFIG || "wrangler.pages.generated.toml";
+const d1LocationHint = process.env.D1_LOCATION_HINT || "weur";
 
 const normalizeBranchSuffix = (branch) =>
   (branch || "")
@@ -167,10 +168,12 @@ const existing = databases.find((db) => db.name === dbName);
 let databaseId = existing?.uuid;
 if (!databaseId) {
   try {
-    const created = JSON.parse(runWrangler(`npx wrangler d1 create ${dbName} --json`));
+    const created = JSON.parse(
+      runWrangler(`npx wrangler d1 create ${dbName} --location ${d1LocationHint} --json`)
+    );
     databaseId = created?.uuid;
   } catch {
-    const output = runWrangler(`npx wrangler d1 create ${dbName}`);
+    const output = runWrangler(`npx wrangler d1 create ${dbName} --location ${d1LocationHint}`);
     databaseId = parseUuidFromOutput(output);
   }
 }
