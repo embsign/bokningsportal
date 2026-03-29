@@ -15,9 +15,9 @@ import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
-import { setAccessToken, agentDebugLog } from "./api/client.js";
+import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
-import { createBooking, cancelBooking } from "./api/bookings.js";
+import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
 import {
   getMonthAvailability,
   getMonthLabel,
@@ -1068,17 +1068,6 @@ if (routePath.startsWith("/admin/")) {
   renderAdmin();
 } else if (routePath.startsWith("/user/")) {
 
-window.addEventListener("pageshow", (event) => {
-  // #region agent log
-  agentDebugLog({
-    hypothesisId: "H2",
-    location: "frontend/main.js:userRoute:pageshow",
-    message: "pageshow fired",
-    data: { persisted: Boolean(event?.persisted) },
-  });
-  // #endregion
-});
-
 const today = new Date();
 const initialMonth = { year: today.getFullYear(), monthIndex: today.getMonth() };
 const initialWeek = getWeekStart(today);
@@ -1638,23 +1627,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         if (target?.id) {
           await cancelBooking(target.id);
         }
-        // #region agent log
-        agentDebugLog({
-          hypothesisId: "H3",
-          location: "frontend/main.js:userOverview:onConfirmCancel:beforeRefresh",
-          message: "before getCurrentBookings after cancel",
-          data: { getCurrentBookingsType: typeof getCurrentBookings },
-        });
-        // #endregion
         const bookingsData = await getCurrentBookings();
-        // #region agent log
-        agentDebugLog({
-          hypothesisId: "H3",
-          location: "frontend/main.js:userOverview:onConfirmCancel:afterRefresh",
-          message: "after getCurrentBookings after cancel",
-          data: { refreshedBookingCount: Array.isArray(bookingsData) ? bookingsData.length : -1 },
-        });
-        // #endregion
         store.setState({
           bookings: bookingsData.filter(isBookingCurrentOrFuture),
           cancelModalOpen: false,
@@ -1942,30 +1915,11 @@ const loadWeekAvailability = async (service, weekStart) => {
             uiStates: { ...prev.uiStates, confirmation: "normal" },
           }));
           try {
-            // #region agent log
-            agentDebugLog({
-              hypothesisId: "H3",
-              location: "frontend/main.js:userConfirmation:onConfirm:beforeRefresh",
-              message: "before getCurrentBookings after createBooking",
-              data: { getCurrentBookingsType: typeof getCurrentBookings },
-            });
-            // #endregion
             const bookingsData = await getCurrentBookings();
             store.setState({
               bookings: bookingsData.filter(isBookingCurrentOrFuture),
             });
           } catch (refreshError) {
-            // #region agent log
-            agentDebugLog({
-              hypothesisId: "H3",
-              location: "frontend/main.js:userConfirmation:onConfirm:refreshError",
-              message: "getCurrentBookings failed after createBooking",
-              data: {
-                errorName: refreshError?.name || "",
-                errorMessage: refreshError?.message || "",
-              },
-            });
-            // #endregion
             console.error("Kunde inte uppdatera aktuella bokningar efter bokning.", refreshError);
           }
         } catch (error) {

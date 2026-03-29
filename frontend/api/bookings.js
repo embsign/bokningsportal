@@ -1,4 +1,4 @@
-import { agentDebugLog, apiRequest } from "./client.js";
+import { apiRequest } from "./client.js";
 
 const formatDayLabel = (date) =>
   date
@@ -10,7 +10,7 @@ const formatDateLabel = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
 
 export const getCurrentBookings = async () => {
   const { bookings } = await apiRequest("/bookings/current");
-  const mapped = bookings.map((booking) => {
+  return bookings.map((booking) => {
     const date = new Date(booking.date);
     return {
       id: booking.id,
@@ -27,18 +27,6 @@ export const getCurrentBookings = async () => {
       endTime: booking.end_time,
     };
   });
-  // #region agent log
-  agentDebugLog({
-    hypothesisId: "H1",
-    location: "frontend/api/bookings.js:getCurrentBookings:exit",
-    message: "getCurrentBookings exit",
-    data: {
-      bookingIds: mapped.map((booking) => booking.id),
-      bookingCount: mapped.length,
-    },
-  });
-  // #endregion
-  return mapped;
 };
 
 export const createBooking = (payload) =>
