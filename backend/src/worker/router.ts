@@ -2088,7 +2088,7 @@ const handleAdminCreateBookingGroup = async (request: Request, env: Env) => {
   if (maxBookings === null) return errorResponse(400, "invalid_max_bookings");
   const id = `group-${crypto.randomUUID()}`;
   await env.DB.prepare("INSERT INTO booking_groups (id, tenant_id, name, max_bookings) VALUES (?, ?, ?, ?)")
-    .bind(id, auth.tenant.id, maxBookings)
+    .bind(id, auth.tenant.id, body.name, maxBookings)
     .run();
   return json({ id });
 };
