@@ -34,7 +34,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOY_ENV: preview
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          WRANGLER_PAGES_CONFIG: wrangler.pages.generated.toml
+          WRANGLER_PAGES_CONFIG: wrangler.toml
         run: node scripts/provision_pages_d1.mjs
 
       - name: Validate Cloudflare auth context
@@ -54,8 +54,7 @@ jobs:
             --project-name bokningsportal \
             --branch "${{ github.head_ref }}" \
             --commit-hash "${COMMIT_SHA}" \
-            --commit-message "${COMMIT_MESSAGE}" \
-            --config wrangler.pages.generated.toml
+            --commit-message "${COMMIT_MESSAGE}"
 
   cleanup-preview-db:
     if: github.event.action == 'closed'

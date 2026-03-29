@@ -124,8 +124,8 @@ Vid varje PR (`opened`, `synchronize`, `reopened`) gör workflowen:
 1) Skapar/hittar databas `booking-pr-<PR_NUMBER>`
 2) Kör migrations
 3) Kör `db/seed.sql`
-4) Genererar `wrangler.pages.generated.toml` med korrekt `database_id`
-5) Publicerar preview via `wrangler pages deploy ... --config wrangler.pages.generated.toml`
+4) Skriver korrekt D1-binding direkt i `wrangler.toml` i CI-jobbet
+5) Publicerar preview via `wrangler pages deploy frontend ...` (utan `--config`, eftersom Pages deploy inte stöder custom config path)
 
 När PR stängs (`closed`) tas preview-databasen bort automatiskt.
 
