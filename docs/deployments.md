@@ -115,3 +115,30 @@ För deploy i Pages måste D1 bindas i projektets settings:
 5) Välj rätt databas för miljön (Production/Preview)
 
 Detta ersätter tidigare Worker-flöde där `database_id` kunde injiceras i `wrangler.generated.toml`.
+
+## Automatiserad preview-D1 (PR)
+
+Workflow: `.github/workflows/pages-preview.yml`
+
+Vid varje PR (`opened`, `synchronize`, `reopened`) gör workflowen:
+1) Skapar/hittar databas `booking-pr-<PR_NUMBER>`
+2) Kör migrations
+3) Kör `db/seed.sql`
+4) Genererar `wrangler.pages.generated.toml` med korrekt `database_id`
+5) Publicerar preview via `wrangler pages deploy ... --config wrangler.pages.generated.toml`
+
+När PR stängs (`closed`) tas preview-databasen bort automatiskt.
+
+### Nödvändiga GitHub Secrets
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+### Rekommenderat i Cloudflare Pages Settings
+
+- Root directory: `frontend`
+- Build command: tom
+- Build output directory: `.`
+- Functions directory: `functions`
+
+Workflowen hanterar D1-provisionering och deploy till preview, så manual DB-hantering för preview behövs inte.
