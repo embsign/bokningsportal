@@ -379,11 +379,25 @@ export const BookingObjectModal = ({
                   children: [
                     createElement("input", {
                       className: "input input-sm",
-                      attrs: { value: form.maxBookings || "", "data-focus-key": "maxBookings" },
+                      attrs: {
+                        type: "number",
+                        min: "1",
+                        step: "1",
+                        required: "required",
+                        value: form.maxBookings || "",
+                        "data-focus-key": "maxBookings",
+                      },
                       onInput: (event) => {
                         const value = event.target.value;
                         onChange("maxBookings", value);
                         onUpdateGroupMax?.(value);
+                      },
+                      onBlur: (event) => {
+                        if (event.target.value.trim()) {
+                          return;
+                        }
+                        onChange("maxBookings", "2");
+                        onUpdateGroupMax?.("2");
                       },
                     }),
                     createElement("select", {
