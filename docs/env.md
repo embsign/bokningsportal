@@ -26,14 +26,9 @@ E-post skickas via Resend (HTTP API) från Workern.
 - **TURNSTILE_SECRET**: hemlig nyckel från Turnstile (backend/Worker).
 - **TURNSTILE_SITE_KEY**: publik site key som frontend använder för att rendera widget.
 
-Frontend läser `TURNSTILE_SITE_KEY` via:
-1) `window.TURNSTILE_SITE_KEY`, eller
-2) `<meta name="turnstile-site-key" content="...">` i `frontend/index.html`.
-
-Exempel:
-```html
-<meta name="turnstile-site-key" content="0x4AAAAA..." />
-```
+Frontend läser `TURNSTILE_SITE_KEY` via API:
+1) `GET /api/public-config` (Pages Functions)
+2) svarsfältet `turnstile_site_key`
 
 Mottagare för beställningar är hårdkodad till `info@embsign.se`.
 
