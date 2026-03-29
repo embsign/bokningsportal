@@ -24,7 +24,7 @@
 
 `scripts/provision_d1.mjs`:
 1) `wrangler d1 list`
-2) Skapar DB om den saknas
+2) Skapar DB om den saknas (`--location weur` för Västeuropa)
 3) Kör migrations
 4) Kör demo‑seed
 

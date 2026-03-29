@@ -67,6 +67,23 @@ cd backend && npx tsc --noEmit
 ```
 No ESLint config exists. TypeScript checking is the primary static analysis tool.
 
+### Backend performance guardrails (DB calls)
+
+When changing backend endpoints (`backend/src/worker/router.ts` and related helpers), always optimize for as few D1 queries as possible.
+
+Rules:
+- No DB queries inside loops (`for`, `for...of`, `map`, `filter`, `reduce`) for per-item processing.
+- No helper design that causes hidden N+1 queries per item.
+- Batch reads with `IN (...)`, `JOIN`, `GROUP BY`, or equivalent set-based queries.
+- Preload related data once, store in in-memory `Map`/objects, and reuse during iteration.
+- Batch writes with `db.batch(...)` when multiple rows are inserted/updated/deleted in one flow.
+- Prefer one joined query over multiple sequential lookups when fetching related entities.
+
+PR/change expectations for backend endpoint work:
+- Briefly document query count strategy in the change summary (what was batched/preloaded).
+- Validate touched endpoint flows with real HTTP calls locally (not only static/type checks).
+- If a loop remains, explicitly justify why no additional DB call is performed in that loop.
+
 ### Android build in Cursor Cloud
 
 Android-kioskappen finns i `android/` och kan byggas i cloud-miljön om SDK installeras först.

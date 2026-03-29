@@ -2,6 +2,8 @@ import { apiRequest } from "./client.js";
 
 export const getSession = () => apiRequest("/session");
 
+export const getBootstrap = () => apiRequest("/bootstrap");
+
 
 export const loginWithRfid = (uid) =>
   apiRequest("/rfid-login", {

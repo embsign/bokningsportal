@@ -361,9 +361,6 @@ const getAuthContext = async (db: D1Database, token: string) =>
     .bind(token)
     .first()) as any;
 
-const getUser = async (db: D1Database, userId: string) =>
-  (await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first()) as any;
-
 const requireAuth = async (request: Request, env: Env) => {
   const token = parseBearerToken(request.headers.get("authorization"));
   if (!token) {
@@ -624,21 +621,180 @@ const canUserAccessWithPermissions = (permissions: any[], user: any, userGroups:
   return allow.some((p: any) => permissionMatchesUser(user, groupsSet, p.scope as string, p.value as string));
 };
 
-const canUserAccessBookingObject = async (db: D1Database, user: any, bookingObjectId: string, userGroups?: string[]) => {
-  const permissions = await db
-    .prepare("SELECT mode, scope, value FROM booking_object_permissions WHERE booking_object_id = ?")
-    .bind(bookingObjectId)
-    .all();
-  const groups = userGroups || (await listUserGroups(db, user.id));
-  return canUserAccessWithPermissions(permissions.results, user, groups);
-};
-
 type MaxBookingScope = "object" | "group" | null;
 
-const getEffectiveMaxBookingsConfig = async (
+const buildInClausePlaceholders = (count: number) => Array.from({ length: count }, () => "?").join(", ");
+
+const toUniqueTrimmedStrings = (values: unknown[]) => {
+  const result = new Set<string>();
+  for (const value of values || []) {
+    const normalized = String(value || "").trim();
+    if (normalized) {
+      result.add(normalized);
+    }
+  }
+  return Array.from(result);
+};
+
+const getUserGroupNamesFromPayload = (body: any) =>
+  toUniqueTrimmedStrings(Array.isArray(body?.groups) ? body.groups : []);
+
+const getUserRfidTagsFromPayload = (body: any) => {
+  const tags = Array.isArray(body?.rfid_tags)
+    ? body.rfid_tags
+    : body?.rfid
+      ? [body.rfid]
+      : [];
+  return toUniqueTrimmedStrings(tags);
+};
+
+const listAccessGroupsByNames = async (db: D1Database, tenantId: string, groupNames: string[]) => {
+  if (!groupNames.length) {
+    return new Map<string, string>();
+  }
+  const rows = await db
+    .prepare(
+      `SELECT id, name
+       FROM access_groups
+       WHERE tenant_id = ?
+         AND name IN (${buildInClausePlaceholders(groupNames.length)})`
+    )
+    .bind(tenantId, ...groupNames)
+    .all();
+  return new Map<string, string>(
+    rows.results.map((row: any) => [String(row.name), String(row.id)])
+  );
+};
+
+const ensureAccessGroupIdsByNames = async (db: D1Database, tenantId: string, groupNames: string[]) => {
+  if (!groupNames.length) {
+    return new Map<string, string>();
+  }
+  const existing = await listAccessGroupsByNames(db, tenantId, groupNames);
+  const missing = groupNames.filter((name) => !existing.has(name));
+  if (!missing.length) {
+    return existing;
+  }
+  const dbAny = db as any;
+  const createStatements = missing.map((name) =>
+    db
+      .prepare("INSERT OR IGNORE INTO access_groups (id, tenant_id, name) VALUES (?, ?, ?)")
+      .bind(`group-${crypto.randomUUID()}`, tenantId, name)
+  );
+  await dbAny.batch(createStatements);
+  return listAccessGroupsByNames(db, tenantId, groupNames);
+};
+
+const replaceUserAccessGroups = async (db: D1Database, userId: string, groupIds: string[]) => {
+  const dbAny = db as any;
+  const statements = [
+    db.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId),
+    ...groupIds.map((groupId) =>
+      db.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)").bind(userId, groupId)
+    ),
+  ];
+  await dbAny.batch(statements);
+};
+
+const replaceUserRfidTags = async (db: D1Database, tenantId: string, userId: string, rfidTags: string[]) => {
+  const dbAny = db as any;
+  const statements = [
+    db.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId),
+    ...rfidTags.map((uid) =>
+      db
+        .prepare(
+          `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
+           VALUES (?, ?, ?, 1)
+           ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+        )
+        .bind(uid, tenantId, userId)
+    ),
+  ];
+  await dbAny.batch(statements);
+};
+
+const getBookingGroupMaxBookings = async (db: D1Database, tenantId: string, groupIds: string[]) => {
+  if (!groupIds.length) {
+    return new Map<string, number>();
+  }
+  const rows = await db
+    .prepare(
+      `SELECT id, max_bookings
+       FROM booking_groups
+       WHERE tenant_id = ?
+         AND id IN (${buildInClausePlaceholders(groupIds.length)})`
+    )
+    .bind(tenantId, ...groupIds)
+    .all();
+  const map = new Map<string, number>();
+  for (const row of rows.results as any[]) {
+    const limit = Number(row.max_bookings);
+    if (Number.isFinite(limit) && limit > 0) {
+      map.set(String(row.id), limit);
+    }
+  }
+  return map;
+};
+
+const getActiveBookingCountsByObject = async (
   db: D1Database,
-  bookingObject: any
-): Promise<{ limit: number | null; scope: MaxBookingScope }> => {
+  userId: string,
+  nowIso: string,
+  bookingObjectIds: string[]
+) => {
+  if (!bookingObjectIds.length) {
+    return new Map<string, number>();
+  }
+  const rows = await db
+    .prepare(
+      `SELECT booking_object_id, COUNT(1) AS count
+       FROM bookings
+       WHERE user_id = ?
+         AND cancelled_at IS NULL
+         AND end_time >= ?
+         AND booking_object_id IN (${buildInClausePlaceholders(bookingObjectIds.length)})
+       GROUP BY booking_object_id`
+    )
+    .bind(userId, nowIso, ...bookingObjectIds)
+    .all();
+  return new Map<string, number>(
+    rows.results.map((row: any) => [String(row.booking_object_id), Number(row.count || 0)])
+  );
+};
+
+const getActiveBookingCountsByGroup = async (
+  db: D1Database,
+  userId: string,
+  tenantId: string,
+  nowIso: string,
+  groupIds: string[]
+) => {
+  if (!groupIds.length) {
+    return new Map<string, number>();
+  }
+  const rows = await db
+    .prepare(
+      `SELECT bo.group_id, COUNT(1) AS count
+       FROM bookings b
+       JOIN booking_objects bo ON bo.id = b.booking_object_id
+       WHERE b.user_id = ?
+         AND bo.tenant_id = ?
+         AND b.cancelled_at IS NULL
+         AND b.end_time >= ?
+         AND bo.group_id IN (${buildInClausePlaceholders(groupIds.length)})
+       GROUP BY bo.group_id`
+    )
+    .bind(userId, tenantId, nowIso, ...groupIds)
+    .all();
+  return new Map<string, number>(
+    rows.results.map((row: any) => [String(row.group_id), Number(row.count || 0)])
+  );
+};
+
+const getEffectiveMaxBookingsConfigFromGroupLimits = (
+  bookingObject: any,
+  groupLimitsById: Map<string, number>
+): { limit: number | null; scope: MaxBookingScope } => {
   const overrideLimit = Number(bookingObject?.max_bookings_override);
   if (Number.isFinite(overrideLimit) && overrideLimit > 0) {
     return { limit: overrideLimit, scope: "object" as const };
@@ -646,15 +802,192 @@ const getEffectiveMaxBookingsConfig = async (
   if (!bookingObject?.group_id) {
     return { limit: null, scope: null };
   }
-  const group = await db
-    .prepare("SELECT max_bookings FROM booking_groups WHERE id = ? AND tenant_id = ?")
-    .bind(bookingObject.group_id, bookingObject.tenant_id)
-    .first();
-  const groupLimit = Number(group?.max_bookings);
+  const groupLimit = Number(groupLimitsById.get(String(bookingObject.group_id)));
   if (Number.isFinite(groupLimit) && groupLimit > 0) {
     return { limit: groupLimit, scope: "group" as const };
   }
   return { limit: null, scope: null };
+};
+
+const getBookingObjectPermissionsFromPayload = (body: any) => {
+  const rawPermissions =
+    body?.permissions || [
+      ...(body?.allowHouses || []).map((value: string) => ({ mode: "allow", scope: "house", value })),
+      ...(body?.allowGroups || []).map((value: string) => ({ mode: "allow", scope: "group", value })),
+      ...(body?.allowApartments || []).map((value: string) => ({ mode: "allow", scope: "apartment", value })),
+      ...(body?.denyHouses || []).map((value: string) => ({ mode: "deny", scope: "house", value })),
+      ...(body?.denyGroups || []).map((value: string) => ({ mode: "deny", scope: "group", value })),
+      ...(body?.denyApartments || []).map((value: string) => ({ mode: "deny", scope: "apartment", value })),
+    ];
+
+  const unique = new Map<string, { mode: string; scope: string; value: string }>();
+  for (const permission of rawPermissions) {
+    const mode = String(permission?.mode || "").trim();
+    const scope = String(permission?.scope || "").trim();
+    const value = String(permission?.value || "").trim();
+    if (!mode || !scope || !value) {
+      continue;
+    }
+    const key = `${mode}|${scope}|${value}`;
+    unique.set(key, { mode, scope, value });
+  }
+  return Array.from(unique.values());
+};
+
+const replaceBookingObjectPermissions = async (
+  db: D1Database,
+  bookingObjectId: string,
+  permissions: { mode: string; scope: string; value: string }[]
+) => {
+  const dbAny = db as any;
+  const statements = [
+    db.prepare("DELETE FROM booking_object_permissions WHERE booking_object_id = ?").bind(bookingObjectId),
+    ...permissions.map((permission) =>
+      db
+        .prepare("INSERT INTO booking_object_permissions (booking_object_id, mode, scope, value) VALUES (?, ?, ?, ?)")
+        .bind(bookingObjectId, permission.mode, permission.scope, permission.value)
+    ),
+  ];
+  await dbAny.batch(statements);
+};
+
+const getActiveRfidTagUserContext = async (db: D1Database, uid: string, tenantId?: string | null) => {
+  const tenantFilterSql = tenantId ? "AND rt.tenant_id = ?" : "";
+  const statement = db.prepare(
+    `SELECT
+       rt.tenant_id AS rfid_tenant_id,
+       u.id AS user_id,
+       u.apartment_id AS user_apartment_id,
+       u.is_admin AS user_is_admin
+     FROM rfid_tags rt
+     JOIN users u ON u.id = rt.user_id
+     WHERE rt.uid = ?
+       AND rt.is_active = 1
+       ${tenantFilterSql}
+     LIMIT 1`
+  );
+  const bound = tenantId ? statement.bind(uid, tenantId) : statement.bind(uid);
+  return (await bound.first()) as any;
+};
+
+const buildServicesForAuth = async (db: D1Database, auth: { user: any; tenant: any }, env: Env) => {
+  const nowUtc = getUtcNowFromEnv(env);
+  const nowIso = new Date().toISOString();
+  const bookingObjects = await db
+    .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
+    .bind(auth.tenant.id)
+    .all();
+  let filtered: any[] = bookingObjects.results;
+  if (auth.user.is_admin !== 1) {
+    const [userGroups, permissionRows] = await Promise.all([
+      listUserGroups(db, auth.user.id),
+      db
+        .prepare(
+          `SELECT bop.booking_object_id, bop.mode, bop.scope, bop.value
+           FROM booking_object_permissions bop
+           JOIN booking_objects bo ON bo.id = bop.booking_object_id
+           WHERE bo.tenant_id = ?
+             AND bo.is_active = 1`
+        )
+        .bind(auth.tenant.id)
+        .all(),
+    ]);
+    const permissionsByObject = new Map<string, any[]>();
+    for (const permission of permissionRows.results) {
+      const objectId = permission.booking_object_id as string;
+      if (!permissionsByObject.has(objectId)) {
+        permissionsByObject.set(objectId, []);
+      }
+      permissionsByObject.get(objectId)!.push(permission);
+    }
+    filtered = bookingObjects.results.filter((obj: any) =>
+      canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
+    );
+  }
+  const groupIds = toUniqueTrimmedStrings(filtered.map((obj: any) => obj.group_id));
+  const groupLimitsById = await getBookingGroupMaxBookings(db, auth.tenant.id, groupIds);
+
+  const maxConfigByObjectId = new Map<
+    string,
+    { limit: number | null; scope: MaxBookingScope }
+  >();
+  const limitedObjectIds: string[] = [];
+  const limitedGroupIds = new Set<string>();
+  for (const obj of filtered as any[]) {
+    const config = getEffectiveMaxBookingsConfigFromGroupLimits(obj, groupLimitsById);
+    const objectId = String(obj.id);
+    maxConfigByObjectId.set(objectId, config);
+    if (config.limit !== null) {
+      if (config.scope === "group" && obj.group_id) {
+        limitedGroupIds.add(String(obj.group_id));
+      } else {
+        limitedObjectIds.push(objectId);
+      }
+    }
+  }
+
+  const [activeCountsByObjectId, activeCountsByGroupId] = await Promise.all([
+    getActiveBookingCountsByObject(db, auth.user.id, nowIso, limitedObjectIds),
+    getActiveBookingCountsByGroup(db, auth.user.id, auth.tenant.id, nowIso, Array.from(limitedGroupIds)),
+  ]);
+
+  return filtered.map((obj: any) => {
+      const maxBookings =
+        maxConfigByObjectId.get(String(obj.id)) || {
+          limit: null,
+          scope: null as MaxBookingScope,
+        };
+      const activeCount =
+        maxBookings.limit !== null
+          ? maxBookings.scope === "group" && obj.group_id
+            ? Number(activeCountsByGroupId.get(String(obj.group_id)) || 0)
+            : Number(activeCountsByObjectId.get(String(obj.id)) || 0)
+          : 0;
+      const maxBookingsReached = maxBookings.limit !== null && activeCount >= maxBookings.limit;
+      return {
+      id: obj.id,
+      name: obj.name,
+      description: obj.description || "",
+      booking_type: obj.booking_type,
+      slot_duration_minutes: obj.slot_duration_minutes,
+      full_day_start_time: normalizeClockTime(obj.full_day_start_time),
+      full_day_end_time: normalizeClockTime(obj.full_day_end_time),
+      time_slot_start_time: normalizeClockTime(obj.time_slot_start_time, "08:00"),
+      time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
+      window_min_days: obj.window_min_days,
+      window_max_days: obj.window_max_days,
+      next_available: formatDate(getNextAvailableStart(obj, nowUtc)),
+      price_weekday_cents: obj.price_weekday_cents,
+      price_weekend_cents: obj.price_weekend_cents,
+      group_id: obj.group_id || null,
+      max_bookings_limit: maxBookings.limit,
+      max_bookings_scope: maxBookings.scope,
+      max_bookings_reached: maxBookingsReached,
+      };
+    });
+};
+
+const getCurrentBookingsForUser = async (db: D1Database, userId: string) => {
+  const rows = await db
+    .prepare(
+      `SELECT b.id, b.start_time, b.end_time, b.booking_object_id, bo.group_id AS booking_group_id, bo.name AS booking_object_name
+       FROM bookings b
+       JOIN booking_objects bo ON bo.id = b.booking_object_id
+       WHERE b.user_id = ? AND b.cancelled_at IS NULL
+         AND datetime(b.end_time) > datetime('now')
+       ORDER BY b.start_time ASC`
+    )
+    .bind(userId)
+    .all();
+  return rows.results.map((row: any) => ({
+    id: row.id,
+    service_name: row.booking_object_name,
+    booking_object_id: row.booking_object_id,
+    booking_group_id: row.booking_group_id,
+    date: (row.start_time as string).slice(0, 10),
+    time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
+    status: "mine",
+  }));
 };
 
 const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string, nowUtc: Date) => {
@@ -793,28 +1126,38 @@ const handleRfidLogin = async (request: Request, env: Env) => {
     screenContext = screen;
   }
 
-  const tag = await env.DB.prepare("SELECT * FROM rfid_tags WHERE uid = ? AND is_active = 1").bind(uid).first();
-  if (!tag) {
+  const rfidContext = (await env.DB
+    .prepare(
+      `SELECT
+         rt.tenant_id AS tag_tenant_id,
+         u.id AS user_id,
+         u.apartment_id AS user_apartment_id,
+         u.is_admin AS user_is_admin
+       FROM rfid_tags rt
+       JOIN users u ON u.id = rt.user_id
+       WHERE rt.uid = ?
+         AND rt.is_active = 1
+       LIMIT 1`
+    )
+    .bind(uid)
+    .first()) as any;
+  if (!rfidContext) {
     return errorResponse(401, "invalid_rfid");
   }
-  if (tenantIdFilter && String(tag.tenant_id) !== tenantIdFilter) {
+  if (tenantIdFilter && String(rfidContext.tag_tenant_id) !== tenantIdFilter) {
     return errorResponse(403, "rfid_not_allowed_for_screen");
-  }
-  const user = await getUser(env.DB, tag.user_id as string);
-  if (!user) {
-    return errorResponse(401, "invalid_rfid");
   }
 
   const existingAccessToken = await env.DB.prepare(
     "SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1"
-  ).bind(user.id).first();
+  ).bind(rfidContext.user_id).first();
   const accessToken =
     (existingAccessToken?.token as string | undefined) || crypto.randomUUID();
   if (!existingAccessToken) {
     await env.DB.prepare(
       `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
        VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
-    ).bind(accessToken, tag.tenant_id, user.id).run();
+    ).bind(accessToken, rfidContext.tag_tenant_id, rfidContext.user_id).run();
   } else {
     await env.DB.prepare("UPDATE access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?")
       .bind(accessToken)
@@ -824,7 +1167,11 @@ const handleRfidLogin = async (request: Request, env: Env) => {
   return json(
     {
       booking_url: `/user/${accessToken}`,
-      user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
+      user: {
+        id: rfidContext.user_id,
+        apartment_id: rfidContext.user_apartment_id,
+        is_admin: Number(rfidContext.user_is_admin) === 1,
+      },
       tenant: screenContext ? { id: screenContext.tenant_id, name: screenContext.tenant_name } : undefined,
     }
   );
@@ -1181,20 +1528,30 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
     return errorResponse(401, "invalid_rfid");
   }
 
-  const tag = await env.DB
-    .prepare("SELECT * FROM rfid_tags WHERE uid = ? AND is_active = 1 AND tenant_id = ?")
+  const rfidContext = (await env.DB
+    .prepare(
+      `SELECT
+         rt.tenant_id AS tag_tenant_id,
+         u.id AS user_id,
+         u.apartment_id AS user_apartment_id,
+         u.is_admin AS user_is_admin
+       FROM rfid_tags rt
+       JOIN users u ON u.id = rt.user_id
+       WHERE rt.uid = ?
+         AND rt.is_active = 1
+         AND rt.tenant_id = ?
+       LIMIT 1`
+    )
     .bind(uid, auth.screen.tenant_id)
+    .first()) as any;
+  if (!rfidContext) {
+    return errorResponse(401, "invalid_rfid");
+  }
+
+  const existingAccessToken = await env.DB
+    .prepare("SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1")
+    .bind(rfidContext.user_id)
     .first();
-  if (!tag) {
-    return errorResponse(401, "invalid_rfid");
-  }
-
-  const user = await getUser(env.DB, tag.user_id as string);
-  if (!user) {
-    return errorResponse(401, "invalid_rfid");
-  }
-
-  const existingAccessToken = await env.DB.prepare("SELECT token FROM access_tokens WHERE user_id = ? LIMIT 1").bind(user.id).first();
   const accessToken = (existingAccessToken?.token as string | undefined) || crypto.randomUUID();
   if (!existingAccessToken) {
     await env.DB
@@ -1202,7 +1559,7 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
         `INSERT INTO access_tokens (token, tenant_id, user_id, created_at, source)
          VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'kiosk')`
       )
-      .bind(accessToken, tag.tenant_id, user.id)
+      .bind(accessToken, rfidContext.tag_tenant_id, rfidContext.user_id)
       .run();
   } else {
     await env.DB
@@ -1218,7 +1575,11 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
 
   return json({
     booking_url: `/user/${accessToken}`,
-    user: { id: user.id, apartment_id: user.apartment_id, is_admin: user.is_admin === 1 },
+    user: {
+      id: rfidContext.user_id,
+      apartment_id: rfidContext.user_apartment_id,
+      is_admin: Number(rfidContext.user_is_admin) === 1,
+    },
     tenant: { id: auth.screen.tenant_id, name: auth.screen.tenant_name },
   });
 };
@@ -1237,121 +1598,33 @@ const handleSession = async (request: Request, env: Env) => {
 const handleServices = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
-  const nowUtc = getUtcNowFromEnv(env);
-  const bookingObjects = await env.DB
-    .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
-    .bind(auth.tenant.id)
-    .all();
-  let filtered: any[] = bookingObjects.results;
-  if (auth.user.is_admin !== 1) {
-    const [userGroups, permissionRows] = await Promise.all([
-      listUserGroups(env.DB, auth.user.id),
-      env.DB
-        .prepare(
-          `SELECT bop.booking_object_id, bop.mode, bop.scope, bop.value
-           FROM booking_object_permissions bop
-           JOIN booking_objects bo ON bo.id = bop.booking_object_id
-           WHERE bo.tenant_id = ?
-             AND bo.is_active = 1`
-        )
-        .bind(auth.tenant.id)
-        .all(),
-    ]);
-    const permissionsByObject = new Map<string, any[]>();
-    for (const permission of permissionRows.results) {
-      const objectId = permission.booking_object_id as string;
-      if (!permissionsByObject.has(objectId)) {
-        permissionsByObject.set(objectId, []);
-      }
-      permissionsByObject.get(objectId)!.push(permission);
-    }
-    filtered = bookingObjects.results.filter((obj: any) =>
-      canUserAccessWithPermissions(permissionsByObject.get(obj.id as string) || [], auth.user, userGroups)
-    );
-  }
-  const nowIso = new Date().toISOString();
-  const services = await Promise.all(
-    filtered.map(async (obj: any) => {
-      const maxBookings = await getEffectiveMaxBookingsConfig(env.DB, obj);
-      let maxBookingsReached = false;
-      if (maxBookings.limit !== null) {
-        const activeCount =
-          maxBookings.scope === "group" && obj.group_id
-            ? await env.DB
-                .prepare(
-                  `SELECT COUNT(1) as count
-                   FROM bookings b
-                   JOIN booking_objects bo ON bo.id = b.booking_object_id
-                   WHERE b.user_id = ?
-                     AND bo.group_id = ?
-                     AND bo.tenant_id = ?
-                     AND b.cancelled_at IS NULL
-                     AND b.end_time >= ?`
-                )
-                .bind(auth.user.id, obj.group_id, auth.tenant.id, nowIso)
-                .first()
-            : await env.DB
-                .prepare(
-                  `SELECT COUNT(1) as count
-                   FROM bookings
-                   WHERE user_id = ?
-                     AND booking_object_id = ?
-                     AND cancelled_at IS NULL
-                     AND end_time >= ?`
-                )
-                .bind(auth.user.id, obj.id, nowIso)
-                .first();
-        maxBookingsReached = Number(activeCount?.count || 0) >= maxBookings.limit;
-      }
-      return {
-      id: obj.id,
-      name: obj.name,
-      description: obj.description || "",
-      booking_type: obj.booking_type,
-      slot_duration_minutes: obj.slot_duration_minutes,
-      full_day_start_time: normalizeClockTime(obj.full_day_start_time),
-      full_day_end_time: normalizeClockTime(obj.full_day_end_time),
-      time_slot_start_time: normalizeClockTime(obj.time_slot_start_time, "08:00"),
-      time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
-      window_min_days: obj.window_min_days,
-      window_max_days: obj.window_max_days,
-      next_available: formatDate(getNextAvailableStart(obj, nowUtc)),
-      price_weekday_cents: obj.price_weekday_cents,
-      price_weekend_cents: obj.price_weekend_cents,
-      group_id: obj.group_id || null,
-      max_bookings_limit: maxBookings.limit,
-      max_bookings_scope: maxBookings.scope,
-      max_bookings_reached: maxBookingsReached,
-      };
-    })
-  );
+  const services = await buildServicesForAuth(env.DB, auth, env);
   return json({ services });
 };
 
 const handleCurrentBookings = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
-  const rows = await env.DB
-    .prepare(
-      `SELECT b.id, b.start_time, b.end_time, b.booking_object_id, bo.group_id AS booking_group_id, bo.name AS booking_object_name
-       FROM bookings b
-       JOIN booking_objects bo ON bo.id = b.booking_object_id
-       WHERE b.user_id = ? AND b.cancelled_at IS NULL
-         AND datetime(b.end_time) > datetime('now')
-       ORDER BY b.start_time ASC`
-    )
-    .bind(auth.user.id)
-    .all();
-  const bookings = rows.results.map((row: any) => ({
-    id: row.id,
-    service_name: row.booking_object_name,
-    booking_object_id: row.booking_object_id,
-    booking_group_id: row.booking_group_id,
-    date: (row.start_time as string).slice(0, 10),
-    time_label: row.end_time ? `${row.start_time.slice(11, 16)}-${row.end_time.slice(11, 16)}` : "Heldag",
-    status: "mine",
-  }));
+  const bookings = await getCurrentBookingsForUser(env.DB, auth.user.id);
   return json({ bookings });
+};
+
+const handleBootstrap = async (request: Request, env: Env) => {
+  const auth = await requireAuth(request, env);
+  if ("error" in auth) return auth.error;
+  if (auth.tenant.is_setup_complete === 0) {
+    return errorResponse(401, "setup_incomplete");
+  }
+  const [services, bookings] = await Promise.all([
+    buildServicesForAuth(env.DB, auth, env),
+    getCurrentBookingsForUser(env.DB, auth.user.id),
+  ]);
+  return json({
+    tenant: { id: auth.tenant.id, name: auth.tenant.name },
+    user: { id: auth.user.id, apartment_id: auth.user.apartment_id, is_admin: auth.user.is_admin === 1 },
+    services,
+    bookings,
+  });
 };
 
 const handleCreateBooking = async (request: Request, env: Env) => {
@@ -1366,39 +1639,37 @@ const handleCreateBooking = async (request: Request, env: Env) => {
   }
   const bookingObject = await env.DB.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return errorResponse(404, "not_found");
-  if (!(await canUserAccessBookingObject(env.DB, auth.user, bookingObjectId))) {
+  const permissionRows = await env.DB
+    .prepare("SELECT mode, scope, value FROM booking_object_permissions WHERE booking_object_id = ?")
+    .bind(bookingObjectId)
+    .all();
+  const userGroups = permissionRows.results.length ? await listUserGroups(env.DB, auth.user.id) : [];
+  if (!canUserAccessWithPermissions(permissionRows.results as any[], auth.user, userGroups)) {
     return errorResponse(403, "forbidden");
   }
   const nowIso = new Date().toISOString();
-  const maxBookingsConfig = await getEffectiveMaxBookingsConfig(env.DB, bookingObject);
+  const bookingObjectGroupId = String(bookingObject.group_id || "").trim();
+  const groupLimitsById = bookingObjectGroupId
+    ? await getBookingGroupMaxBookings(env.DB, String(bookingObject.tenant_id), [bookingObjectGroupId])
+    : new Map<string, number>();
+  const maxBookingsConfig = getEffectiveMaxBookingsConfigFromGroupLimits(bookingObject, groupLimitsById);
   const maxBookingsLimit = maxBookingsConfig.limit;
   if (maxBookingsLimit !== null) {
-    const activeBookings = maxBookingsConfig.scope === "group" && bookingObject.group_id
-      ? await env.DB
-          .prepare(
-            `SELECT COUNT(1) as count
-             FROM bookings b
-             JOIN booking_objects bo ON bo.id = b.booking_object_id
-             WHERE b.user_id = ?
-               AND bo.group_id = ?
-               AND bo.tenant_id = ?
-               AND b.cancelled_at IS NULL
-               AND b.end_time >= ?`
+    const activeCount =
+      maxBookingsConfig.scope === "group" && bookingObjectGroupId
+        ? Number(
+            (
+              await getActiveBookingCountsByGroup(
+                env.DB,
+                auth.user.id,
+                String(bookingObject.tenant_id),
+                nowIso,
+                [bookingObjectGroupId]
+              )
+            ).get(bookingObjectGroupId) || 0
           )
-          .bind(auth.user.id, bookingObject.group_id, bookingObject.tenant_id, nowIso)
-          .first()
-      : await env.DB
-          .prepare(
-            `SELECT COUNT(1) as count
-             FROM bookings
-             WHERE user_id = ?
-               AND booking_object_id = ?
-               AND cancelled_at IS NULL
-               AND end_time >= ?`
-          )
-          .bind(auth.user.id, bookingObjectId, nowIso)
-          .first();
-    if ((activeBookings?.count as number) >= maxBookingsLimit) {
+        : Number((await getActiveBookingCountsByObject(env.DB, auth.user.id, nowIso, [String(bookingObjectId)])).get(String(bookingObjectId)) || 0);
+    if (activeCount >= maxBookingsLimit) {
       return errorResponse(409, "max_bookings_reached");
     }
   }
@@ -1572,36 +1843,16 @@ const handleAdminUpdateUser = async (request: Request, env: Env, userId: string)
     `UPDATE users SET apartment_id = ?, house = ?, is_admin = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).bind(body.apartment_id, body.house, body.is_admin ? 1 : 0, body.is_active ? 1 : 0, userId).run();
 
-  await env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId).run();
-  for (const name of body.groups || []) {
-    let group = await env.DB.prepare("SELECT id FROM access_groups WHERE tenant_id = ? AND name = ?")
-      .bind(auth.tenant.id, name)
-      .first();
-    if (!group) {
-      const groupId = `group-${crypto.randomUUID()}`;
-      await env.DB.prepare("INSERT INTO access_groups (id, tenant_id, name) VALUES (?, ?, ?)")
-        .bind(groupId, auth.tenant.id, name)
-        .run();
-      group = { id: groupId };
-    }
-    await env.DB.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)")
-      .bind(userId, group.id)
-      .run();
-  }
-
-  await env.DB.prepare("UPDATE rfid_tags SET is_active = 0 WHERE user_id = ?").bind(userId).run();
-  const rfidTags: string[] = Array.isArray(body.rfid_tags)
-    ? body.rfid_tags.map((uid: unknown) => String(uid || "").trim()).filter(Boolean)
-    : body.rfid
-      ? [String(body.rfid).trim()]
-      : [];
-  for (const uid of rfidTags) {
-    await env.DB.prepare(
-      `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
-       VALUES (?, ?, ?, 1)
-       ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
-    ).bind(uid, auth.tenant.id, userId).run();
-  }
+  const groupNames = getUserGroupNamesFromPayload(body);
+  const groupIdsByName = await ensureAccessGroupIdsByNames(env.DB, auth.tenant.id, groupNames);
+  const groupIds = groupNames
+    .map((name) => groupIdsByName.get(name))
+    .filter((id): id is string => Boolean(id));
+  const rfidTags = getUserRfidTagsFromPayload(body);
+  await Promise.all([
+    replaceUserAccessGroups(env.DB, userId, groupIds),
+    replaceUserRfidTags(env.DB, auth.tenant.id, userId, rfidTags),
+  ]);
   return json({ id: userId });
 };
 
@@ -1637,35 +1888,16 @@ const handleAdminCreateUser = async (request: Request, env: Env) => {
     body.is_admin ? 1 : 0
   ).run();
 
-  await env.DB.prepare("DELETE FROM user_access_groups WHERE user_id = ?").bind(userId).run();
-  for (const name of body.groups || []) {
-    let group = await env.DB.prepare("SELECT id FROM access_groups WHERE tenant_id = ? AND name = ?")
-      .bind(auth.tenant.id, name)
-      .first();
-    if (!group) {
-      const groupId = `group-${crypto.randomUUID()}`;
-      await env.DB.prepare("INSERT INTO access_groups (id, tenant_id, name) VALUES (?, ?, ?)")
-        .bind(groupId, auth.tenant.id, name)
-        .run();
-      group = { id: groupId };
-    }
-    await env.DB.prepare("INSERT INTO user_access_groups (user_id, group_id) VALUES (?, ?)")
-      .bind(userId, group.id)
-      .run();
-  }
-
-  const rfidTags: string[] = Array.isArray(body.rfid_tags)
-    ? body.rfid_tags.map((uid: unknown) => String(uid || "").trim()).filter(Boolean)
-    : body.rfid
-      ? [String(body.rfid).trim()]
-      : [];
-  for (const uid of rfidTags) {
-    await env.DB.prepare(
-      `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
-       VALUES (?, ?, ?, 1)
-       ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
-    ).bind(uid, auth.tenant.id, userId).run();
-  }
+  const groupNames = getUserGroupNamesFromPayload(body);
+  const groupIdsByName = await ensureAccessGroupIdsByNames(env.DB, auth.tenant.id, groupNames);
+  const groupIds = groupNames
+    .map((name) => groupIdsByName.get(name))
+    .filter((id): id is string => Boolean(id));
+  const rfidTags = getUserRfidTagsFromPayload(body);
+  await Promise.all([
+    replaceUserAccessGroups(env.DB, userId, groupIds),
+    replaceUserRfidTags(env.DB, auth.tenant.id, userId, rfidTags),
+  ]);
 
   return json({ id: userId });
 };
@@ -1788,21 +2020,8 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
     body.group_id || null,
     body.max_bookings_override || null
   ).run();
-  const permissions = body.permissions || [
-    ...(body.allowHouses || []).map((value: string) => ({ mode: "allow", scope: "house", value })),
-    ...(body.allowGroups || []).map((value: string) => ({ mode: "allow", scope: "group", value })),
-    ...(body.allowApartments || []).map((value: string) => ({ mode: "allow", scope: "apartment", value })),
-    ...(body.denyHouses || []).map((value: string) => ({ mode: "deny", scope: "house", value })),
-    ...(body.denyGroups || []).map((value: string) => ({ mode: "deny", scope: "group", value })),
-    ...(body.denyApartments || []).map((value: string) => ({ mode: "deny", scope: "apartment", value })),
-  ];
-  await env.DB.prepare("DELETE FROM booking_object_permissions WHERE booking_object_id = ?").bind(id).run();
-  for (const perm of permissions) {
-    await env.DB
-      .prepare("INSERT INTO booking_object_permissions (booking_object_id, mode, scope, value) VALUES (?, ?, ?, ?)")
-      .bind(id, perm.mode, perm.scope, perm.value)
-      .run();
-  }
+  const permissions = getBookingObjectPermissionsFromPayload(body);
+  await replaceBookingObjectPermissions(env.DB, id, permissions);
   return json({ id });
 };
 
@@ -1836,21 +2055,8 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
     body.max_bookings_override || null,
     objectId
   ).run();
-  const permissions = body.permissions || [
-    ...(body.allowHouses || []).map((value: string) => ({ mode: "allow", scope: "house", value })),
-    ...(body.allowGroups || []).map((value: string) => ({ mode: "allow", scope: "group", value })),
-    ...(body.allowApartments || []).map((value: string) => ({ mode: "allow", scope: "apartment", value })),
-    ...(body.denyHouses || []).map((value: string) => ({ mode: "deny", scope: "house", value })),
-    ...(body.denyGroups || []).map((value: string) => ({ mode: "deny", scope: "group", value })),
-    ...(body.denyApartments || []).map((value: string) => ({ mode: "deny", scope: "apartment", value })),
-  ];
-  await env.DB.prepare("DELETE FROM booking_object_permissions WHERE booking_object_id = ?").bind(objectId).run();
-  for (const perm of permissions) {
-    await env.DB
-      .prepare("INSERT INTO booking_object_permissions (booking_object_id, mode, scope, value) VALUES (?, ?, ?, ?)")
-      .bind(objectId, perm.mode, perm.scope, perm.value)
-      .run();
-  }
+  const permissions = getBookingObjectPermissionsFromPayload(body);
+  await replaceBookingObjectPermissions(env.DB, objectId, permissions);
   return json({ id: objectId });
 };
 
@@ -2349,6 +2555,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
   if (request.method === "GET" && path === "/api/demo-links") return handleDemoLinks(request, env);
 
+  if (request.method === "GET" && path === "/api/bootstrap") return handleBootstrap(request, env);
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
   if (request.method === "GET" && path === "/api/services") return handleServices(request, env);
   if (request.method === "GET" && path === "/api/bookings/current") return handleCurrentBookings(request, env);
