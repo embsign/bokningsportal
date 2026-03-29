@@ -3068,16 +3068,23 @@ const loadWeekAvailability = async (service, weekStart) => {
     });
 
   const initLanding = async () => {
-    try {
-      const [demoLinksResponse, publicConfigResponse] = await Promise.all([
-        getDemoLinks(),
-        getPublicConfig(),
-      ]);
-      turnstileSiteKey = String(publicConfigResponse?.turnstile_site_key || "").trim();
+    const [demoLinksResult, publicConfigResult] = await Promise.allSettled([
+      getDemoLinks(),
+      getPublicConfig(),
+    ]);
+
+    if (publicConfigResult.status === "fulfilled") {
+      turnstileSiteKey = String(publicConfigResult.value?.turnstile_site_key || "").trim();
       createBrfState.turnstileSiteKey = turnstileSiteKey;
-      const adminPath = demoLinksResponse?.links?.admin?.path || defaultDemoLinks.adminPath;
-      const userPaths = Array.isArray(demoLinksResponse?.links?.users)
-        ? demoLinksResponse.links.users
+    } else {
+      turnstileSiteKey = "";
+      createBrfState.turnstileSiteKey = "";
+    }
+
+    if (demoLinksResult.status === "fulfilled") {
+      const adminPath = demoLinksResult.value?.links?.admin?.path || defaultDemoLinks.adminPath;
+      const userPaths = Array.isArray(demoLinksResult.value?.links?.users)
+        ? demoLinksResult.value.links.users
             .map((link) => link?.path)
             .filter((pathValue) => typeof pathValue === "string")
             .slice(0, 2)
@@ -3086,15 +3093,13 @@ const loadWeekAvailability = async (service, weekStart) => {
         adminPath,
         userPaths: userPaths.length ? userPaths : defaultDemoLinks.userPaths,
       };
-      renderLanding();
-    } catch {
-      turnstileSiteKey = "";
-      createBrfState.turnstileSiteKey = "";
+    } else {
       landingState.demoLinks = {
         ...defaultDemoLinks,
       };
-      renderLanding();
     }
+
+    renderLanding();
   };
 
   const renderLanding = () => {
