@@ -15,6 +15,7 @@ import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
+import { getPublicConfig } from "./api/config.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
@@ -59,16 +60,6 @@ const routePath = hashPath || path;
 const buildQrImageUrl = (targetUrl, size = 320) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(targetUrl)}`;
 const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-const getTurnstileSiteKey = () => {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  if (window.TURNSTILE_SITE_KEY) {
-    return String(window.TURNSTILE_SITE_KEY).trim();
-  }
-  const meta = document.querySelector('meta[name="turnstile-site-key"]');
-  return (meta?.content || "").trim();
-};
 const ensureTurnstileScript = (() => {
   let promise = null;
   return () => {
@@ -2948,6 +2939,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   renderSetup();
   loadSetupData();
 } else {
+  let turnstileSiteKey = "";
   const createBrfState = {
     open: false,
     step: 1,
@@ -2957,7 +2949,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     isSubmitting: false,
     submitError: "",
     setupUrl: "",
-    turnstileSiteKey: getTurnstileSiteKey(),
+    turnstileSiteKey,
     turnstileContainerId: "create-brf-turnstile",
     turnstileToken: "",
     turnstileWidgetId: null,
@@ -2984,7 +2976,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       open: true,
       step: 1,
       submitError: "",
-      turnstileSiteKey: getTurnstileSiteKey(),
+      turnstileSiteKey,
       turnstileToken: "",
       turnstileWidgetId: null,
       turnstileError: "",
@@ -3077,10 +3069,15 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   const initLanding = async () => {
     try {
-      const response = await getDemoLinks();
-      const adminPath = response?.links?.admin?.path || defaultDemoLinks.adminPath;
-      const userPaths = Array.isArray(response?.links?.users)
-        ? response.links.users
+      const [demoLinksResponse, publicConfigResponse] = await Promise.all([
+        getDemoLinks(),
+        getPublicConfig(),
+      ]);
+      turnstileSiteKey = String(publicConfigResponse?.turnstile_site_key || "").trim();
+      createBrfState.turnstileSiteKey = turnstileSiteKey;
+      const adminPath = demoLinksResponse?.links?.admin?.path || defaultDemoLinks.adminPath;
+      const userPaths = Array.isArray(demoLinksResponse?.links?.users)
+        ? demoLinksResponse.links.users
             .map((link) => link?.path)
             .filter((pathValue) => typeof pathValue === "string")
             .slice(0, 2)
@@ -3091,9 +3088,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       };
       renderLanding();
     } catch {
+      turnstileSiteKey = "";
+      createBrfState.turnstileSiteKey = "";
       landingState.demoLinks = {
         ...defaultDemoLinks,
       };
+      renderLanding();
     }
   };
 

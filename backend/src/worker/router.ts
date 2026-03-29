@@ -1258,6 +1258,11 @@ const handleDemoLinks = async (request: Request, env: Env) => {
   });
 };
 
+const handlePublicConfig = async (_request: Request, env: Env) =>
+  json({
+    turnstile_site_key: String(env.TURNSTILE_SITE_KEY || "").trim(),
+  });
+
 const requireScreenAuth = async (request: Request, env: Env) => {
   const token = parseBearerToken(request.headers.get("authorization"));
   if (!token) {
@@ -2568,6 +2573,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "POST" && path === "/api/brf/setup/complete") return handleBrfSetupComplete(request, env);
   if (request.method === "POST" && path === "/api/kiosk/access-token") return handleKioskAccessToken(request, env);
   if (request.method === "GET" && path === "/api/demo-links") return handleDemoLinks(request, env);
+  if (request.method === "GET" && path === "/api/public-config") return handlePublicConfig(request, env);
 
   if (request.method === "GET" && path === "/api/bootstrap") return handleBootstrap(request, env);
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);

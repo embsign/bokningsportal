@@ -16,5 +16,6 @@ export interface Env {
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
   FRONTEND_BASE_URL?: string;
+  TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
 }
