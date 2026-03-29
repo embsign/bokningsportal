@@ -17,7 +17,7 @@ import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/c
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
-import { createBooking, cancelBooking } from "./api/bookings.js";
+import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
 import {
   getMonthAvailability,
   getMonthLabel,

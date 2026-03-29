@@ -19,6 +19,7 @@ export const getApiBase = () => "/api";
 
 export const apiRequest = async (path, options = {}) => {
   const base = getApiBase();
+  const method = String(options.method || "GET").toUpperCase();
   const headers = new Headers(options.headers || {});
   if (accessToken && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${accessToken}`);
@@ -26,10 +27,15 @@ export const apiRequest = async (path, options = {}) => {
   if (options.body && !headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`${base}${path}`, {
-    headers,
+  const fetchOptions = {
     ...options,
-  });
+    method,
+    headers,
+  };
+  if (method === "GET" && fetchOptions.cache === undefined) {
+    fetchOptions.cache = "no-store";
+  }
+  const response = await fetch(`${base}${path}`, fetchOptions);
 
   if (!response.ok) {
     const detail = await parseError(response);
