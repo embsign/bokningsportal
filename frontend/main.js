@@ -3424,8 +3424,13 @@ const loadWeekAvailability = async (service, weekStart) => {
               "expired-callback": () => {
                 setCreateBrfState({ turnstileToken: "", turnstileError: "Verifieringen har gått ut. Försök igen." });
               },
-              "error-callback": () => {
-                setCreateBrfState({ turnstileToken: "", turnstileError: "Turnstile kunde inte laddas. Ladda om sidan." });
+              "error-callback": (errorCode) => {
+                const normalizedCode = String(errorCode || "").trim();
+                const message =
+                  normalizedCode === "110200"
+                    ? "Turnstile-domain ej tillåten. Lägg till aktuell Pages-domän i Turnstile-widgetens hostnames."
+                    : "Turnstile kunde inte laddas. Ladda om sidan.";
+                setCreateBrfState({ turnstileToken: "", turnstileError: message });
               },
             });
             createBrfState.turnstileWidgetId = widgetId;
