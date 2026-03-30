@@ -6,7 +6,7 @@ const stepHeader = (current, total) =>
     text: `Steg ${current} av ${total}`,
   });
 
-const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting, hideNext }) =>
+const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting, hideNext, disableNext }) =>
   createElement("div", {
     className: "modal-footer",
     children: [
@@ -21,8 +21,8 @@ const footer = ({ onBack, onNext, nextLabel, backLabel, isSubmitting, hideNext }
         : createElement("button", {
             className: "primary-button",
             text: isSubmitting ? "Skickar..." : nextLabel,
-            attrs: { disabled: isSubmitting ? "disabled" : null },
-            onClick: isSubmitting ? null : onNext,
+            attrs: { disabled: isSubmitting || disableNext ? "disabled" : null },
+            onClick: isSubmitting || disableNext ? null : onNext,
           }),
     ],
   });
@@ -34,6 +34,7 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
 
   const totalSteps = 3;
   const safeStep = Math.min(Math.max(step, 1), totalSteps);
+  const disableNext = safeStep === 1 && !(form.name || "").trim();
   const nextLabel = safeStep === 2 ? "Registrera" : safeStep === totalSteps ? "Stäng" : "Nästa";
   const backLabel = safeStep === 1 ? "Avbryt" : "Tillbaka";
   const onNextAction = safeStep === 2 ? onSubmit : safeStep === totalSteps ? onFinish : onNext;
@@ -143,6 +144,7 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
             onBack: footerConfig.onBack,
             onNext: onNextAction,
             nextLabel,
+            disableNext,
             backLabel: footerConfig.backLabel,
             isSubmitting: Boolean(form.isSubmitting),
             hideNext: footerConfig.hideNext,

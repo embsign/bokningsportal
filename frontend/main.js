@@ -2998,8 +2998,18 @@ const loadWeekAvailability = async (service, weekStart) => {
       turnstileError: "",
       turnstilePaused: false,
     });
-  const nextCreateBrf = () =>
+  const nextCreateBrf = () => {
+    if ((createBrfState.step || 1) === 1 && !createBrfState.name?.trim()) {
+      setCreateBrfState((prev) => ({
+        errors: {
+          ...(prev.errors || {}),
+          name: "Ange föreningens namn.",
+        },
+      }));
+      return;
+    }
     setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 3) }));
+  };
   const prevCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
   const submitCreateBrf = async () => {
