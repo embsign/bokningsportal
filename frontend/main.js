@@ -2954,6 +2954,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     turnstileToken: "",
     turnstileWidgetId: null,
     turnstileError: "",
+    turnstilePaused: false,
   };
 
   const setCreateBrfState = (next) => {
@@ -2980,6 +2981,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       turnstileToken: "",
       turnstileWidgetId: null,
       turnstileError: "",
+      turnstilePaused: false,
     });
   const closeCreateBrf = () =>
     setCreateBrfState({
@@ -2994,6 +2996,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       turnstileToken: "",
       turnstileWidgetId: null,
       turnstileError: "",
+      turnstilePaused: false,
     });
   const nextCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 3) }));
@@ -3399,7 +3402,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       app.append(modal);
     }
 
-    if (createBrfState.open && createBrfState.step === 1 && createBrfState.turnstileSiteKey) {
+    if (
+      createBrfState.open &&
+      createBrfState.step === 1 &&
+      createBrfState.turnstileSiteKey &&
+      !createBrfState.turnstilePaused
+    ) {
       const target = document.getElementById(createBrfState.turnstileContainerId);
       if (target && target.childElementCount === 0) {
         ensureTurnstileScript()
@@ -3422,7 +3430,11 @@ const loadWeekAvailability = async (service, weekStart) => {
                 }
               },
               "expired-callback": () => {
-                setCreateBrfState({ turnstileToken: "", turnstileError: "Verifieringen har gått ut. Försök igen." });
+                setCreateBrfState({
+                  turnstileToken: "",
+                  turnstileError: "Verifieringen har gått ut. Försök igen.",
+                  turnstilePaused: true,
+                });
               },
               "error-callback": (errorCode) => {
                 const normalizedCode = String(errorCode || "").trim();
@@ -3430,13 +3442,13 @@ const loadWeekAvailability = async (service, weekStart) => {
                   normalizedCode === "110200"
                     ? "Turnstile-domain ej tillåten. Lägg till aktuell Pages-domän i Turnstile-widgetens hostnames."
                     : "Turnstile kunde inte laddas. Ladda om sidan.";
-                setCreateBrfState({ turnstileToken: "", turnstileError: message });
+                setCreateBrfState({ turnstileToken: "", turnstileError: message, turnstilePaused: true });
               },
             });
             createBrfState.turnstileWidgetId = widgetId;
           })
           .catch(() => {
-            setCreateBrfState({ turnstileError: "Turnstile-script kunde inte laddas." });
+            setCreateBrfState({ turnstileError: "Turnstile-script kunde inte laddas.", turnstilePaused: true });
           });
       }
     }
