@@ -2970,6 +2970,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       delete nextErrors[field];
       createBrfState.errors = nextErrors;
     }
+    renderLanding();
   };
 
   const openCreateBrf = () =>
