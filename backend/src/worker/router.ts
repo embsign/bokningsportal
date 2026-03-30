@@ -1207,55 +1207,65 @@ const handleDemoLinks = async (request: Request, env: Env) => {
     frontendOrigin = requestUrl.origin;
   }
 
-  const demoTenant = (await env.DB.prepare(
-    `SELECT id, account_owner_token
-     FROM tenants
-     WHERE id = 'demo-brf'
-     LIMIT 1`
-  ).bind().first()) as any;
-  if (!demoTenant) {
-    return errorResponse(404, "demo_not_found");
+  const buildLink = (path: string) => `${frontendOrigin.replace(/\/$/, "")}${path}`;
+  const buildResponse = (adminToken: string, userTokens: string[]) =>
+    json({
+      links: {
+        admin: {
+          path: `/admin/${adminToken}`,
+          url: buildLink(`/admin/${adminToken}`),
+        },
+        users: userTokens.slice(0, 2).map((token) => ({
+          path: `/user/${token}`,
+          url: buildLink(`/user/${token}`),
+        })),
+      },
+    });
+
+  const fallbackAdminToken = "admin-demo-token";
+  const fallbackUserTokens = ["user-demo-token-anna", "user-demo-token-erik"];
+
+  try {
+    const demoTenant = (await env.DB.prepare(
+      `SELECT id, account_owner_token
+       FROM tenants
+       WHERE id = 'demo-brf'
+       LIMIT 1`
+    ).bind().first()) as any;
+    if (!demoTenant) {
+      return buildResponse(fallbackAdminToken, fallbackUserTokens);
+    }
+
+    const tokenRows = await env.DB
+      .prepare(
+        `SELECT
+           u.apartment_id,
+           u.is_admin,
+           at.token
+         FROM users u
+         JOIN access_tokens at ON at.user_id = u.id
+         WHERE u.tenant_id = ?
+           AND u.is_active = 1
+         ORDER BY u.is_admin DESC, u.apartment_id ASC`
+      )
+      .bind(demoTenant.id)
+      .all();
+
+    const adminToken =
+      (tokenRows.results.find((row: any) => Number(row.is_admin) === 1)?.token as string | undefined) ||
+      (demoTenant.account_owner_token as string | undefined) ||
+      fallbackAdminToken;
+    const userTokens = tokenRows.results
+      .filter((row: any) => Number(row.is_admin) !== 1)
+      .slice(0, 2)
+      .map((row: any) => row.token as string)
+      .filter(Boolean);
+
+    return buildResponse(adminToken, userTokens.length ? userTokens : fallbackUserTokens);
+  } catch {
+    return buildResponse(fallbackAdminToken, fallbackUserTokens);
   }
 
-  const tokenRows = await env.DB
-    .prepare(
-      `SELECT
-         u.apartment_id,
-         u.is_admin,
-         at.token
-       FROM users u
-       JOIN access_tokens at ON at.user_id = u.id
-       WHERE u.tenant_id = ?
-         AND u.is_active = 1
-       ORDER BY u.is_admin DESC, u.apartment_id ASC`
-    )
-    .bind(demoTenant.id)
-    .all();
-
-  const adminToken =
-    (tokenRows.results.find((row: any) => Number(row.is_admin) === 1)?.token as string | undefined) ||
-    (demoTenant.account_owner_token as string | undefined);
-  const userTokens = tokenRows.results
-    .filter((row: any) => Number(row.is_admin) !== 1)
-    .slice(0, 2)
-    .map((row: any) => row.token as string);
-
-  const buildLink = (path: string) => `${frontendOrigin.replace(/\/$/, "")}${path}`;
-
-  return json({
-    links: {
-      admin: adminToken
-        ? {
-            path: `/admin/${adminToken}`,
-            url: buildLink(`/admin/${adminToken}`),
-          }
-        : null,
-      users: userTokens.map((token) => ({
-        path: `/user/${token}`,
-        url: buildLink(`/user/${token}`),
-      })),
-    },
-  });
 };
 
 const handlePublicConfig = async (_request: Request, env: Env) =>
