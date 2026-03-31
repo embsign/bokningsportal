@@ -71,19 +71,15 @@ Ja, du behöver lägga till domäner/hostnames i Turnstile‑widgeten. Minst:
 
 Om hostnamen inte finns med i widgetens tillåtna lista kommer verifieringen att fallera.
 
-### 3) Konfigurera frontend med Site key
+### 3) Konfigurera Site key i Pages Functions
 
-Sätt site key i `frontend/index.html`:
+Sätt `TURNSTILE_SITE_KEY` i Cloudflare Pages (Production/Preview) under **Variables and Secrets**.
 
-```html
-<meta name="turnstile-site-key" content="0x4AAAAA..." />
-```
+Frontend läser nyckeln via backend-endpointen:
 
-Alternativt kan den injiceras via:
+- `GET /api/public-config` → `{ "turnstile_site_key": "0x4AAAAA..." }`
 
-```html
-<script>window.TURNSTILE_SITE_KEY = "0x4AAAAA...";</script>
-```
+Ingen frontend-fallback via `window` eller `<meta>` används.
 
 ### 4) Konfigurera backend med Secret key
 

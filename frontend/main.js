@@ -15,6 +15,7 @@ import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
+import { getPublicConfig } from "./api/config.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
@@ -59,16 +60,6 @@ const routePath = hashPath || path;
 const buildQrImageUrl = (targetUrl, size = 320) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(targetUrl)}`;
 const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-const getTurnstileSiteKey = () => {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  if (window.TURNSTILE_SITE_KEY) {
-    return String(window.TURNSTILE_SITE_KEY).trim();
-  }
-  const meta = document.querySelector('meta[name="turnstile-site-key"]');
-  return (meta?.content || "").trim();
-};
 const ensureTurnstileScript = (() => {
   let promise = null;
   return () => {
@@ -2948,6 +2939,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   renderSetup();
   loadSetupData();
 } else {
+  let turnstileSiteKey = "";
   const createBrfState = {
     open: false,
     step: 1,
@@ -2957,11 +2949,12 @@ const loadWeekAvailability = async (service, weekStart) => {
     isSubmitting: false,
     submitError: "",
     setupUrl: "",
-    turnstileSiteKey: getTurnstileSiteKey(),
+    turnstileSiteKey,
     turnstileContainerId: "create-brf-turnstile",
     turnstileToken: "",
     turnstileWidgetId: null,
     turnstileError: "",
+    turnstilePaused: false,
   };
 
   const setCreateBrfState = (next) => {
@@ -2977,6 +2970,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       delete nextErrors[field];
       createBrfState.errors = nextErrors;
     }
+    renderLanding();
   };
 
   const openCreateBrf = () =>
@@ -2984,10 +2978,11 @@ const loadWeekAvailability = async (service, weekStart) => {
       open: true,
       step: 1,
       submitError: "",
-      turnstileSiteKey: getTurnstileSiteKey(),
+      turnstileSiteKey,
       turnstileToken: "",
       turnstileWidgetId: null,
       turnstileError: "",
+      turnstilePaused: false,
     });
   const closeCreateBrf = () =>
     setCreateBrfState({
@@ -3002,9 +2997,20 @@ const loadWeekAvailability = async (service, weekStart) => {
       turnstileToken: "",
       turnstileWidgetId: null,
       turnstileError: "",
+      turnstilePaused: false,
     });
-  const nextCreateBrf = () =>
+  const nextCreateBrf = () => {
+    if ((createBrfState.step || 1) === 1 && !createBrfState.name?.trim()) {
+      setCreateBrfState((prev) => ({
+        errors: {
+          ...(prev.errors || {}),
+          name: "Ange föreningens namn.",
+        },
+      }));
+      return;
+    }
     setCreateBrfState((prev) => ({ step: Math.min((prev.step || 1) + 1, 3) }));
+  };
   const prevCreateBrf = () =>
     setCreateBrfState((prev) => ({ step: Math.max((prev.step || 1) - 1, 1) }));
   const submitCreateBrf = async () => {
@@ -3076,11 +3082,23 @@ const loadWeekAvailability = async (service, weekStart) => {
     });
 
   const initLanding = async () => {
-    try {
-      const response = await getDemoLinks();
-      const adminPath = response?.links?.admin?.path || defaultDemoLinks.adminPath;
-      const userPaths = Array.isArray(response?.links?.users)
-        ? response.links.users
+    const [demoLinksResult, publicConfigResult] = await Promise.allSettled([
+      getDemoLinks(),
+      getPublicConfig(),
+    ]);
+
+    if (publicConfigResult.status === "fulfilled") {
+      turnstileSiteKey = String(publicConfigResult.value?.turnstile_site_key || "").trim();
+      createBrfState.turnstileSiteKey = turnstileSiteKey;
+    } else {
+      turnstileSiteKey = "";
+      createBrfState.turnstileSiteKey = "";
+    }
+
+    if (demoLinksResult.status === "fulfilled") {
+      const adminPath = demoLinksResult.value?.links?.admin?.path || defaultDemoLinks.adminPath;
+      const userPaths = Array.isArray(demoLinksResult.value?.links?.users)
+        ? demoLinksResult.value.links.users
             .map((link) => link?.path)
             .filter((pathValue) => typeof pathValue === "string")
             .slice(0, 2)
@@ -3089,12 +3107,13 @@ const loadWeekAvailability = async (service, weekStart) => {
         adminPath,
         userPaths: userPaths.length ? userPaths : defaultDemoLinks.userPaths,
       };
-      renderLanding();
-    } catch {
+    } else {
       landingState.demoLinks = {
         ...defaultDemoLinks,
       };
     }
+
+    renderLanding();
   };
 
   const renderLanding = () => {
@@ -3394,7 +3413,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       app.append(modal);
     }
 
-    if (createBrfState.open && createBrfState.step === 1 && createBrfState.turnstileSiteKey) {
+    if (
+      createBrfState.open &&
+      createBrfState.step === 1 &&
+      createBrfState.turnstileSiteKey &&
+      !createBrfState.turnstilePaused
+    ) {
       const target = document.getElementById(createBrfState.turnstileContainerId);
       if (target && target.childElementCount === 0) {
         ensureTurnstileScript()
@@ -3417,16 +3441,25 @@ const loadWeekAvailability = async (service, weekStart) => {
                 }
               },
               "expired-callback": () => {
-                setCreateBrfState({ turnstileToken: "", turnstileError: "Verifieringen har gått ut. Försök igen." });
+                setCreateBrfState({
+                  turnstileToken: "",
+                  turnstileError: "Verifieringen har gått ut. Försök igen.",
+                  turnstilePaused: true,
+                });
               },
-              "error-callback": () => {
-                setCreateBrfState({ turnstileToken: "", turnstileError: "Turnstile kunde inte laddas. Ladda om sidan." });
+              "error-callback": (errorCode) => {
+                const normalizedCode = String(errorCode || "").trim();
+                const message =
+                  normalizedCode === "110200"
+                    ? "Turnstile-domain ej tillåten. Lägg till aktuell Pages-domän i Turnstile-widgetens hostnames."
+                    : "Turnstile kunde inte laddas. Ladda om sidan.";
+                setCreateBrfState({ turnstileToken: "", turnstileError: message, turnstilePaused: true });
               },
             });
             createBrfState.turnstileWidgetId = widgetId;
           })
           .catch(() => {
-            setCreateBrfState({ turnstileError: "Turnstile-script kunde inte laddas." });
+            setCreateBrfState({ turnstileError: "Turnstile-script kunde inte laddas.", turnstilePaused: true });
           });
       }
     }
