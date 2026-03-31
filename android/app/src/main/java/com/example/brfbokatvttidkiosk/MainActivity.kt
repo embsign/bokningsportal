@@ -360,11 +360,11 @@ class MainActivity : ComponentActivity() {
                     result.statusCode == 401 && result.responseBody?.contains("invalid_rfid") == true ->
                         "Taggen finns inte i systemet."
                     result.statusCode == null ->
-                        "Kunde inte kontakta servern (UID: $uid). Kontrollera internetanslutningen."
+                        "Kunde inte kontakta servern. Kontrollera internetanslutningen."
                     result.statusCode in 500..599 ->
-                        "Serverfel (UID: $uid). Försök igen om en stund."
+                        "Serverfel. Försök igen om en stund."
                     else ->
-                        "Inloggning misslyckades (UID: $uid, HTTP ${result.statusCode ?: "okänt"})."
+                        "Inloggning misslyckades (HTTP ${result.statusCode ?: "okänt"})."
                 }
                 playFailureTone()
                 uiState = UiState.Idle
