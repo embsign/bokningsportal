@@ -31,7 +31,17 @@ export const getMonthAvailability = async (bookingObjectId, year, monthIndex) =>
   const { days } = await apiRequest(
     `/availability/month?booking_object_id=${encodeURIComponent(bookingObjectId)}&month=${month}`
   );
-  const byDate = new Map(days.map((day) => [day.date, day.status]));
+  const byDate = new Map(
+    days.map((day) => [
+      day.date,
+      {
+        status: day.status,
+        bookingId: day.booking_id || null,
+        bookedByApartmentId: day.booked_by_apartment_id || null,
+        blockId: day.block_id || null,
+      },
+    ])
+  );
 
   const firstDay = new Date(year, monthIndex, 1);
   const startDay = new Date(firstDay);
@@ -44,13 +54,17 @@ export const getMonthAvailability = async (bookingObjectId, year, monthIndex) =>
     date.setDate(startDay.getDate() + i);
     const dateString = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     const isOutsideMonth = date.getMonth() !== monthIndex;
-    const status = isOutsideMonth ? "outside" : byDate.get(dateString) || "available";
+    const dayMeta = byDate.get(dateString) || { status: "available", bookingId: null, bookedByApartmentId: null, blockId: null };
+    const status = isOutsideMonth ? "outside" : dayMeta.status;
     calendarDays.push({
       id: dateString,
       date,
       label: `${date.getDate()}/${date.getMonth() + 1}`,
       status,
       monthIndex: date.getMonth(),
+      bookingId: isOutsideMonth ? null : dayMeta.bookingId,
+      bookedByApartmentId: isOutsideMonth ? null : dayMeta.bookedByApartmentId,
+      blockId: isOutsideMonth ? null : dayMeta.blockId,
     });
   }
 
@@ -77,6 +91,9 @@ export const getWeekAvailability = async (bookingObjectId, weekStart) => {
         startTime: `${day.date}T${slot.label.split("-")[0]}:00.000Z`,
         endTime: `${day.date}T${slot.label.split("-")[1]}:00.000Z`,
         date,
+        bookingId: slot.booking_id || null,
+        bookedByApartmentId: slot.booked_by_apartment_id || null,
+        blockId: slot.block_id || null,
       })),
     };
   });

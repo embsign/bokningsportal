@@ -61,6 +61,12 @@ export const Confirmation = ({
   onConfirm,
   onAcknowledge,
   confirmDisabled,
+  isAdminUser,
+  adminUsers,
+  bookingAction,
+  bookingForUserId,
+  onChangeBookingAction,
+  onChangeBookingForUserId,
 }) => {
   let content;
   if (state === "loading") {
@@ -76,6 +82,10 @@ export const Confirmation = ({
         ? "Du har nått max antal aktiva bokningar för den här bokningsgruppen. Avboka en aktiv bokning först."
         : errorDetail === "outside_booking_window"
           ? "Vald tid ligger utanför tillåtet bokningsfönster."
+          : errorDetail === "blocked"
+            ? "Tiden är blockerad och kan inte bokas."
+            : errorDetail === "target_user_not_found"
+              ? "Vald användare hittades inte."
           : errorDetail === "forbidden"
             ? "Du saknar behörighet att boka den här tiden."
             : "Kunde inte skapa bokningen. Försök igen.";
@@ -122,6 +132,66 @@ export const Confirmation = ({
         ],
       });
 
+  const adminControls =
+    !confirmed && isAdminUser
+      ? createElement("div", {
+          className: "form-stack",
+          children: [
+            createElement("label", {
+              className: "form-subfield",
+              children: [
+                createElement("span", { text: "Åtgärd" }),
+                createElement("select", {
+                  className: "input",
+                  onChange: (event) => onChangeBookingAction(event.target.value),
+                  children: [
+                    createElement("option", {
+                      text: "Boka till mig",
+                      attrs: { value: "self", selected: bookingAction === "self" },
+                    }),
+                    createElement("option", {
+                      text: "Boka åt annan",
+                      attrs: { value: "other", selected: bookingAction === "other" },
+                    }),
+                    createElement("option", {
+                      text: "Blockera tid",
+                      attrs: { value: "block", selected: bookingAction === "block" },
+                    }),
+                  ],
+                }),
+              ],
+            }),
+            bookingAction === "other"
+              ? createElement("label", {
+                  className: "form-subfield",
+                  children: [
+                    createElement("span", { text: "Välj användare" }),
+                    createElement("select", {
+                      className: "input",
+                      onChange: (event) => onChangeBookingForUserId(event.target.value),
+                      children: [
+                        createElement("option", {
+                          text: "Välj användare...",
+                          attrs: { value: "", selected: !bookingForUserId },
+                        }),
+                        ...(adminUsers || []).map((user) =>
+                          createElement("option", {
+                            text: `${user.apartment_id}${user.house ? ` (${user.house})` : ""}`,
+                            attrs: {
+                              value: user.id,
+                              selected: bookingForUserId === user.id,
+                            },
+                          })
+                        ),
+                      ],
+                    }),
+                  ],
+                })
+              : null,
+          ].filter(Boolean),
+        })
+      : null;
+
   const modal = createElement("div", {
     className: "modal card",
     children: [
@@ -132,6 +202,7 @@ export const Confirmation = ({
             text: "Tiden är nu bokad och markerad i schemat.",
           })
         : null,
+      adminControls,
       content,
       footer,
     ].filter(Boolean),

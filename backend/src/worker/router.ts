@@ -385,6 +385,7 @@ const requireAuth = async (request: Request, env: Env) => {
       id: context.user_id,
       apartment_id: context.user_apartment_id,
       is_admin: context.user_is_admin,
+      is_account_owner: 0,
       tenant_id: tenant.id,
       house: context.user_house,
       is_active: context.user_is_active,
@@ -407,6 +408,7 @@ const requireAuth = async (request: Request, env: Env) => {
       id: "account-owner",
       apartment_id: "admin",
       is_admin: 1,
+      is_account_owner: 1,
       tenant_id: tenant.id as string,
       house: null,
       is_active: 1,
@@ -583,6 +585,17 @@ const handleBrfSetupComplete = async (request: Request, env: Env) => {
 };
 
 const requireAdmin = async (request: Request, env: Env) => {
+  const auth = await requireAuth(request, env);
+  if ("error" in auth) {
+    return auth;
+  }
+  if (auth.user.is_account_owner !== 1) {
+    return { error: errorResponse(403, "forbidden") };
+  }
+  return auth;
+};
+
+const requireAdminUser = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) {
     return auth;
@@ -1055,6 +1068,24 @@ const getCurrentBookingsForUser = async (db: D1Database, userId: string) => {
   }));
 };
 
+const listBookableUsersForTenant = async (db: D1Database, tenantId: string) => {
+  const rows = await db
+    .prepare(
+      `SELECT id, apartment_id, house, is_admin
+       FROM users
+       WHERE tenant_id = ? AND is_active = 1
+       ORDER BY apartment_id COLLATE NOCASE ASC`
+    )
+    .bind(tenantId)
+    .all();
+  return rows.results.map((row: any) => ({
+    id: row.id,
+    apartment_id: row.apartment_id,
+    house: row.house,
+    is_admin: Number(row.is_admin) === 1,
+  }));
+};
+
 const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId: string, month: string, nowUtc: Date) => {
   const bookingObject = await db.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return null;
@@ -1067,8 +1098,9 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
 
   const bookings = await db
     .prepare(
-      `SELECT user_id, start_time, end_time
+      `SELECT b.id, b.user_id, u.apartment_id, b.start_time, b.end_time
        FROM bookings
+       JOIN users u ON u.id = b.user_id
        WHERE booking_object_id = ?
          AND cancelled_at IS NULL
          AND NOT (end_time <= ? OR start_time >= ?)`
@@ -1076,12 +1108,34 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     .bind(bookingObjectId, rangeStart.toISOString(), rangeEnd.toISOString())
     .all();
   const overlaps = bookings.results.map((row: any) => ({
+    bookingId: row.id as string,
     userId: row.user_id as string,
+    bookedByApartmentId: row.apartment_id as string,
+    startMs: new Date(row.start_time as string).getTime(),
+    endMs: new Date(row.end_time as string).getTime(),
+  }));
+  const blocks = await db
+    .prepare(
+      `SELECT id, start_time, end_time
+       FROM booking_blocks
+       WHERE booking_object_id = ?
+         AND NOT (end_time <= ? OR start_time >= ?)`
+    )
+    .bind(bookingObjectId, rangeStart.toISOString(), rangeEnd.toISOString())
+    .all();
+  const blockOverlaps = blocks.results.map((row: any) => ({
+    blockId: row.id as string,
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
   }));
 
-  const days: { date: string; status: string }[] = [];
+  const days: {
+    date: string;
+    status: string;
+    booking_id?: string | null;
+    booked_by_apartment_id?: string | null;
+    block_id?: string | null;
+  }[] = [];
   const nowMs = nowUtc.getTime();
   const { minMs, maxMs } = getWindowBoundaries(bookingObject, nowUtc);
   for (let day = 1; day <= new Date(year, monthIndex, 0).getDate(); day += 1) {
@@ -1096,8 +1150,25 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
       status = "disabled";
     }
     const overlap = overlaps.find((booking) => booking.startMs < candidate.end.getTime() && booking.endMs > candidate.start.getTime());
+    const blockOverlap = blockOverlaps.find((block) => block.startMs < candidate.end.getTime() && block.endMs > candidate.start.getTime());
     if (overlap) {
       status = overlap.userId === user.id ? "mine" : "booked";
+      days.push({
+        date: dateString,
+        status,
+        booking_id: overlap.bookingId,
+        booked_by_apartment_id: overlap.bookedByApartmentId,
+      });
+      continue;
+    }
+    if (blockOverlap) {
+      status = "blocked";
+      days.push({
+        date: dateString,
+        status,
+        block_id: blockOverlap.blockId,
+      });
+      continue;
     }
     days.push({ date: dateString, status });
   }
@@ -1111,7 +1182,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
   const endDate = addDays(startDate, 7);
   const overlapsResult = await db
     .prepare(
-      `SELECT user_id, start_time, end_time FROM bookings
+      `SELECT b.id, b.user_id, u.apartment_id, b.start_time, b.end_time FROM bookings b
+       JOIN users u ON u.id = b.user_id
        WHERE booking_object_id = ?
          AND cancelled_at IS NULL
          AND NOT (end_time <= ? OR start_time >= ?)`
@@ -1119,7 +1191,23 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     .bind(bookingObjectId, startDate.toISOString(), endDate.toISOString())
     .all();
   const overlaps = overlapsResult.results.map((row: any) => ({
+    bookingId: row.id as string,
     userId: row.user_id as string,
+    bookedByApartmentId: row.apartment_id as string,
+    startMs: new Date(row.start_time as string).getTime(),
+    endMs: new Date(row.end_time as string).getTime(),
+  }));
+  const blocksResult = await db
+    .prepare(
+      `SELECT id, start_time, end_time
+       FROM booking_blocks
+       WHERE booking_object_id = ?
+         AND NOT (end_time <= ? OR start_time >= ?)`
+    )
+    .bind(bookingObjectId, startDate.toISOString(), endDate.toISOString())
+    .all();
+  const blockOverlaps = blocksResult.results.map((row: any) => ({
+    blockId: row.id as string,
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
   }));
@@ -1146,10 +1234,13 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
       end.setUTCMinutes(end.getUTCMinutes() + slotMinutes);
       const startMs = start.getTime();
       const endMs = end.getTime();
-      let status: "available" | "booked" | "mine" | "disabled";
+      let status: "available" | "booked" | "mine" | "disabled" | "blocked";
       const overlap = overlaps.find((booking) => booking.startMs < endMs && booking.endMs > startMs);
+      const blockOverlap = blockOverlaps.find((block) => block.startMs < endMs && block.endMs > startMs);
       if (overlap) {
         status = overlap.userId === user.id ? "mine" : "booked";
+      } else if (blockOverlap) {
+        status = "blocked";
       } else {
         const outsideWindow = startMs < minMs || endMs > maxMs;
         status = outsideWindow ? "disabled" : "available";
@@ -1165,6 +1256,9 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
         label: `${start.toISOString().slice(11, 16)}-${end.toISOString().slice(11, 16)}`,
         status,
         price_cents: price,
+        booking_id: overlap ? overlap.bookingId : null,
+        booked_by_apartment_id: overlap ? overlap.bookedByApartmentId : null,
+        block_id: blockOverlap ? blockOverlap.blockId : null,
       });
     }
     days.push({ label, date: dateString, slots });
@@ -1692,7 +1786,12 @@ const handleSession = async (request: Request, env: Env) => {
   }
   return json({
     tenant: { id: auth.tenant.id, name: auth.tenant.name },
-    user: { id: auth.user.id, apartment_id: auth.user.apartment_id, is_admin: auth.user.is_admin === 1 },
+    user: {
+      id: auth.user.id,
+      apartment_id: auth.user.apartment_id,
+      is_admin: auth.user.is_admin === 1,
+      is_account_owner: auth.user.is_account_owner === 1,
+    },
   });
 };
 
@@ -1722,7 +1821,12 @@ const handleBootstrap = async (request: Request, env: Env) => {
   ]);
   return json({
     tenant: { id: auth.tenant.id, name: auth.tenant.name },
-    user: { id: auth.user.id, apartment_id: auth.user.apartment_id, is_admin: auth.user.is_admin === 1 },
+    user: {
+      id: auth.user.id,
+      apartment_id: auth.user.apartment_id,
+      is_admin: auth.user.is_admin === 1,
+      is_account_owner: auth.user.is_account_owner === 1,
+    },
     services,
     bookings,
   });
@@ -1735,18 +1839,43 @@ const handleCreateBooking = async (request: Request, env: Env) => {
   const bookingObjectId = body?.booking_object_id;
   const startTime = body?.start_time;
   const endTime = body?.end_time;
+  const action = String(body?.action || "book").trim();
+  const bookingForUserId = String(body?.booking_for_user_id || "").trim();
   if (!bookingObjectId || !startTime || !endTime) {
     return errorResponse(400, "invalid_payload");
   }
+  const isBlockRequest = action === "block";
+  if (isBlockRequest && auth.user.is_admin !== 1) {
+    return errorResponse(403, "forbidden");
+  }
+  if (bookingForUserId && auth.user.is_admin !== 1) {
+    return errorResponse(403, "forbidden");
+  }
   const bookingObject = await env.DB.prepare("SELECT * FROM booking_objects WHERE id = ?").bind(bookingObjectId).first();
   if (!bookingObject) return errorResponse(404, "not_found");
-  const permissionRows = await env.DB
-    .prepare("SELECT mode, scope, value FROM booking_object_permissions WHERE booking_object_id = ?")
-    .bind(bookingObjectId)
-    .all();
-  const userGroups = permissionRows.results.length ? await listUserGroups(env.DB, auth.user.id) : [];
-  if (!canUserAccessWithPermissions(permissionRows.results as any[], auth.user, userGroups)) {
+  if (String(bookingObject.tenant_id) !== String(auth.tenant.id)) {
     return errorResponse(403, "forbidden");
+  }
+  if (auth.user.is_admin !== 1) {
+    const permissionRows = await env.DB
+      .prepare("SELECT mode, scope, value FROM booking_object_permissions WHERE booking_object_id = ?")
+      .bind(bookingObjectId)
+      .all();
+    const userGroups = permissionRows.results.length ? await listUserGroups(env.DB, auth.user.id) : [];
+    if (!canUserAccessWithPermissions(permissionRows.results as any[], auth.user, userGroups)) {
+      return errorResponse(403, "forbidden");
+    }
+  }
+  let effectiveUserId = auth.user.id as string;
+  if (!isBlockRequest && bookingForUserId) {
+    const targetUser = await env.DB
+      .prepare("SELECT id FROM users WHERE id = ? AND tenant_id = ? AND is_active = 1")
+      .bind(bookingForUserId, auth.tenant.id)
+      .first();
+    if (!targetUser) {
+      return errorResponse(404, "target_user_not_found");
+    }
+    effectiveUserId = String(targetUser.id);
   }
   const nowIso = new Date().toISOString();
   const bookingObjectGroupId = String(bookingObject.group_id || "").trim();
@@ -1762,14 +1891,14 @@ const handleCreateBooking = async (request: Request, env: Env) => {
             (
               await getActiveBookingCountsByGroup(
                 env.DB,
-                auth.user.id,
+                effectiveUserId,
                 String(bookingObject.tenant_id),
                 nowIso,
                 [bookingObjectGroupId]
               )
             ).get(bookingObjectGroupId) || 0
           )
-        : Number((await getActiveBookingCountsByObject(env.DB, auth.user.id, nowIso, [String(bookingObjectId)])).get(String(bookingObjectId)) || 0);
+        : Number((await getActiveBookingCountsByObject(env.DB, effectiveUserId, nowIso, [String(bookingObjectId)])).get(String(bookingObjectId)) || 0);
     if (activeCount >= maxBookingsLimit) {
       return errorResponse(409, "max_bookings_reached");
     }
@@ -1787,6 +1916,18 @@ const handleCreateBooking = async (request: Request, env: Env) => {
   if ((overlap?.count as number) > 0) {
     return errorResponse(409, "conflict");
   }
+  const blockOverlap = await env.DB
+    .prepare(
+      `SELECT COUNT(1) as count
+       FROM booking_blocks
+       WHERE booking_object_id = ?
+         AND NOT (end_time <= ? OR start_time >= ?)`
+    )
+    .bind(bookingObjectId, startTime, endTime)
+    .first();
+  if ((blockOverlap?.count as number) > 0) {
+    return errorResponse(409, "blocked");
+  }
   const start = new Date(startTime);
   const minDate = new Date();
   minDate.setDate(minDate.getDate() + (bookingObject.window_min_days as number));
@@ -1797,24 +1938,61 @@ const handleCreateBooking = async (request: Request, env: Env) => {
   }
   const isWeekend = [0, 6].includes(start.getUTCDay());
   const priceCents = isWeekend ? (bookingObject.price_weekend_cents as number) : (bookingObject.price_weekday_cents as number);
+  if (isBlockRequest) {
+    const blockId = crypto.randomUUID();
+    await env.DB
+      .prepare(
+        `INSERT INTO booking_blocks (id, tenant_id, booking_object_id, start_time, end_time, reason, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+      )
+      .bind(
+        blockId,
+        bookingObject.tenant_id,
+        bookingObjectId,
+        startTime,
+        endTime,
+        String(body?.block_reason || "").trim() || null,
+        auth.user.id
+      )
+      .run();
+    return json({ booking_block_id: blockId, kind: "block" });
+  }
   const bookingId = crypto.randomUUID();
   await env.DB.prepare(
     `INSERT INTO bookings (id, tenant_id, user_id, booking_object_id, start_time, end_time, price_cents, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
-  ).bind(bookingId, bookingObject.tenant_id, auth.user.id, bookingObjectId, startTime, endTime, priceCents).run();
-  return json({ booking_id: bookingId });
+  ).bind(bookingId, bookingObject.tenant_id, effectiveUserId, bookingObjectId, startTime, endTime, priceCents).run();
+  return json({ booking_id: bookingId, kind: "booking" });
 };
 
 const handleCancelBooking = async (request: Request, env: Env, bookingId: string) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
   const booking = await env.DB.prepare("SELECT * FROM bookings WHERE id = ?").bind(bookingId).first();
-  if (!booking) return errorResponse(404, "not_found");
-  if (auth.user.is_admin !== 1 && booking.user_id !== auth.user.id) {
+  if (booking) {
+    if (auth.user.is_admin !== 1 && booking.user_id !== auth.user.id) {
+      return errorResponse(403, "forbidden");
+    }
+    await env.DB.prepare("UPDATE bookings SET cancelled_at = CURRENT_TIMESTAMP WHERE id = ?").bind(bookingId).run();
+    return new Response(null, { status: 204 });
+  }
+  const block = await env.DB.prepare("SELECT * FROM booking_blocks WHERE id = ?").bind(bookingId).first();
+  if (!block) return errorResponse(404, "not_found");
+  if (auth.user.is_admin !== 1) {
     return errorResponse(403, "forbidden");
   }
-  await env.DB.prepare("UPDATE bookings SET cancelled_at = CURRENT_TIMESTAMP WHERE id = ?").bind(bookingId).run();
+  if (String(block.tenant_id) !== String(auth.tenant.id)) {
+    return errorResponse(403, "forbidden");
+  }
+  await env.DB.prepare("DELETE FROM booking_blocks WHERE id = ?").bind(bookingId).run();
   return new Response(null, { status: 204 });
+};
+
+const handleBookableUsers = async (request: Request, env: Env) => {
+  const auth = await requireAdminUser(request, env);
+  if ("error" in auth) return auth.error;
+  const users = await listBookableUsersForTenant(env.DB, auth.tenant.id);
+  return json({ users });
 };
 
 const handleCalendarDownload = async (request: Request, env: Env, url: URL) => {
@@ -2677,6 +2855,7 @@ export const router = async (request: Request, env: Env) => {
   if (request.method === "GET" && path === "/api/bootstrap") return handleBootstrap(request, env);
   if (request.method === "GET" && path === "/api/session") return handleSession(request, env);
   if (request.method === "GET" && path === "/api/services") return handleServices(request, env);
+  if (request.method === "GET" && path === "/api/users") return handleBookableUsers(request, env);
   if (request.method === "GET" && path === "/api/bookings/current") return handleCurrentBookings(request, env);
   if (request.method === "GET" && path === "/api/calendar") return handleCalendarDownload(request, env, url);
   if (request.method === "POST" && path === "/api/bookings") return handleCreateBooking(request, env);

@@ -55,6 +55,10 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
       children: [
         createElement("span", { className: "day-weekday", text: weekday }),
         createElement("strong", { text: day.label }),
+        day.bookedByApartmentId && (day.status === "booked" || day.status === "mine")
+          ? createElement("span", { className: "day-price", text: `Bokad av: ${day.bookedByApartmentId}` })
+          : null,
+        day.status === "blocked" ? createElement("span", { className: "day-price", text: "Blockerad" }) : null,
         day.priceText ? createElement("span", { className: "day-price", text: day.priceText }) : null,
       ],
     });
