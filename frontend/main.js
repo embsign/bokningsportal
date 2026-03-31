@@ -3363,7 +3363,8 @@ const loadWeekAvailability = async (service, weekStart) => {
   const finishCreateBrf = () => closeCreateBrf();
 
   const defaultDemoLinks = {
-    adminPath: "",
+    adminUserPath: "",
+    accountOwnerPath: "",
     userPaths: [],
   };
   const landingState = {
@@ -3400,18 +3401,23 @@ const loadWeekAvailability = async (service, weekStart) => {
     }
 
     if (demoLinksResult.status === "fulfilled") {
-      const adminPath =
-        typeof demoLinksResult.value?.links?.admin?.path === "string"
-          ? demoLinksResult.value.links.admin.path
+      const adminUserPath =
+        typeof demoLinksResult.value?.links?.admin_user?.path === "string"
+          ? demoLinksResult.value.links.admin_user.path
+          : "";
+      const accountOwnerPath =
+        typeof demoLinksResult.value?.links?.account_owner?.path === "string"
+          ? demoLinksResult.value.links.account_owner.path
           : "";
       const userPaths = Array.isArray(demoLinksResult.value?.links?.users)
         ? demoLinksResult.value.links.users
             .map((link) => link?.path)
             .filter((pathValue) => typeof pathValue === "string")
-            .slice(0, 3)
+            .slice(0, 2)
         : [];
       landingState.demoLinks = {
-        adminPath,
+        adminUserPath,
+        accountOwnerPath,
         userPaths,
       };
     } else {
@@ -3427,8 +3433,8 @@ const loadWeekAvailability = async (service, weekStart) => {
     clearElement(app);
     const userOnePath = landingState.demoLinks.userPaths[0] || "";
     const userTwoPath = landingState.demoLinks.userPaths[1] || "";
-    const userThreePath = landingState.demoLinks.userPaths[2] || "";
-    const adminPath = landingState.demoLinks.adminPath || "";
+    const adminUserPath = landingState.demoLinks.adminUserPath || "";
+    const accountOwnerPath = landingState.demoLinks.accountOwnerPath || "";
     const userOneDemoUrl = userOnePath ? `${window.location.origin}${userOnePath}` : "";
     const userOneDemoQrImageUrl = userOneDemoUrl ? buildQrImageUrl(userOneDemoUrl, 320) : "";
     const demoCards = [];
@@ -3462,7 +3468,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         })
       );
     }
-    if (userThreePath) {
+    if (adminUserPath) {
       demoCards.push(
         createElement("article", {
           className: "landing-demo-card",
@@ -3472,12 +3478,12 @@ const loadWeekAvailability = async (service, weekStart) => {
               className: "landing-card-text",
               text: "Hantera bokningsobjekt och översikt med admin-behörighet.",
             }),
-            createLandingButton("Logga in som Administratör", userThreePath, "secondary"),
+            createLandingButton("Logga in som Administratör", adminUserPath, "secondary"),
           ],
         })
       );
     }
-    if (adminPath) {
+    if (accountOwnerPath) {
       demoCards.push(
         createElement("article", {
           className: "landing-demo-card",
@@ -3487,7 +3493,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               className: "landing-card-text",
               text: "Full behörighet för setup och administration av föreningen.",
             }),
-            createLandingButton("Logga in som Kontoägare", adminPath, "secondary"),
+            createLandingButton("Logga in som Kontoägare", accountOwnerPath, "secondary"),
           ],
         })
       );
