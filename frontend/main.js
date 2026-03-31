@@ -1391,26 +1391,30 @@ const formatDateLabel = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
 const formatNextAvailableLabel = (value, bookingType) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
+  const toWeekdayShort = (date) => date.toLocaleDateString("sv-SE", { weekday: "short" }).replace(".", "").toLowerCase();
+  const toDayMonth = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
   if (bookingType === "time-slot") {
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(raw)) {
       const [datePart, timePart] = raw.split(" ");
       const [year, month, day] = datePart.split("-").map(Number);
-      return `${day}/${month}/${year} ${timePart}`;
+      const date = new Date(year, month - 1, day);
+      return `${toWeekdayShort(date)} ${toDayMonth(date)} kl ${timePart}`;
     }
     const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
     if (!Number.isNaN(parsed.getTime())) {
       const hh = String(parsed.getHours()).padStart(2, "0");
       const mm = String(parsed.getMinutes()).padStart(2, "0");
-      return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hh}:${mm}`;
+      return `${toWeekdayShort(parsed)} ${toDayMonth(parsed)} kl ${hh}:${mm}`;
     }
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     const [year, month, day] = raw.split("-").map(Number);
-    return `${day}/${month}/${year}`;
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString("sv-SE", { day: "numeric", month: "long" });
   }
   const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
   if (!Number.isNaN(parsed.getTime())) {
-    return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
+    return parsed.toLocaleDateString("sv-SE", { day: "numeric", month: "long" });
   }
   return raw;
 };
