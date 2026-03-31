@@ -1786,6 +1786,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   let pendingWeekLoad = null;
 
   if (state.step === 1) {
+    const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
     const resetCalendarCursorToToday = () =>
       store.setState({
         monthCursor: initialMonth,
@@ -1850,6 +1851,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         }
       },
       isMobile,
+      isKioskMode,
       state: state.uiStates.service,
     });
 

@@ -974,6 +974,17 @@ body {
   object-fit: contain;
 }
 
+.modal .qr-image,
+.modal .qr-box-large {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.modal .booking-download-link {
+  display: block;
+  text-align: center;
+}
+
 .service-card {
   padding: 20px;
   border-radius: var(--radius-md);

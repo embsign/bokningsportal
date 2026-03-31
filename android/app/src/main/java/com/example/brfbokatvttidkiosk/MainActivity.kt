@@ -304,12 +304,11 @@ class MainActivity : ComponentActivity() {
         return body.joinToString("") { "%02X".format(it) }.ifBlank { null }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_UP) {
-            val consumed = handleHidKeyUp(event.keyCode, event)
-            if (consumed) return true
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (handleHidKeyUp(keyCode, event)) {
+            return true
         }
-        return super.dispatchKeyEvent(event)
+        return super.onKeyUp(keyCode, event)
     }
 
     private fun handleHidKeyUp(keyCode: Int, event: KeyEvent): Boolean {
@@ -375,7 +374,20 @@ class MainActivity : ComponentActivity() {
             rfidErrorMessage = null
             rfidInfoMessage = null
             playSuccessTone()
-            uiState = UiState.Showing(success.fullUrl, success.bookingPath)
+            uiState = UiState.Showing(withKioskModeQuery(success.fullUrl), success.bookingPath)
+        }
+    }
+
+    private fun withKioskModeQuery(rawUrl: String): String {
+        return try {
+            val uri = Uri.parse(rawUrl)
+            if (uri.getQueryParameter("kiosk") == "1") return rawUrl
+            uri.buildUpon()
+                .appendQueryParameter("kiosk", "1")
+                .build()
+                .toString()
+        } catch (_: Exception) {
+            rawUrl
         }
     }
 
