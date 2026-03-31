@@ -1388,6 +1388,62 @@ const formatDayLabel = (date) =>
     .replace(/^./, (char) => char.toUpperCase());
 
 const formatDateLabel = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
+const formatNextAvailableLabel = (value, bookingType) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (bookingType === "time-slot") {
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(raw)) {
+      const [datePart, timePart] = raw.split(" ");
+      const [year, month, day] = datePart.split("-").map(Number);
+      return `${day}/${month}/${year} ${timePart}`;
+    }
+    const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      const hh = String(parsed.getHours()).padStart(2, "0");
+      const mm = String(parsed.getMinutes()).padStart(2, "0");
+      return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()} ${hh}:${mm}`;
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split("-").map(Number);
+    return `${day}/${month}/${year}`;
+  }
+  const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
+  }
+  return raw;
+};
+
+const parseServiceNextAvailableDate = (service) => {
+  const raw = String(service?.nextAvailableRaw || service?.nextAvailable || "").trim();
+  if (!raw) {
+    return null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+  const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+  return null;
+};
+
+const getInitialCursorForService = (service) => {
+  const nextAvailableDate = parseServiceNextAvailableDate(service);
+  if (!nextAvailableDate) {
+    return { monthCursor: initialMonth, weekCursor: initialWeek };
+  }
+  return {
+    monthCursor: {
+      year: nextAvailableDate.getFullYear(),
+      monthIndex: nextAvailableDate.getMonth(),
+    },
+    weekCursor: getWeekStart(nextAvailableDate),
+  };
+};
 
 const normalizeClockTime = (value) => (/^\d{2}:\d{2}$/.test(value || "") ? value : "12:00");
 
@@ -1550,7 +1606,8 @@ const applyBootstrapData = (bootstrap) => {
                   : `${hours.toString().replace(".", ",")} timmar`;
               })()
             : "",
-        nextAvailable: service.next_available || "",
+        nextAvailableRaw: service.next_available_start || service.next_available || "",
+        nextAvailable: formatNextAvailableLabel(service.next_available, service.booking_type),
         priceText: (() => {
           const weekdayCents = Number(service.price_weekday_cents || 0);
           const weekendCents = Number(service.price_weekend_cents || 0);
@@ -1757,10 +1814,11 @@ const loadWeekAvailability = async (service, weekStart) => {
   initUser();
 
   if (state.step === 1 && state.services.length === 1 && !state.selectedService) {
+    const initialCursor = getInitialCursorForService(state.services[0]);
     store.setState({
       selectedService: state.services[0],
-      monthCursor: initialMonth,
-      weekCursor: initialWeek,
+      monthCursor: initialCursor.monthCursor,
+      weekCursor: initialCursor.weekCursor,
       availabilityMonthKey: null,
       availabilityMonthRequestKey: null,
       availabilityWeekKey: null,
@@ -1803,23 +1861,18 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   if (state.step === 1) {
     const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
-    const resetCalendarCursorToToday = () =>
-      store.setState({
-        monthCursor: initialMonth,
-        weekCursor: initialWeek,
-      });
 
     screen = ServiceSelection({
       services: state.services,
       selectedService: state.selectedService,
       onSelect: (service) => {
-        resetCalendarCursorToToday();
+        const initialCursor = getInitialCursorForService(service);
         store.setState({
           selectedService: service,
           selectedDate: null,
           selectedSlot: null,
-          monthCursor: initialMonth,
-          weekCursor: initialWeek,
+          monthCursor: initialCursor.monthCursor,
+          weekCursor: initialCursor.weekCursor,
           availabilityMonthKey: null,
           availabilityMonthRequestKey: null,
           availabilityWeekKey: null,

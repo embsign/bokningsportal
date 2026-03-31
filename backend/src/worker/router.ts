@@ -26,6 +26,7 @@ const addDays = (date: Date, days: number) => {
 };
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+const formatDateTimeMinutes = (date: Date) => `${formatDate(date)} ${date.toISOString().slice(11, 16)}`;
 
 const parseDate = (value: string) => {
   const [year, month, day] = value.split("-").map((part) => Number(part));
@@ -1035,6 +1036,7 @@ const buildServicesForAuth = async (db: D1Database, auth: { user: any; tenant: a
   ]);
 
   return filtered.map((obj: any) => {
+      const nextAvailableStart = getNextAvailableStart(obj, nowUtc);
       const maxBookings =
         maxConfigByObjectId.get(String(obj.id)) || {
           limit: null,
@@ -1059,7 +1061,11 @@ const buildServicesForAuth = async (db: D1Database, auth: { user: any; tenant: a
       time_slot_end_time: normalizeClockTime(obj.time_slot_end_time, "20:00"),
       window_min_days: obj.window_min_days,
       window_max_days: obj.window_max_days,
-      next_available: formatDate(getNextAvailableStart(obj, nowUtc)),
+      next_available:
+        obj.booking_type === "time-slot"
+          ? formatDateTimeMinutes(nextAvailableStart)
+          : formatDate(nextAvailableStart),
+      next_available_start: nextAvailableStart.toISOString(),
       price_weekday_cents: obj.price_weekday_cents,
       price_weekend_cents: obj.price_weekend_cents,
       group_id: obj.group_id || null,
