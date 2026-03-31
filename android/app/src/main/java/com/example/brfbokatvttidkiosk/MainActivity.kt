@@ -270,9 +270,6 @@ class MainActivity : ComponentActivity() {
         lastEmUid = uid
         lastEmUidAtMs = now
         withContext(Dispatchers.Main) {
-            // Debug: show raw frame so we can compare EM vs MiFare behavior.
-            rfidInfoMessage = "EM-data: $hexFrame"
-
             // If NFC just fired, this is likely the same card being picked up by both paths.
             if (now - lastNfcReadAtMs < nfcVsEmWindowMs) {
                 rfidInfoMessage = "Taggen lästes via både NFC och EM. Använd MiFare-läsaren."
@@ -361,13 +358,13 @@ class MainActivity : ComponentActivity() {
             if (result is BookingResult.Failure) {
                 rfidErrorMessage = when {
                     result.statusCode == 401 && result.responseBody?.contains("invalid_rfid") == true ->
-                        "Taggen finns inte i systemet (UID: $uid)."
+                        "Taggen finns inte i systemet."
                     result.statusCode == null ->
-                        "Kunde inte kontakta servern (UID: $uid). Kontrollera internetanslutningen."
+                        "Kunde inte kontakta servern. Kontrollera internetanslutningen."
                     result.statusCode in 500..599 ->
-                        "Serverfel (UID: $uid). Försök igen om en stund."
+                        "Serverfel. Försök igen om en stund."
                     else ->
-                        "Inloggning misslyckades (UID: $uid, HTTP ${result.statusCode ?: "okänt"})."
+                        "Inloggning misslyckades (HTTP ${result.statusCode ?: "okänt"})."
                 }
                 playFailureTone()
                 uiState = UiState.Idle
@@ -624,15 +621,23 @@ class MainActivity : ComponentActivity() {
         val statusResult = withContext(Dispatchers.IO) {
             getJson(screenStatusEndpoint, config.screenToken)
         }
-        if (!statusResult.ok || statusResult.statusCode !in 200..299 || statusResult.body.isNullOrBlank()) {
+        if (statusResult.statusCode in setOf(401, 403)) {
             resetBindingToPairing()
+            return
+        }
+        if (!statusResult.ok || statusResult.statusCode !in 200..299 || statusResult.body.isNullOrBlank()) {
+            if (statusResult.statusCode == null) {
+                rfidErrorMessage = "Ingen kontakt med backend. Försöker igen."
+            } else if (statusResult.statusCode in 500..599) {
+                rfidErrorMessage = "Backend svarar med fel (${statusResult.statusCode}). Försöker igen."
+            }
             return
         }
         val stillConnected = try {
             val payload = JSONObject(statusResult.body)
             payload.optBoolean("connected", false)
         } catch (_: Exception) {
-            false
+            true
         }
         if (!stillConnected) {
             resetBindingToPairing()
@@ -794,31 +799,44 @@ private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?, rfidInfoM
             modifier = Modifier.padding(24.dp)
         ) {
             Text(
-                text = tenantName?.takeIf { it.isNotBlank() } ?: "Bokningsskärm",
+                text = "Digital Bokningstavla",
                 color = Color.White,
                 textAlign = TextAlign.Center,
-                fontSize = 34.sp,
+                fontSize = 56.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Väntar på RFID-tag",
+                text = "för",
                 color = Color(0xFFD1D5DB),
                 textAlign = TextAlign.Center,
-                fontSize = 22.sp
+                fontSize = 24.sp
             )
             Text(
-                text = "Blippa din tagg för att starta bokningsskärmen",
+                text = tenantName?.takeIf { it.isNotBlank() } ?: "Bokningsskärm",
                 color = Color.White,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                fontSize = 44.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "",
+                color = Color.Transparent
+            )
+            Text(
+                text = "Blippa din tagg eller iLoq-nyckel för att logga in",
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                fontSize = 28.sp
             )
         }
         if (!popupMessage.isNullOrBlank()) {
             val isError = popupMessage == rfidErrorMessage
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .align(Alignment.Center)
                     .padding(24.dp)
-                    .fillMaxWidth()
+                    .width(560.dp)
+                    .height(160.dp)
                     .background(
                         if (isError) Color(0xFF7F1D1D) else Color(0xFF1E3A8A),
                         RoundedCornerShape(10.dp)
@@ -834,7 +852,7 @@ private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?, rfidInfoM
                     text = popupMessage ?: "",
                     color = if (isError) Color(0xFFFECACA) else Color(0xFFDBEAFE),
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().align(Alignment.Center)
                 )
             }
         }
