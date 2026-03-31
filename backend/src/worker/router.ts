@@ -1124,7 +1124,7 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
   const bookings = await db
     .prepare(
       `SELECT b.id, b.user_id, u.apartment_id, b.start_time, b.end_time
-       FROM bookings
+       FROM bookings b
        JOIN users u ON u.id = b.user_id
        WHERE booking_object_id = ?
          AND cancelled_at IS NULL
