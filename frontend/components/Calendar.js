@@ -2,7 +2,18 @@ import { createElement } from "../hooks/dom.js";
 
 const weekDays = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
 
-export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, canPrev, canNext, onSelect, isLoading = false }) => {
+export const Calendar = ({
+  monthLabel,
+  days,
+  selectedDateId,
+  onPrev,
+  onNext,
+  canPrev,
+  canNext,
+  onSelect,
+  isLoading = false,
+  isAdminView = false,
+}) => {
   const header = createElement("div", {
     className: "calendar-header",
     children: [
@@ -42,6 +53,7 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
     const isSelected = selectedDateId === day.id;
     const className = [
       "day-card",
+      isAdminView ? "admin-view" : "",
       day.status,
       isSelected ? "selected" : "",
     ]
@@ -55,10 +67,17 @@ export const Calendar = ({ monthLabel, days, selectedDateId, onPrev, onNext, can
       children: [
         createElement("span", { className: "day-weekday", text: weekday }),
         createElement("strong", { text: day.label }),
-        day.bookedByApartmentId && (day.status === "booked" || day.status === "mine")
-          ? createElement("span", { className: "day-price", text: `Bokad av: ${day.bookedByApartmentId}` })
+        isAdminView
+          ? createElement("span", {
+              className: "day-price day-meta",
+              text:
+                day.bookedByApartmentId && (day.status === "booked" || day.status === "mine")
+                  ? `Bokad av: ${day.bookedByApartmentId}`
+                  : day.status === "blocked"
+                    ? "Blockerad"
+                    : " ",
+            })
           : null,
-        day.status === "blocked" ? createElement("span", { className: "day-price", text: "Blockerad" }) : null,
         day.priceText ? createElement("span", { className: "day-price", text: day.priceText }) : null,
       ],
     });

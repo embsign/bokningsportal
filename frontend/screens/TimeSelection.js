@@ -38,6 +38,7 @@ export const TimeSelection = ({
   cancelBooking,
   onCloseCancel,
   onConfirmCancel,
+  isAdminView = false,
 }) => {
   const nav = createElement("div", {
     className: "screen-header",
@@ -118,6 +119,7 @@ export const TimeSelection = ({
               slot,
               isSelected: selectedSlotId === slot.id,
               onSelect: () => onSelect(slot),
+              isAdminView,
             })
           ),
         ],

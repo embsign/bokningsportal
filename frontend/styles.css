@@ -1251,6 +1251,10 @@ body {
   );
 }
 
+.day-card.admin-view {
+  min-height: 116px;
+}
+
 .timeslot-button.available {
   border-color: #22c55e;
   background: rgba(34, 197, 94, 0.18);
@@ -1273,6 +1277,10 @@ body {
 
 .timeslot-meta {
   display: block;
+}
+
+.timeslot-button.admin-view {
+  min-height: 96px;
 }
 
 .timeslot-skeleton-item[data-has-price="true"] {

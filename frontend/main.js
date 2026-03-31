@@ -1971,6 +1971,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         });
         loadMonthAvailability(state.selectedService, year, monthIndex);
       },
+      isAdminView: isAdminUser,
     });
 
     footer = null;
@@ -2078,6 +2079,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         });
         loadWeekAvailability(state.selectedService, state.weekCursor);
       },
+      isAdminView: isAdminUser,
     });
 
     footer = null;
