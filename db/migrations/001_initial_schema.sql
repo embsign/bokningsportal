@@ -40,10 +40,15 @@ CREATE TABLE IF NOT EXISTS user_access_groups (
 );
 
 CREATE TABLE IF NOT EXISTS rfid_tags (
-  uid TEXT PRIMARY KEY,
+  uid TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (tenant_id, uid),
+  CHECK (uid = UPPER(uid)),
+  CHECK (uid NOT GLOB '*[^0-9A-F]*'),
+  CHECK (LENGTH(uid) >= 4),
+  CHECK (LENGTH(REPLACE(uid, '0', '')) >= 1),
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );

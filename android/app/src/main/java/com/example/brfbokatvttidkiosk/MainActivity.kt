@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
     private var pairingErrorMessage by mutableStateOf<String?>(null)
     private var isPairingBusy by mutableStateOf(false)
     private var rfidErrorMessage by mutableStateOf<String?>(null)
+    private var rfidInfoMessage by mutableStateOf<String?>(null)
     private var pairingJob: Job? = null
     private var emReaderJob: Job? = null
     private var toneGenerator: ToneGenerator? = null
@@ -95,11 +96,14 @@ class MainActivity : ComponentActivity() {
     private var lastHidKeyTimestamp = 0L
     private var lastEmUid: String? = null
     private var lastEmUidAtMs: Long = 0L
+    private var lastNfcUid: String? = null
+    private var lastNfcReadAtMs: Long = 0L
 
     private val hidKeyTimeoutMs = 300L
     private val hidMaxLength = 64
     private val emSerialDevice = "/dev/ttyS3"
     private val emDuplicateWindowMs = 2_000L
+    private val nfcVsEmWindowMs = 1_500L
     private val verifyIntervalMs = 90_000L
     private val pairingPollIntervalMs = 3_000L
     private val pairingAnnounceIntervalMs = 25_000L
@@ -160,6 +164,7 @@ class MainActivity : ComponentActivity() {
                     UiState.Idle -> IdleScreen(
                         tenantName = kioskConfig?.tenantName,
                         rfidErrorMessage = rfidErrorMessage,
+                        rfidInfoMessage = rfidInfoMessage,
                     )
                     UiState.Loading -> LoadingScreen()
                     is UiState.Showing -> WebScreen(
@@ -249,6 +254,7 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun handleEmFrame(frame: IntArray) {
         if (frame.size < 3 || frame.first() != 0x02 || frame.last() != 0x03) return
+        val hexFrame = frame.joinToString(" ") { "%02X".format(it) }
         val uid = extractEmUid(frame) ?: return
         val now = System.currentTimeMillis()
         if (uid == lastEmUid && now - lastEmUidAtMs < emDuplicateWindowMs) {
@@ -257,6 +263,14 @@ class MainActivity : ComponentActivity() {
         lastEmUid = uid
         lastEmUidAtMs = now
         withContext(Dispatchers.Main) {
+            // Debug: show raw frame so we can compare EM vs MiFare behavior.
+            rfidInfoMessage = "EM-data: $hexFrame"
+
+            // If NFC just fired, this is likely the same card being picked up by both paths.
+            if (now - lastNfcReadAtMs < nfcVsEmWindowMs) {
+                rfidInfoMessage = "Taggen lästes via både NFC och EM. Använd MiFare-läsaren."
+                return@withContext
+            }
             if (uiState == UiState.Idle) {
                 requestBookingUrl(uid.uppercase())
             }
@@ -264,11 +278,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun extractEmUid(frame: IntArray): String? {
+        if (frame.size < 3 || frame.first() != 0x02 || frame.last() != 0x03) return null
+
+        // EM frame variant observed:
+        // 02 09 10 <UID4> <CRC1> 03  -> use bytes 3..6
+        if (frame.size >= 9 && frame[1] == 0x09 && frame[2] == 0x10) {
+            return frame.slice(3..6).joinToString("") { "%02X".format(it) }
+        }
+
+        // EM frame variant observed:
+        // 02 0A 01 0E/0F 00 <UID4> 03 -> use bytes 5..8
+        if (frame.size >= 10 && frame[1] == 0x0A && frame[2] == 0x01 && frame[4] == 0x00) {
+            return frame.slice(5..8).joinToString("") { "%02X".format(it) }
+        }
+
         val body = frame.drop(1).dropLast(1)
-        if (body.isEmpty()) return null
-        // Device frames look like: 02 <len> <type...> <uid bytes> 03.
-        // Use the last 4 bytes as UID to avoid truncating binary IDs to one printable char.
         if (body.size >= 4) {
+            // Fallback for unknown variants.
             return body.takeLast(4).joinToString("") { "%02X".format(it) }
         }
         return body.joinToString("") { "%02X".format(it) }.ifBlank { null }
@@ -286,6 +312,8 @@ class MainActivity : ComponentActivity() {
 
         tag?.let {
             val uid = it.id.joinToString("") { byte -> "%02X".format(byte) }
+            lastNfcReadAtMs = System.currentTimeMillis()
+            lastNfcUid = uid
             if (uiState == UiState.Idle) {
                 requestBookingUrl(uid)
             }
@@ -344,8 +372,15 @@ class MainActivity : ComponentActivity() {
                 fetchBookingUrl(uid)
             }
             if (result is BookingResult.Failure) {
-                if (result.statusCode == 401 && result.responseBody?.contains("invalid_rfid") == true) {
-                    rfidErrorMessage = "Taggen finns inte i systemet."
+                rfidErrorMessage = when {
+                    result.statusCode == 401 && result.responseBody?.contains("invalid_rfid") == true ->
+                        "Taggen finns inte i systemet (UID: $uid)."
+                    result.statusCode == null ->
+                        "Kunde inte kontakta servern (UID: $uid). Kontrollera internetanslutningen."
+                    result.statusCode in 500..599 ->
+                        "Serverfel (UID: $uid). Försök igen om en stund."
+                    else ->
+                        "Inloggning misslyckades (UID: $uid, HTTP ${result.statusCode ?: "okänt"})."
                 }
                 playFailureTone()
                 uiState = UiState.Idle
@@ -354,6 +389,7 @@ class MainActivity : ComponentActivity() {
 
             val success = result as BookingResult.Success
             rfidErrorMessage = null
+            rfidInfoMessage = null
             playSuccessTone()
             uiState = UiState.Showing(success.fullUrl, success.bookingPath)
         }
@@ -738,7 +774,27 @@ private sealed interface BookingResult {
 }
 
 @Composable
-private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?) {
+private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?, rfidInfoMessage: String?) {
+    var popupMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(rfidErrorMessage) {
+        if (!rfidErrorMessage.isNullOrBlank()) {
+            popupMessage = rfidErrorMessage
+            delay(5_000)
+            if (popupMessage == rfidErrorMessage) {
+                popupMessage = null
+            }
+        }
+    }
+    LaunchedEffect(rfidInfoMessage) {
+        if (!rfidInfoMessage.isNullOrBlank()) {
+            popupMessage = rfidInfoMessage
+            delay(5_000)
+            if (popupMessage == rfidInfoMessage) {
+                popupMessage = null
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -768,21 +824,31 @@ private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?) {
                 color = Color.White,
                 textAlign = TextAlign.Center
             )
-            if (!rfidErrorMessage.isNullOrBlank()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF7F1D1D), RoundedCornerShape(10.dp))
-                        .border(1.dp, Color(0xFFFCA5A5), RoundedCornerShape(10.dp))
-                        .padding(12.dp)
-                ) {
-                    Text(
-                        text = rfidErrorMessage,
-                        color = Color(0xFFFECACA),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+        }
+        if (!popupMessage.isNullOrBlank()) {
+            val isError = popupMessage == rfidErrorMessage
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .background(
+                        if (isError) Color(0xFF7F1D1D) else Color(0xFF1E3A8A),
+                        RoundedCornerShape(10.dp)
                     )
-                }
+                    .border(
+                        1.dp,
+                        if (isError) Color(0xFFFCA5A5) else Color(0xFF93C5FD),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = popupMessage ?: "",
+                    color = if (isError) Color(0xFFFECACA) else Color(0xFFDBEAFE),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

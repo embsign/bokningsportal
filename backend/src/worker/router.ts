@@ -647,13 +647,70 @@ const toUniqueTrimmedStrings = (values: unknown[]) => {
 const getUserGroupNamesFromPayload = (body: any) =>
   toUniqueTrimmedStrings(Array.isArray(body?.groups) ? body.groups : []);
 
-const getUserRfidTagsFromPayload = (body: any) => {
-  const tags = Array.isArray(body?.rfid_tags)
+const normalizeStoredRfid = (value: unknown) => {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return null;
+  if (/[^0-9A-F]/.test(raw)) return null;
+  const noLeadingZeros = raw.replace(/^0+/, "");
+  const normalized = noLeadingZeros || "0";
+  if (normalized.length < 4) return null;
+  if (!/[1-9A-F]/.test(normalized)) return null;
+  return normalized;
+};
+
+const toHexFromDecString = (dec: string) => {
+  try {
+    return BigInt(dec).toString(16).toUpperCase();
+  } catch {
+    return null;
+  }
+};
+
+const toDecFromHexString = (hex: string) => {
+  try {
+    return BigInt(`0x${hex}`).toString(10);
+  } catch {
+    return null;
+  }
+};
+
+const getRfidLookupCandidates = (value: unknown) => {
+  const normalized = normalizeStoredRfid(value);
+  if (!normalized) return [];
+  const candidates = new Set<string>([normalized]);
+
+  const isDigitsOnly = /^[0-9]+$/.test(normalized);
+  if (isDigitsOnly) {
+    const asHex = toHexFromDecString(normalized);
+    if (asHex) candidates.add(asHex);
+  } else {
+    const asDec = toDecFromHexString(normalized);
+    if (asDec) candidates.add(asDec);
+  }
+  return Array.from(candidates);
+};
+
+const getValidatedUserRfidTagsFromPayload = (body: any) => {
+  const sourceTags = Array.isArray(body?.rfid_tags)
     ? body.rfid_tags
     : body?.rfid
       ? [body.rfid]
       : [];
-  return toUniqueTrimmedStrings(tags);
+  const uniqueInput = toUniqueTrimmedStrings(sourceTags);
+  const validTags: string[] = [];
+  const invalidTags: string[] = [];
+  for (const input of uniqueInput) {
+    const normalized = normalizeStoredRfid(input);
+    if (!normalized) {
+      invalidTags.push(input);
+      continue;
+    }
+    validTags.push(normalized);
+  }
+  return {
+    tags: toUniqueTrimmedStrings(validTags),
+    invalidTags,
+  };
 };
 
 const listAccessGroupsByNames = async (db: D1Database, tenantId: string, groupNames: string[]) => {
@@ -713,7 +770,7 @@ const replaceUserRfidTags = async (db: D1Database, tenantId: string, userId: str
         .prepare(
           `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
            VALUES (?, ?, ?, 1)
-           ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+           ON CONFLICT(tenant_id, uid) DO UPDATE SET user_id = excluded.user_id, is_active = 1`
         )
         .bind(uid, tenantId, userId)
     ),
@@ -1117,10 +1174,10 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
 
 const handleRfidLogin = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
-  const uid = String(body?.uid || "").trim();
+  const uidCandidates = getRfidLookupCandidates(body?.uid);
   const tenantIdFromBody = String(body?.tenant_id || "").trim();
   const screenToken = parseBearerToken(request.headers.get("authorization"));
-  if (!uid) {
+  if (!uidCandidates.length) {
     return errorResponse(401, "invalid_rfid");
   }
 
@@ -1146,12 +1203,12 @@ const handleRfidLogin = async (request: Request, env: Env) => {
          u.is_admin AS user_is_admin
        FROM rfid_tags rt
        JOIN users u ON u.id = rt.user_id
-       WHERE rt.uid = ?
+       WHERE rt.uid IN (${buildInClausePlaceholders(uidCandidates.length)})
          AND rt.is_active = 1
          AND (? IS NULL OR rt.tenant_id = ?)
        LIMIT 1`
     )
-    .bind(uid, tenantIdFilter, tenantIdFilter)
+    .bind(...uidCandidates, tenantIdFilter, tenantIdFilter)
     .first()) as any;
   if (!rfidContext) {
     return errorResponse(401, "invalid_rfid");
@@ -1550,9 +1607,9 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
 
   const body = await getJsonBody(request);
-  const uid = String(body?.uid || "").trim();
+  const uidCandidates = getRfidLookupCandidates(body?.uid);
   const tenantIdFromBody = String(body?.tenant_id || "").trim();
-  if (!uid) {
+  if (!uidCandidates.length) {
     return errorResponse(401, "invalid_rfid");
   }
   if (tenantIdFromBody && tenantIdFromBody !== String(auth.screen.tenant_id)) {
@@ -1568,12 +1625,12 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
          u.is_admin AS user_is_admin
        FROM rfid_tags rt
        JOIN users u ON u.id = rt.user_id
-       WHERE rt.uid = ?
+       WHERE rt.uid IN (${buildInClausePlaceholders(uidCandidates.length)})
          AND rt.is_active = 1
          AND rt.tenant_id = ?
        LIMIT 1`
     )
-    .bind(uid, auth.screen.tenant_id)
+    .bind(...uidCandidates, auth.screen.tenant_id)
     .first()) as any;
   if (!rfidContext) {
     return errorResponse(401, "invalid_rfid");
@@ -1879,7 +1936,11 @@ const handleAdminUpdateUser = async (request: Request, env: Env, userId: string)
   const groupIds = groupNames
     .map((name) => groupIdsByName.get(name))
     .filter((id): id is string => Boolean(id));
-  const rfidTags = getUserRfidTagsFromPayload(body);
+  const { tags: rfidTags, invalidTags } = getValidatedUserRfidTagsFromPayload(body);
+  if (invalidTags.length) {
+    const sample = invalidTags.slice(0, 3).join(",");
+    return errorResponse(400, `invalid_rfid_format:${sample}`);
+  }
   await Promise.all([
     replaceUserAccessGroups(env.DB, userId, groupIds),
     replaceUserRfidTags(env.DB, auth.tenant.id, userId, rfidTags),
@@ -1924,7 +1985,11 @@ const handleAdminCreateUser = async (request: Request, env: Env) => {
   const groupIds = groupNames
     .map((name) => groupIdsByName.get(name))
     .filter((id): id is string => Boolean(id));
-  const rfidTags = getUserRfidTagsFromPayload(body);
+  const { tags: rfidTags, invalidTags } = getValidatedUserRfidTagsFromPayload(body);
+  if (invalidTags.length) {
+    const sample = invalidTags.slice(0, 3).join(",");
+    return errorResponse(400, `invalid_rfid_format:${sample}`);
+  }
   await Promise.all([
     replaceUserAccessGroups(env.DB, userId, groupIds),
     replaceUserRfidTags(env.DB, auth.tenant.id, userId, rfidTags),
@@ -2268,7 +2333,8 @@ const buildImportPreview = async (db: D1Database, tenantId: string, csvText: str
       : houseSource;
     const groupsRaw = rules.groups_field ? row[rules.groups_field] || "" : "";
     const groups = groupsRaw ? groupsRaw.split(groupSeparator).map((g) => g.trim()).filter(Boolean) : [];
-    const rfid = rules.rfid_field ? (row[rules.rfid_field] || "").trim() : "";
+    const rawRfid = rules.rfid_field ? (row[rules.rfid_field] || "").trim() : "";
+    const rfid = normalizeStoredRfid(rawRfid) || "";
     const admin = groups.some((g) => adminGroups.includes(g));
     const activeRaw = rules.active_field ? row[rules.active_field] || "" : "";
     const active = rules.active_field ? parseActiveValue(activeRaw) : true;
@@ -2451,7 +2517,7 @@ const handleImportApply = async (request: Request, env: Env) => {
       env.DB.prepare(
         `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
          VALUES (?, ?, ?, 1)
-         ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+         ON CONFLICT(tenant_id, uid) DO UPDATE SET user_id = excluded.user_id, is_active = 1`
       ).bind(rfid, auth.tenant.id, userId)
     );
   };
@@ -2463,7 +2529,7 @@ const handleImportApply = async (request: Request, env: Env) => {
         env.DB.prepare(
           `INSERT INTO rfid_tags (uid, tenant_id, user_id, is_active)
            VALUES (?, ?, ?, 1)
-           ON CONFLICT(uid) DO UPDATE SET tenant_id = excluded.tenant_id, user_id = excluded.user_id, is_active = 1`
+           ON CONFLICT(tenant_id, uid) DO UPDATE SET user_id = excluded.user_id, is_active = 1`
         ).bind(uid, auth.tenant.id, userId)
       );
     }
@@ -2480,7 +2546,8 @@ const handleImportApply = async (request: Request, env: Env) => {
     const key = String(row.apartment_id || "");
     const prev = mergedByApartment.get(key);
     const nextGroups = new Set([...(prev?.groups || []), ...(row.groups || [])].filter(Boolean));
-    const nextRfids = new Set([...(prev?.rfids || []), ...(row.rfid ? [row.rfid] : [])].filter(Boolean));
+    const normalizedRowRfid = normalizeStoredRfid(row.rfid);
+    const nextRfids = new Set([...(prev?.rfids || []), ...(normalizedRowRfid ? [normalizedRowRfid] : [])].filter(Boolean));
     mergedByApartment.set(key, {
       apartment_id: key,
       house: row.house || prev?.house || "",
