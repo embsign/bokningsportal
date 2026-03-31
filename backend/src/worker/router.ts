@@ -1372,8 +1372,8 @@ const handleDemoLinks = async (request: Request, env: Env) => {
         })),
         admin_user: adminUserToken
           ? {
-              path: `/admin/${adminUserToken}`,
-              url: buildLink(`/admin/${adminUserToken}`),
+              path: `/user/${adminUserToken}`,
+              url: buildLink(`/user/${adminUserToken}`),
             }
           : null,
         account_owner: accountOwnerToken

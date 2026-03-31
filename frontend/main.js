@@ -1877,6 +1877,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   }
 
   if (state.step === 2 && state.selectedService?.bookingType === "full-day") {
+    const isAdminUser = Boolean(state.sessionUser?.is_admin);
     const { year, monthIndex } = state.monthCursor;
     const monthKey = `${state.selectedService.id}-${year}-${monthIndex}`;
     const isMonthDataCurrent = state.availabilityMonthKey === monthKey;
@@ -1897,6 +1898,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       const priceCents = isWeekend ? Number(state.selectedService?.priceWeekend || 0) : Number(state.selectedService?.priceWeekday || 0);
       return {
         ...statusPatchedDay,
+        bookedByApartmentId: isAdminUser ? statusPatchedDay.bookedByApartmentId || null : null,
         priceText: priceCents > 0 ? `${Math.round(priceCents / 100)} kr` : "",
       };
     });
@@ -1908,7 +1910,6 @@ const loadWeekAvailability = async (service, weekStart) => {
       expectedDays: getExpectedMonthDays(year, monthIndex),
       selectedDateId: state.selectedDate?.id,
       onSelect: (day) => {
-        const isAdminUser = Boolean(state.sessionUser?.is_admin);
         if (day.status === "mine" || (isAdminUser && day.status === "booked") || (isAdminUser && day.status === "blocked")) {
           store.setState({
             cancelModalOpen: true,
@@ -1976,6 +1977,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   }
 
   if (state.step === 2 && state.selectedService?.bookingType !== "full-day") {
+    const isAdminUser = Boolean(state.sessionUser?.is_admin);
     const weekKey = weekAvailabilityStateKey(state.selectedService.id, state.weekCursor);
     const isWeekDataCurrent = state.availabilityWeekKey === weekKey;
     const isWeekRequestInFlight = state.availabilityWeekRequestKey === weekKey;
@@ -1988,7 +1990,12 @@ const loadWeekAvailability = async (service, weekStart) => {
     const weekSlots = (isWeekDataCurrent ? state.availabilityWeek || [] : []).map((day) => ({
       ...day,
       slots: day.slots.map((slot) =>
-        state.cancelledSlotIds.includes(slot.id) ? { ...slot, status: "available" } : slot
+        state.cancelledSlotIds.includes(slot.id)
+          ? { ...slot, status: "available", bookedByApartmentId: null }
+          : {
+              ...slot,
+              bookedByApartmentId: isAdminUser ? slot.bookedByApartmentId || null : null,
+            }
       ),
     }));
     const visibleSlots = isMobile
@@ -2006,7 +2013,6 @@ const loadWeekAvailability = async (service, weekStart) => {
       expectedWeekSlots: state.availabilityWeekLoadingPlaceholder || expectedWeekSlots,
       selectedSlotId: state.selectedSlot?.id,
       onSelect: (slot) => {
-        const isAdminUser = Boolean(state.sessionUser?.is_admin);
         if (slot.status === "mine" || (isAdminUser && slot.status === "booked") || (isAdminUser && slot.status === "blocked")) {
           store.setState({
             cancelModalOpen: true,

@@ -9,7 +9,7 @@ const legend = () =>
       legendItem("dot-available", "Ledig"),
       legendItem("dot-booked", "Upptagen"),
       legendItem("dot-mine", "Bokad"),
-      legendItem("dot-booked", "Blockerad"),
+      legendItem("dot-blocked", "Blockerad"),
       legendItem("dot-disabled", "Passerad"),
     ],
   });

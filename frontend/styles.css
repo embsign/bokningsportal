@@ -1123,11 +1123,6 @@ body {
   background: rgba(251, 191, 36, 0.16);
 }
 
-.day-card.blocked {
-  border-color: #ef4444;
-  background: rgba(239, 68, 68, 0.12);
-}
-
 
 .day-card.available {
   border-color: #22c55e;
@@ -1161,6 +1156,16 @@ body {
 
 .dot-booked {
   background: #ef4444;
+}
+
+.dot-blocked {
+  background: repeating-linear-gradient(
+    135deg,
+    #b91c1c 0px,
+    #b91c1c 3px,
+    #9ca3af 3px,
+    #9ca3af 6px
+  );
 }
 
 .dot-mine {
@@ -1225,8 +1230,25 @@ body {
 }
 
 .timeslot-button.blocked {
-  border-color: #ef4444;
-  background: rgba(239, 68, 68, 0.2);
+  border-color: #b91c1c;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(185, 28, 28, 0.2) 0px,
+    rgba(185, 28, 28, 0.2) 8px,
+    rgba(156, 163, 175, 0.22) 8px,
+    rgba(156, 163, 175, 0.22) 16px
+  );
+}
+
+.day-card.blocked {
+  border-color: #b91c1c;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(185, 28, 28, 0.16) 0px,
+    rgba(185, 28, 28, 0.16) 8px,
+    rgba(156, 163, 175, 0.2) 8px,
+    rgba(156, 163, 175, 0.2) 16px
+  );
 }
 
 .timeslot-button.available {
