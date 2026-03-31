@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
     private val emSerialDevice = "/dev/ttyS3"
     private val emDuplicateWindowMs = 2_000L
     private val nfcVsEmWindowMs = 1_500L
+    private val kioskInactivityTimeoutMs = 3 * 60_000L
     private val verifyIntervalMs = 90_000L
     private val pairingPollIntervalMs = 3_000L
     private val pairingAnnounceIntervalMs = 25_000L
@@ -112,6 +113,11 @@ class MainActivity : ComponentActivity() {
                 verifyCurrentBinding()
             }
             verifyHandler.postDelayed(this, verifyIntervalMs)
+        }
+    }
+    private val kioskInactivityRunnable = Runnable {
+        if (uiState is UiState.Showing) {
+            resetToIdle()
         }
     }
 
@@ -196,6 +202,9 @@ class MainActivity : ComponentActivity() {
         if (uiState == UiState.Pairing) {
             startPairingLoop()
         }
+        if (uiState is UiState.Showing) {
+            restartKioskInactivityTimer()
+        }
     }
 
     override fun onPause() {
@@ -204,6 +213,14 @@ class MainActivity : ComponentActivity() {
         verifyHandler.removeCallbacks(verifyRunnable)
         pairingJob?.cancel()
         pairingJob = null
+        stopKioskInactivityTimer()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (uiState is UiState.Showing) {
+            restartKioskInactivityTimer()
+        }
     }
 
     override fun onDestroy() {
@@ -304,12 +321,11 @@ class MainActivity : ComponentActivity() {
         return body.joinToString("") { "%02X".format(it) }.ifBlank { null }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_UP) {
-            val consumed = handleHidKeyUp(event.keyCode, event)
-            if (consumed) return true
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (handleHidKeyUp(keyCode, event)) {
+            return true
         }
-        return super.dispatchKeyEvent(event)
+        return super.onKeyUp(keyCode, event)
     }
 
     private fun handleHidKeyUp(keyCode: Int, event: KeyEvent): Boolean {
@@ -375,7 +391,21 @@ class MainActivity : ComponentActivity() {
             rfidErrorMessage = null
             rfidInfoMessage = null
             playSuccessTone()
-            uiState = UiState.Showing(success.fullUrl, success.bookingPath)
+            uiState = UiState.Showing(withKioskModeQuery(success.fullUrl), success.bookingPath)
+            restartKioskInactivityTimer()
+        }
+    }
+
+    private fun withKioskModeQuery(rawUrl: String): String {
+        return try {
+            val uri = Uri.parse(rawUrl)
+            if (uri.getQueryParameter("kiosk") == "1") return rawUrl
+            uri.buildUpon()
+                .appendQueryParameter("kiosk", "1")
+                .build()
+                .toString()
+        } catch (_: Exception) {
+            rawUrl
         }
     }
 
@@ -726,12 +756,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resetToIdle() {
+        stopKioskInactivityTimer()
         webViewRef?.apply {
             stopLoading()
             clearHistory()
             loadUrl("about:blank")
         }
         uiState = UiState.Idle
+    }
+
+    private fun restartKioskInactivityTimer() {
+        verifyHandler.removeCallbacks(kioskInactivityRunnable)
+        verifyHandler.postDelayed(kioskInactivityRunnable, kioskInactivityTimeoutMs)
+    }
+
+    private fun stopKioskInactivityTimer() {
+        verifyHandler.removeCallbacks(kioskInactivityRunnable)
     }
 }
 

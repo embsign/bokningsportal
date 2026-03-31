@@ -65,8 +65,12 @@ const createPairCodeBoxes = (pairingCode, onCodeInput) =>
           const current = pairingCode.split("");
           current[index] = value.slice(-1) || "";
           onCodeInput(current.join(""));
-          if (value && event.target.nextElementSibling) {
-            event.target.nextElementSibling.focus();
+          if (value && index < 5) {
+            // Re-render replaces inputs; focus next box after DOM update.
+            setTimeout(() => {
+              const next = document.querySelector(`[data-focus-key="pairingCode-${index + 1}"]`);
+              next?.focus?.();
+            }, 0);
           }
         },
       })

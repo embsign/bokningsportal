@@ -32,6 +32,7 @@ export const ServiceSelection = ({
   onConfirmQr,
   onCloseQrModal,
   isMobile,
+  isKioskMode,
 }) => {
   const header = createElement("div", {
     className: "screen-header",
@@ -179,7 +180,7 @@ export const ServiceSelection = ({
                     },
                   })
                 : createElement("div", { className: "qr-box qr-box-large", text: "QR" }),
-              qrUrl
+              qrUrl && !isKioskMode
                 ? createElement("a", {
                     className: "booking-download-link",
                     text: qrUrl,

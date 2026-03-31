@@ -9,6 +9,7 @@ const legend = () =>
       legendItem("dot-available", "Ledig"),
       legendItem("dot-booked", "Upptagen"),
       legendItem("dot-mine", "Bokad"),
+      legendItem("dot-blocked", "Blockerad"),
       legendItem("dot-disabled", "Passerad"),
     ],
   });
@@ -37,6 +38,7 @@ export const DateSelection = ({
   cancelBooking,
   onCloseCancel,
   onConfirmCancel,
+  isAdminView = false,
 }) => {
   const header = createElement("div", {
     className: "screen-header",
@@ -60,6 +62,7 @@ export const DateSelection = ({
       canPrev,
       canNext,
       isLoading: true,
+      isAdminView,
     });
   } else if (state === "loading" && !hasRenderableDays) {
     content = Calendar({
@@ -72,6 +75,7 @@ export const DateSelection = ({
       canPrev,
       canNext,
       isLoading: true,
+      isAdminView,
     });
   } else if (state === "error" && !hasRenderableDays) {
     content = createElement("div", { className: "error-state", text: "Kunde inte ladda datum." });
@@ -87,6 +91,7 @@ export const DateSelection = ({
       onNext,
       canPrev,
       canNext,
+      isAdminView,
     });
   }
 

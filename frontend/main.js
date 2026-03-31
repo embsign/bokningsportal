@@ -18,6 +18,7 @@ import { getPublicConfig } from "./api/config.js";
 import { setAccessToken } from "./api/client.js";
 import { registerBrf, verifyBrfSetup, completeBrfSetup } from "./api/brf.js";
 import { getCurrentBookings, createBooking, cancelBooking } from "./api/bookings.js";
+import { getBookableUsers } from "./api/users.js";
 import {
   getMonthAvailability,
   getMonthLabel,
@@ -1262,6 +1263,7 @@ if (routePath.startsWith("/admin/")) {
   adminStore.subscribe(renderAdmin);
   renderAdmin();
 } else if (routePath.startsWith("/user/")) {
+const isKioskRoute = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
 const today = new Date();
 const initialMonth = { year: today.getFullYear(), monthIndex: today.getMonth() };
@@ -1303,6 +1305,9 @@ const store = createStore({
   qrModalOpen: false,
   confirmationCalendarEvent: null,
   confirmationBookingId: null,
+  adminBookableUsers: [],
+  adminBookingAction: "self",
+  adminBookingForUserId: "",
   uiStates: {
     service: "loading",
     date: "normal",
@@ -1384,6 +1389,66 @@ const formatDayLabel = (date) =>
     .replace(/^./, (char) => char.toUpperCase());
 
 const formatDateLabel = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
+const formatNextAvailableLabel = (value, bookingType) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const toWeekdayShort = (date) => date.toLocaleDateString("sv-SE", { weekday: "short" }).replace(".", "").toLowerCase();
+  const toDayMonth = (date) => `${date.getDate()}/${date.getMonth() + 1}`;
+  if (bookingType === "time-slot") {
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(raw)) {
+      const [datePart, timePart] = raw.split(" ");
+      const [year, month, day] = datePart.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
+      return `${toWeekdayShort(date)} ${toDayMonth(date)} kl ${timePart}`;
+    }
+    const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      const hh = String(parsed.getHours()).padStart(2, "0");
+      const mm = String(parsed.getMinutes()).padStart(2, "0");
+      return `${toWeekdayShort(parsed)} ${toDayMonth(parsed)} kl ${hh}:${mm}`;
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString("sv-SE", { day: "numeric", month: "long" });
+  }
+  const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString("sv-SE", { day: "numeric", month: "long" });
+  }
+  return raw;
+};
+
+const parseServiceNextAvailableDate = (service) => {
+  const raw = String(service?.nextAvailableRaw || service?.nextAvailable || "").trim();
+  if (!raw) {
+    return null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+  const parsed = new Date(raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+  return null;
+};
+
+const getInitialCursorForService = (service) => {
+  const nextAvailableDate = parseServiceNextAvailableDate(service);
+  if (!nextAvailableDate) {
+    return { monthCursor: initialMonth, weekCursor: initialWeek };
+  }
+  return {
+    monthCursor: {
+      year: nextAvailableDate.getFullYear(),
+      monthIndex: nextAvailableDate.getMonth(),
+    },
+    weekCursor: getWeekStart(nextAvailableDate),
+  };
+};
 
 const normalizeClockTime = (value) => (/^\d{2}:\d{2}$/.test(value || "") ? value : "12:00");
 
@@ -1406,8 +1471,10 @@ const buildFullDayDateRange = (date, service) => {
   };
 };
 
-const buildCancelBooking = ({ date, timeLabel, serviceName, sourceId }) => ({
+const buildCancelBooking = ({ date, timeLabel, serviceName, sourceId, bookingId = null, cancelType = "booking" }) => ({
   id: sourceId,
+  bookingId,
+  cancelType,
   serviceName,
   dayLabel: formatDayLabel(date),
   dateLabel: formatDateLabel(date),
@@ -1544,7 +1611,8 @@ const applyBootstrapData = (bootstrap) => {
                   : `${hours.toString().replace(".", ",")} timmar`;
               })()
             : "",
-        nextAvailable: service.next_available || "",
+        nextAvailableRaw: service.next_available_start || service.next_available || "",
+        nextAvailable: formatNextAvailableLabel(service.next_available, service.booking_type),
         priceText: (() => {
           const weekdayCents = Number(service.price_weekday_cents || 0);
           const weekendCents = Number(service.price_weekend_cents || 0);
@@ -1622,6 +1690,14 @@ const initUser = async () => {
   try {
     const bootstrap = await getBootstrap();
     applyBootstrapData(bootstrap);
+    if (bootstrap?.user?.is_admin) {
+      try {
+        const users = await getBookableUsers();
+        store.setState({ adminBookableUsers: users });
+      } catch {
+        store.setState({ adminBookableUsers: [] });
+      }
+    }
   } catch (error) {
     store.setState((prev) => ({
       sessionError: "unauthorized",
@@ -1743,16 +1819,19 @@ const loadWeekAvailability = async (service, weekStart) => {
   initUser();
 
   if (state.step === 1 && state.services.length === 1 && !state.selectedService) {
+    const initialCursor = getInitialCursorForService(state.services[0]);
     store.setState({
       selectedService: state.services[0],
-      monthCursor: initialMonth,
-      weekCursor: initialWeek,
+      monthCursor: initialCursor.monthCursor,
+      weekCursor: initialCursor.weekCursor,
       availabilityMonthKey: null,
       availabilityMonthRequestKey: null,
       availabilityWeekKey: null,
       availabilityWeekRequestKey: null,
       availabilityMonth: [],
       availabilityWeek: [],
+      adminBookingAction: "self",
+      adminBookingForUserId: "",
       step: 2,
     });
     return;
@@ -1786,29 +1865,25 @@ const loadWeekAvailability = async (service, weekStart) => {
   let pendingWeekLoad = null;
 
   if (state.step === 1) {
-    const resetCalendarCursorToToday = () =>
-      store.setState({
-        monthCursor: initialMonth,
-        weekCursor: initialWeek,
-      });
-
     screen = ServiceSelection({
       services: state.services,
       selectedService: state.selectedService,
       onSelect: (service) => {
-        resetCalendarCursorToToday();
+        const initialCursor = getInitialCursorForService(service);
         store.setState({
           selectedService: service,
           selectedDate: null,
           selectedSlot: null,
-          monthCursor: initialMonth,
-          weekCursor: initialWeek,
+          monthCursor: initialCursor.monthCursor,
+          weekCursor: initialCursor.weekCursor,
           availabilityMonthKey: null,
           availabilityMonthRequestKey: null,
           availabilityWeekKey: null,
           availabilityWeekRequestKey: null,
           availabilityMonth: [],
           availabilityWeek: [],
+          adminBookingAction: "self",
+          adminBookingForUserId: "",
           step: 2,
           confirmed: false,
           confirmationCalendarEvent: null,
@@ -1850,6 +1925,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         }
       },
       isMobile,
+      isKioskMode: isKioskRoute,
       state: state.uiStates.service,
     });
 
@@ -1857,6 +1933,7 @@ const loadWeekAvailability = async (service, weekStart) => {
   }
 
   if (state.step === 2 && state.selectedService?.bookingType === "full-day") {
+    const isAdminUser = Boolean(state.sessionUser?.is_admin);
     const { year, monthIndex } = state.monthCursor;
     const monthKey = `${state.selectedService.id}-${year}-${monthIndex}`;
     const isMonthDataCurrent = state.availabilityMonthKey === monthKey;
@@ -1877,6 +1954,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       const priceCents = isWeekend ? Number(state.selectedService?.priceWeekend || 0) : Number(state.selectedService?.priceWeekday || 0);
       return {
         ...statusPatchedDay,
+        bookedByApartmentId: isAdminUser ? statusPatchedDay.bookedByApartmentId || null : null,
         priceText: priceCents > 0 ? `${Math.round(priceCents / 100)} kr` : "",
       };
     });
@@ -1888,7 +1966,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       expectedDays: getExpectedMonthDays(year, monthIndex),
       selectedDateId: state.selectedDate?.id,
       onSelect: (day) => {
-        if (day.status === "mine") {
+        if (day.status === "mine" || (isAdminUser && day.status === "booked") || (isAdminUser && day.status === "blocked")) {
           store.setState({
             cancelModalOpen: true,
             cancelBooking: buildCancelBooking({
@@ -1896,6 +1974,8 @@ const loadWeekAvailability = async (service, weekStart) => {
               timeLabel: getFullDayTimeLabel(state.selectedService),
               serviceName: state.selectedService?.name,
               sourceId: day.id,
+              bookingId: day.bookingId || day.blockId || null,
+              cancelType: day.status === "blocked" ? "block" : "booking",
             }),
           });
           return;
@@ -1906,6 +1986,8 @@ const loadWeekAvailability = async (service, weekStart) => {
         store.setState({
           selectedDate: day,
           selectedSlot: null,
+          adminBookingAction: "self",
+          adminBookingForUserId: "",
           step: 3,
           confirmed: false,
           confirmationCalendarEvent: null,
@@ -1932,7 +2014,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
       onConfirmCancel: async () => {
         const target = store.getState().cancelBooking;
-        const bookingId = findBookingId(store.getState().bookings, target);
+        const bookingId = target?.bookingId || findBookingId(store.getState().bookings, target);
         if (bookingId) {
           await cancelBooking(bookingId);
         }
@@ -1945,12 +2027,14 @@ const loadWeekAvailability = async (service, weekStart) => {
         });
         loadMonthAvailability(state.selectedService, year, monthIndex);
       },
+      isAdminView: isAdminUser,
     });
 
     footer = null;
   }
 
   if (state.step === 2 && state.selectedService?.bookingType !== "full-day") {
+    const isAdminUser = Boolean(state.sessionUser?.is_admin);
     const weekKey = weekAvailabilityStateKey(state.selectedService.id, state.weekCursor);
     const isWeekDataCurrent = state.availabilityWeekKey === weekKey;
     const isWeekRequestInFlight = state.availabilityWeekRequestKey === weekKey;
@@ -1963,7 +2047,12 @@ const loadWeekAvailability = async (service, weekStart) => {
     const weekSlots = (isWeekDataCurrent ? state.availabilityWeek || [] : []).map((day) => ({
       ...day,
       slots: day.slots.map((slot) =>
-        state.cancelledSlotIds.includes(slot.id) ? { ...slot, status: "available" } : slot
+        state.cancelledSlotIds.includes(slot.id)
+          ? { ...slot, status: "available", bookedByApartmentId: null }
+          : {
+              ...slot,
+              bookedByApartmentId: isAdminUser ? slot.bookedByApartmentId || null : null,
+            }
       ),
     }));
     const visibleSlots = isMobile
@@ -1981,7 +2070,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       expectedWeekSlots: state.availabilityWeekLoadingPlaceholder || expectedWeekSlots,
       selectedSlotId: state.selectedSlot?.id,
       onSelect: (slot) => {
-        if (slot.status === "mine") {
+        if (slot.status === "mine" || (isAdminUser && slot.status === "booked") || (isAdminUser && slot.status === "blocked")) {
           store.setState({
             cancelModalOpen: true,
             cancelBooking: buildCancelBooking({
@@ -1989,6 +2078,8 @@ const loadWeekAvailability = async (service, weekStart) => {
               timeLabel: slot.label,
               serviceName: state.selectedService?.name,
               sourceId: slot.id,
+              bookingId: slot.bookingId || slot.blockId || null,
+              cancelType: slot.status === "blocked" ? "block" : "booking",
             }),
           });
           return;
@@ -1999,6 +2090,8 @@ const loadWeekAvailability = async (service, weekStart) => {
         store.setState({
           selectedSlot: slot,
           selectedDate: { id: slot.id, date: slot.date },
+          adminBookingAction: "self",
+          adminBookingForUserId: "",
           step: 3,
           confirmed: false,
           confirmationCalendarEvent: null,
@@ -2029,7 +2122,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       onCloseCancel: () => store.setState({ cancelModalOpen: false, cancelBooking: null }),
       onConfirmCancel: async () => {
         const target = store.getState().cancelBooking;
-        const bookingId = findBookingId(store.getState().bookings, target);
+        const bookingId = target?.bookingId || findBookingId(store.getState().bookings, target);
         if (bookingId) {
           await cancelBooking(bookingId);
         }
@@ -2042,6 +2135,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         });
         loadWeekAvailability(state.selectedService, state.weekCursor);
       },
+      isAdminView: isAdminUser,
     });
 
     footer = null;
@@ -2049,6 +2143,12 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   if (state.step === 3) {
     const maxBookingsReached = isSelectedServiceMaxReached(state);
+    const isAdminUser = Boolean(state.sessionUser?.is_admin);
+    const adminAction = state.adminBookingAction || "self";
+    const enforceClientMaxBookings = !(isAdminUser && (adminAction === "other" || adminAction === "block"));
+    const maxBookingsBlockedByClient = maxBookingsReached && enforceClientMaxBookings;
+    const requiresTargetUser = isAdminUser && adminAction === "other";
+    const adminTargetMissing = requiresTargetUser && !state.adminBookingForUserId;
     const summary = createBookingSummary({
       service: state.selectedService,
       date: state.selectedDate?.date,
@@ -2062,7 +2162,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     screen = Confirmation({
       summary,
       state: state.uiStates.confirmation,
-      maxBookingsReached,
+      maxBookingsReached: maxBookingsBlockedByClient,
       confirmed: state.confirmed,
       isKioskMode: !isMobile,
       calendarQrImageUrl,
@@ -2084,7 +2184,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           uiStates: { ...store.getState().uiStates, confirmation: "normal" },
         }),
       onConfirm: async () => {
-        if (!summary || maxBookingsReached) {
+        if (!summary || maxBookingsBlockedByClient || adminTargetMissing) {
           return;
         }
         store.setState((prev) => ({ uiStates: { ...prev.uiStates, confirmation: "loading" } }));
@@ -2102,18 +2202,24 @@ const loadWeekAvailability = async (service, weekStart) => {
             booking_object_id: currentState.selectedService.id,
             start_time: bookingRange.startTime,
             end_time: bookingRange.endTime,
+            action: isAdminUser && currentState.adminBookingAction === "block" ? "block" : "book",
+            booking_for_user_id:
+              isAdminUser && currentState.adminBookingAction === "other"
+                ? currentState.adminBookingForUserId
+                : undefined,
           });
+          const shouldMarkAsMine = !(isAdminUser && currentState.adminBookingAction !== "self");
           const calendarEventData = buildConfirmationCalendarEvent(currentState, bookingRange);
           store.setState((prev) => ({
             confirmed: true,
             confirmationCalendarEvent: calendarEventData,
             confirmationBookingId: bookingResult?.booking_id || null,
             availabilityMonth:
-              prev.selectedService?.bookingType === "full-day"
+              prev.selectedService?.bookingType === "full-day" && shouldMarkAsMine
                 ? markMonthDayAsMine(prev.availabilityMonth, prev.selectedDate?.id)
                 : prev.availabilityMonth,
             availabilityWeek:
-              prev.selectedService?.bookingType === "full-day"
+              prev.selectedService?.bookingType === "full-day" || !shouldMarkAsMine
                 ? prev.availabilityWeek
                 : markWeekSlotAsMine(prev.availabilityWeek, prev.selectedSlot?.id),
             uiStates: { ...prev.uiStates, confirmation: "normal" },
@@ -2125,6 +2231,11 @@ const loadWeekAvailability = async (service, weekStart) => {
             });
           } catch (refreshError) {
             console.error("Kunde inte uppdatera aktuella bokningar efter bokning.", refreshError);
+          }
+          if (currentState.selectedService?.bookingType === "full-day") {
+            loadMonthAvailability(currentState.selectedService, currentState.monthCursor.year, currentState.monthCursor.monthIndex);
+          } else if (currentState.selectedService) {
+            loadWeekAvailability(currentState.selectedService, currentState.weekCursor);
           }
         } catch (error) {
           store.setState((prev) => ({
@@ -2138,11 +2249,21 @@ const loadWeekAvailability = async (service, weekStart) => {
       },
       errorDetail:
         state.uiStates.confirmation === "error"
-          ? state.bookingErrorDetail || (maxBookingsReached ? "max_bookings_reached" : "booking_failed")
-          : maxBookingsReached
+          ? state.bookingErrorDetail || (maxBookingsBlockedByClient ? "max_bookings_reached" : "booking_failed")
+          : maxBookingsBlockedByClient
             ? "max_bookings_reached"
             : "",
-      confirmDisabled: !summary || maxBookingsReached,
+      isAdminUser,
+      adminUsers: state.adminBookableUsers,
+      bookingAction: state.adminBookingAction,
+      bookingForUserId: state.adminBookingForUserId,
+      onChangeBookingAction: (value) =>
+        store.setState({
+          adminBookingAction: value,
+          adminBookingForUserId: value === "other" ? store.getState().adminBookingForUserId : "",
+        }),
+      onChangeBookingForUserId: (value) => store.setState({ adminBookingForUserId: value }),
+      confirmDisabled: !summary || maxBookingsBlockedByClient || adminTargetMissing,
     });
 
     footer = null;
@@ -3361,8 +3482,9 @@ const loadWeekAvailability = async (service, weekStart) => {
   const finishCreateBrf = () => closeCreateBrf();
 
   const defaultDemoLinks = {
-    adminPath: "/admin/admin-demo-token",
-    userPaths: ["/user/user-demo-token-anna", "/user/user-demo-token-erik"],
+    adminUserPath: "",
+    accountOwnerPath: "",
+    userPaths: [],
   };
   const landingState = {
     demoLinks: {
@@ -3398,7 +3520,14 @@ const loadWeekAvailability = async (service, weekStart) => {
     }
 
     if (demoLinksResult.status === "fulfilled") {
-      const adminPath = demoLinksResult.value?.links?.admin?.path || defaultDemoLinks.adminPath;
+      const adminUserPath =
+        typeof demoLinksResult.value?.links?.admin_user?.path === "string"
+          ? demoLinksResult.value.links.admin_user.path
+          : "";
+      const accountOwnerPath =
+        typeof demoLinksResult.value?.links?.account_owner?.path === "string"
+          ? demoLinksResult.value.links.account_owner.path
+          : "";
       const userPaths = Array.isArray(demoLinksResult.value?.links?.users)
         ? demoLinksResult.value.links.users
             .map((link) => link?.path)
@@ -3406,8 +3535,9 @@ const loadWeekAvailability = async (service, weekStart) => {
             .slice(0, 2)
         : [];
       landingState.demoLinks = {
-        adminPath,
-        userPaths: userPaths.length ? userPaths : defaultDemoLinks.userPaths,
+        adminUserPath,
+        accountOwnerPath,
+        userPaths,
       };
     } else {
       landingState.demoLinks = {
@@ -3420,11 +3550,73 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   const renderLanding = () => {
     clearElement(app);
-    const userOnePath = landingState.demoLinks.userPaths[0] || defaultDemoLinks.userPaths[0];
-    const userTwoPath = landingState.demoLinks.userPaths[1] || defaultDemoLinks.userPaths[1];
-    const adminPath = landingState.demoLinks.adminPath || defaultDemoLinks.adminPath;
-    const userOneDemoUrl = `${window.location.origin}${userOnePath}`;
-    const userOneDemoQrImageUrl = buildQrImageUrl(userOneDemoUrl, 320);
+    const userOnePath = landingState.demoLinks.userPaths[0] || "";
+    const userTwoPath = landingState.demoLinks.userPaths[1] || "";
+    const adminUserPath = landingState.demoLinks.adminUserPath || "";
+    const accountOwnerPath = landingState.demoLinks.accountOwnerPath || "";
+    const userOneDemoUrl = userOnePath ? `${window.location.origin}${userOnePath}` : "";
+    const userOneDemoQrImageUrl = userOneDemoUrl ? buildQrImageUrl(userOneDemoUrl, 320) : "";
+    const demoCards = [];
+    if (userOnePath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Boende - användare 1" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Se hur en boende bokar tvättstuga eller lokal.",
+            }),
+            createLandingButton("Logga in som användare 1", userOnePath, "secondary"),
+          ],
+        })
+      );
+    }
+    if (userTwoPath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Boende - användare 2" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Testa flera användare och se bokningar i praktiken.",
+            }),
+            createLandingButton("Logga in som användare 2", userTwoPath, "secondary"),
+          ],
+        })
+      );
+    }
+    if (adminUserPath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Administratör" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "En styrelsemedlem eller annan administratör kan boka åt andra eller blockera dagar och tider.",
+            }),
+            createLandingButton("Logga in som Administratör", adminUserPath, "secondary"),
+          ],
+        })
+      );
+    }
+    if (accountOwnerPath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Kontoägare" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Kontoägaren lägger till eller tar bort användare och bokningsobjekt.",
+            }),
+            createLandingButton("Logga in som Kontoägare", accountOwnerPath, "secondary"),
+          ],
+        })
+      );
+    }
     const landing = createElement("div", {
       className: "landing-page",
       children: [
@@ -3497,41 +3689,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               }),
               createElement("div", {
                 className: "landing-demo-grid",
-                children: [
-                  createElement("article", {
-                    className: "landing-demo-card",
-                    children: [
-                      createElement("h3", { className: "landing-card-title", text: "Boende - användare 1" }),
-                      createElement("p", {
-                        className: "landing-card-text",
-                        text: "Se hur en boende bokar tvättstuga eller lokal.",
-                      }),
-                      createLandingButton("Logga in som användare 1", userOnePath, "secondary"),
-                    ],
-                  }),
-                  createElement("article", {
-                    className: "landing-demo-card",
-                    children: [
-                      createElement("h3", { className: "landing-card-title", text: "Boende - användare 2" }),
-                      createElement("p", {
-                        className: "landing-card-text",
-                        text: "Testa flera användare och se bokningar i praktiken.",
-                      }),
-                      createLandingButton("Logga in som användare 2", userTwoPath, "secondary"),
-                    ],
-                  }),
-                  createElement("article", {
-                    className: "landing-demo-card",
-                    children: [
-                      createElement("h3", { className: "landing-card-title", text: "Administratör" }),
-                      createElement("p", {
-                        className: "landing-card-text",
-                        text: "Hantera bokningsobjekt, inställningar och översikt.",
-                      }),
-                      createLandingButton("Logga in som Administratör", adminPath, "secondary"),
-                    ],
-                  }),
-                ],
+                children: demoCards,
               }),
               createElement("div", {
                 className: "landing-inline-note",
