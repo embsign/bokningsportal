@@ -67,6 +67,7 @@ export const AdminDashboard = ({
   importModal,
   editUserModal,
   reportModal,
+  confirmModal,
 }) => {
   const userSection = sectionCard({
     title: "Användare",
@@ -175,6 +176,7 @@ export const AdminDashboard = ({
       importModal,
       editUserModal,
       reportModal,
+      confirmModal,
     ],
   });
 };

@@ -12,6 +12,7 @@ import { ReportModal } from "./components/ReportModal.js";
 import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
+import { buildConfirmModalState, renderConfirmModal } from "./utils/confirmModal.js";
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
 import { getPublicConfig } from "./api/config.js";
 import { setAccessToken } from "./api/client.js";
@@ -382,6 +383,7 @@ if (routePath.startsWith("/admin/")) {
     userRfidModalOpen: false,
     userGroupModalOpen: false,
     addRfidDraft: "",
+    confirmModal: buildConfirmModalState(),
     reportOpen: false,
     reportStep: 1,
     reportMonth: "",
@@ -513,6 +515,22 @@ if (routePath.startsWith("/admin/")) {
     });
   };
 
+  const openAdminConfirmModal = ({ title, message, confirmLabel = "Bekräfta", onConfirm }) => {
+    adminStore.setState({
+      confirmModal: buildConfirmModalState({
+        open: true,
+        title,
+        message,
+        confirmLabel,
+        onConfirm,
+      }),
+    });
+  };
+
+  const closeAdminConfirmModal = () => {
+    adminStore.setState({ confirmModal: buildConfirmModalState() });
+  };
+
   const deleteAdminUserEntry = async (user) => {
     try {
       await deleteUser(user.id, false);
@@ -520,12 +538,17 @@ if (routePath.startsWith("/admin/")) {
       adminStore.setState({ userListError: "" });
     } catch (error) {
       if (error?.detail === "user_has_bookings") {
-        if (window.confirm("Användaren har bokningar. Vill du ta bort användaren och alla bokningar?")) {
-          await deleteUser(user.id, true);
-          await loadAdminData();
-          adminStore.setState({ userListError: "" });
-          return;
-        }
+        openAdminConfirmModal({
+          title: "Ta bort användare med bokningar",
+          message: "Användaren har bokningar. Vill du ta bort användaren och alla bokningar?",
+          confirmLabel: "Ta bort allt",
+          onConfirm: async () => {
+            await deleteUser(user.id, true);
+            await loadAdminData();
+            adminStore.setState({ userListError: "" });
+          },
+        });
+        return;
       }
       adminStore.setState({ userListError: "Kunde inte ta bort användaren." });
     }
@@ -980,6 +1003,32 @@ if (routePath.startsWith("/admin/")) {
           groupNameDraft: "",
         });
       },
+      onConfirmRemoveRfidTag: (value) =>
+        openAdminConfirmModal({
+          title: "Ta bort RFID-tag",
+          message: `Ta bort taggen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const current = adminStore.getState();
+            const next = (current.editUserForm.rfidTags || []).filter((item) => item !== value);
+            adminStore.setState({
+              editUserForm: { ...current.editUserForm, rfidTags: next },
+            });
+          },
+        }),
+      onConfirmRemoveGroup: (value) =>
+        openAdminConfirmModal({
+          title: "Ta bort behörighetsgrupp",
+          message: `Ta bort gruppen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const current = adminStore.getState();
+            const next = (current.editUserForm.groups || []).filter((item) => item !== value);
+            adminStore.setState({
+              editUserForm: { ...current.editUserForm, groups: next },
+            });
+          },
+        }),
     });
 
     const reportModal = ReportModal({
@@ -1017,6 +1066,18 @@ if (routePath.startsWith("/admin/")) {
               return prev;
           }
         }),
+    });
+
+    const confirmModal = renderConfirmModal({
+      state: state.confirmModal,
+      onCancel: closeAdminConfirmModal,
+      onConfirm: async () => {
+        const callback = adminStore.getState().confirmModal?.onConfirm;
+        closeAdminConfirmModal();
+        if (callback) {
+          await callback();
+        }
+      },
     });
 
     shell.append(
@@ -1086,11 +1147,15 @@ if (routePath.startsWith("/admin/")) {
         onEditScreen: (screen) =>
           adminStore.setState({ editScreenModalOpen: true, editScreenId: screen.id, editScreenName: screen.name }),
         onDeleteScreen: async (screen) => {
-          if (!window.confirm(`Ta bort bokningsskärmen "${screen.name}"?`)) {
-            return;
-          }
-          await deleteBookingScreen(screen.id);
-          await loadAdminData();
+          openAdminConfirmModal({
+            title: "Ta bort bokningsskärm",
+            message: `Ta bort bokningsskärmen "${screen.name}"?`,
+            confirmLabel: "Ta bort",
+            onConfirm: async () => {
+              await deleteBookingScreen(screen.id);
+              await loadAdminData();
+            },
+          });
         },
         onCloseEditScreen: () =>
           adminStore.setState({ editScreenModalOpen: false, editScreenId: null, editScreenName: "" }),
@@ -1116,6 +1181,7 @@ if (routePath.startsWith("/admin/")) {
         importModal,
         editUserModal,
         reportModal,
+        confirmModal,
       })
     );
     app.append(shell);
@@ -2160,6 +2226,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     userRfidModalOpen: false,
     userGroupModalOpen: false,
     addRfidDraft: "",
+    confirmModal: buildConfirmModalState(),
     accessGroupDraft: "",
     bookingModalOpen: false,
     bookingModalMode: "add",
@@ -2389,6 +2456,22 @@ const loadWeekAvailability = async (service, weekStart) => {
     });
   };
 
+  const openSetupConfirmModal = ({ title, message, confirmLabel = "Bekräfta", onConfirm }) => {
+    setSetupState({
+      confirmModal: buildConfirmModalState({
+        open: true,
+        title,
+        message,
+        confirmLabel,
+        onConfirm,
+      }),
+    });
+  };
+
+  const closeSetupConfirmModal = () => {
+    setSetupState({ confirmModal: buildConfirmModalState() });
+  };
+
   const deleteUserEntry = async (user) => {
     try {
       await deleteUser(user.id, false);
@@ -2396,12 +2479,17 @@ const loadWeekAvailability = async (service, weekStart) => {
       setSetupState({ userListError: "" });
     } catch (error) {
       if (error?.detail === "user_has_bookings") {
-        if (window.confirm("Användaren har bokningar. Vill du ta bort användaren och alla bokningar?")) {
-          await deleteUser(user.id, true);
-          await loadSetupLists();
-          setSetupState({ userListError: "" });
-          return;
-        }
+        openSetupConfirmModal({
+          title: "Ta bort användare med bokningar",
+          message: "Användaren har bokningar. Vill du ta bort användaren och alla bokningar?",
+          confirmLabel: "Ta bort allt",
+          onConfirm: async () => {
+            await deleteUser(user.id, true);
+            await loadSetupLists();
+            setSetupState({ userListError: "" });
+          },
+        });
+        return;
       }
       setSetupState({ userListError: "Kunde inte ta bort användaren." });
     }
@@ -2468,16 +2556,17 @@ const loadWeekAvailability = async (service, weekStart) => {
       setSetupState({ bookingListError: "" });
     } catch (error) {
       if (error?.detail === "booking_object_has_future_bookings") {
-        if (
-          window.confirm(
-            "Det finns framtida/pågående bokningar. Vill du ta bort objektet och avboka dessa?"
-          )
-        ) {
-          await deactivateBookingObject(item.id, true);
-          await loadSetupLists();
-          setSetupState({ bookingListError: "" });
-          return;
-        }
+        openSetupConfirmModal({
+          title: "Ta bort bokningsobjekt med bokningar",
+          message: "Det finns framtida/pågående bokningar. Vill du ta bort objektet och avboka dessa?",
+          confirmLabel: "Ta bort och avboka",
+          onConfirm: async () => {
+            await deactivateBookingObject(item.id, true);
+            await loadSetupLists();
+            setSetupState({ bookingListError: "" });
+          },
+        });
+        return;
       }
       setSetupState({ bookingListError: "Kunde inte ta bort bokningsobjektet." });
     }
@@ -2868,6 +2957,42 @@ const loadWeekAvailability = async (service, weekStart) => {
           accessGroupDraft: "",
         });
       },
+      onConfirmRemoveRfidTag: (value) =>
+        openSetupConfirmModal({
+          title: "Ta bort RFID-tag",
+          message: `Ta bort taggen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const next = (setupState.editUserForm.rfidTags || []).filter((item) => item !== value);
+            setSetupState({
+              editUserForm: { ...setupState.editUserForm, rfidTags: next },
+            });
+          },
+        }),
+      onConfirmRemoveGroup: (value) =>
+        openSetupConfirmModal({
+          title: "Ta bort behörighetsgrupp",
+          message: `Ta bort gruppen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const next = (setupState.editUserForm.groups || []).filter((item) => item !== value);
+            setSetupState({
+              editUserForm: { ...setupState.editUserForm, groups: next },
+            });
+          },
+        }),
+    });
+
+    const confirmModal = renderConfirmModal({
+      state: setupState.confirmModal,
+      onCancel: closeSetupConfirmModal,
+      onConfirm: async () => {
+        const callback = setupState.confirmModal?.onConfirm;
+        closeSetupConfirmModal();
+        if (callback) {
+          await callback();
+        }
+      },
     });
 
     const importModal = ImportUsersModal({
@@ -3074,6 +3199,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     app.append(page);
     if (bookingModal) app.append(bookingModal);
     if (editUserModal) app.append(editUserModal);
+    if (confirmModal) app.append(confirmModal);
     if (importModal) app.append(importModal);
 
     if (setupState.importOpen && setupState.importFocus) {

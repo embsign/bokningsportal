@@ -75,6 +75,8 @@ export const EditUserModal = ({
   onCloseGroupModal,
   onGroupNameChange,
   onCreateGroup,
+  onConfirmRemoveRfidTag,
+  onConfirmRemoveGroup,
 }) => {
   if (!open) {
     return null;
@@ -267,11 +269,7 @@ export const EditUserModal = ({
                       values: form.rfidTags || [],
                       emptyText: "Inga RFID-taggar",
                       onRemove: (value) => {
-                        if (!window.confirm(`Ta bort taggen "${value}"?`)) return;
-                        onChange(
-                          "rfidTags",
-                          (form.rfidTags || []).filter((item) => item !== value)
-                        );
+                        onConfirmRemoveRfidTag?.(value);
                       },
                     }),
                     createElement("button", {
@@ -291,11 +289,7 @@ export const EditUserModal = ({
                       values: form.groups || [],
                       emptyText: "Inga behörighetsgrupper",
                       onRemove: (value) => {
-                        if (!window.confirm(`Ta bort gruppen "${value}"?`)) return;
-                        onChange(
-                          "groups",
-                          (form.groups || []).filter((item) => item !== value)
-                        );
+                        onConfirmRemoveGroup?.(value);
                       },
                     }),
                     createElement("div", {

@@ -243,6 +243,7 @@ body {
 
 .user-list.user-list-table {
   padding: 0;
+  max-height: min(52vh, 460px);
 }
 
 .user-list.user-list-table .admin-table th,
@@ -562,7 +563,7 @@ body {
 .selector-list {
   display: grid;
   gap: 10px;
-  max-height: 280px;
+  max-height: min(52vh, 420px);
   overflow: auto;
   padding-right: 6px;
 }
@@ -583,7 +584,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: auto;
-  max-height: 220px;
+  max-height: min(42vh, 300px);
 }
 
 .selected-list-table {
@@ -599,6 +600,17 @@ body {
   display: grid;
   gap: 8px;
   justify-items: end;
+}
+
+.confirm-modal {
+  width: min(560px, 100%);
+}
+
+.modal-body-text {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.45;
 }
 
 .card {
