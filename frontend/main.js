@@ -3363,8 +3363,8 @@ const loadWeekAvailability = async (service, weekStart) => {
   const finishCreateBrf = () => closeCreateBrf();
 
   const defaultDemoLinks = {
-    adminPath: "/admin/admin-demo-token",
-    userPaths: ["/user/user-demo-token-anna", "/user/user-demo-token-erik"],
+    adminPath: "",
+    userPaths: [],
   };
   const landingState = {
     demoLinks: {
@@ -3400,16 +3400,19 @@ const loadWeekAvailability = async (service, weekStart) => {
     }
 
     if (demoLinksResult.status === "fulfilled") {
-      const adminPath = demoLinksResult.value?.links?.admin?.path || defaultDemoLinks.adminPath;
+      const adminPath =
+        typeof demoLinksResult.value?.links?.admin?.path === "string"
+          ? demoLinksResult.value.links.admin.path
+          : "";
       const userPaths = Array.isArray(demoLinksResult.value?.links?.users)
         ? demoLinksResult.value.links.users
             .map((link) => link?.path)
             .filter((pathValue) => typeof pathValue === "string")
-            .slice(0, 2)
+            .slice(0, 3)
         : [];
       landingState.demoLinks = {
         adminPath,
-        userPaths: userPaths.length ? userPaths : defaultDemoLinks.userPaths,
+        userPaths,
       };
     } else {
       landingState.demoLinks = {
@@ -3422,11 +3425,73 @@ const loadWeekAvailability = async (service, weekStart) => {
 
   const renderLanding = () => {
     clearElement(app);
-    const userOnePath = landingState.demoLinks.userPaths[0] || defaultDemoLinks.userPaths[0];
-    const userTwoPath = landingState.demoLinks.userPaths[1] || defaultDemoLinks.userPaths[1];
-    const adminPath = landingState.demoLinks.adminPath || defaultDemoLinks.adminPath;
-    const userOneDemoUrl = `${window.location.origin}${userOnePath}`;
-    const userOneDemoQrImageUrl = buildQrImageUrl(userOneDemoUrl, 320);
+    const userOnePath = landingState.demoLinks.userPaths[0] || "";
+    const userTwoPath = landingState.demoLinks.userPaths[1] || "";
+    const userThreePath = landingState.demoLinks.userPaths[2] || "";
+    const adminPath = landingState.demoLinks.adminPath || "";
+    const userOneDemoUrl = userOnePath ? `${window.location.origin}${userOnePath}` : "";
+    const userOneDemoQrImageUrl = userOneDemoUrl ? buildQrImageUrl(userOneDemoUrl, 320) : "";
+    const demoCards = [];
+    if (userOnePath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Boende - användare 1" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Se hur en boende bokar tvättstuga eller lokal.",
+            }),
+            createLandingButton("Logga in som användare 1", userOnePath, "secondary"),
+          ],
+        })
+      );
+    }
+    if (userTwoPath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Boende - användare 2" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Testa flera användare och se bokningar i praktiken.",
+            }),
+            createLandingButton("Logga in som användare 2", userTwoPath, "secondary"),
+          ],
+        })
+      );
+    }
+    if (userThreePath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Administratör" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Hantera bokningsobjekt och översikt med admin-behörighet.",
+            }),
+            createLandingButton("Logga in som Administratör", userThreePath, "secondary"),
+          ],
+        })
+      );
+    }
+    if (adminPath) {
+      demoCards.push(
+        createElement("article", {
+          className: "landing-demo-card",
+          children: [
+            createElement("h3", { className: "landing-card-title", text: "Kontoägare" }),
+            createElement("p", {
+              className: "landing-card-text",
+              text: "Full behörighet för setup och administration av föreningen.",
+            }),
+            createLandingButton("Logga in som Kontoägare", adminPath, "secondary"),
+          ],
+        })
+      );
+    }
     const landing = createElement("div", {
       className: "landing-page",
       children: [
@@ -3499,41 +3564,7 @@ const loadWeekAvailability = async (service, weekStart) => {
               }),
               createElement("div", {
                 className: "landing-demo-grid",
-                children: [
-                  createElement("article", {
-                    className: "landing-demo-card",
-                    children: [
-                      createElement("h3", { className: "landing-card-title", text: "Boende - användare 1" }),
-                      createElement("p", {
-                        className: "landing-card-text",
-                        text: "Se hur en boende bokar tvättstuga eller lokal.",
-                      }),
-                      createLandingButton("Logga in som användare 1", userOnePath, "secondary"),
-                    ],
-                  }),
-                  createElement("article", {
-                    className: "landing-demo-card",
-                    children: [
-                      createElement("h3", { className: "landing-card-title", text: "Boende - användare 2" }),
-                      createElement("p", {
-                        className: "landing-card-text",
-                        text: "Testa flera användare och se bokningar i praktiken.",
-                      }),
-                      createLandingButton("Logga in som användare 2", userTwoPath, "secondary"),
-                    ],
-                  }),
-                  createElement("article", {
-                    className: "landing-demo-card",
-                    children: [
-                      createElement("h3", { className: "landing-card-title", text: "Administratör" }),
-                      createElement("p", {
-                        className: "landing-card-text",
-                        text: "Hantera bokningsobjekt, inställningar och översikt.",
-                      }),
-                      createLandingButton("Logga in som Administratör", adminPath, "secondary"),
-                    ],
-                  }),
-                ],
+                children: demoCards,
               }),
               createElement("div", {
                 className: "landing-inline-note",

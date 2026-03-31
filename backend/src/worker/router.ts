@@ -939,7 +939,7 @@ const buildServicesForAuth = async (db: D1Database, auth: { user: any; tenant: a
   const nowUtc = getUtcNowFromEnv(env);
   const nowIso = new Date().toISOString();
   const bookingObjects = await db
-    .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1")
+    .prepare("SELECT * FROM booking_objects WHERE tenant_id = ? AND is_active = 1 ORDER BY name COLLATE NOCASE ASC")
     .bind(auth.tenant.id)
     .all();
   let filtered: any[] = bookingObjects.results;
@@ -1269,22 +1269,27 @@ const handleDemoLinks = async (request: Request, env: Env) => {
   }
 
   const buildLink = (path: string) => `${frontendOrigin.replace(/\/$/, "")}${path}`;
-  const buildResponse = (adminToken: string, userTokens: string[]) =>
+  const buildResponse = (userTokens: string[], adminUserToken: string | null, accountOwnerToken: string | null) =>
     json({
       links: {
-        admin: {
-          path: `/admin/${adminToken}`,
-          url: buildLink(`/admin/${adminToken}`),
-        },
         users: userTokens.slice(0, 2).map((token) => ({
           path: `/user/${token}`,
           url: buildLink(`/user/${token}`),
         })),
+        admin_user: adminUserToken
+          ? {
+              path: `/admin/${adminUserToken}`,
+              url: buildLink(`/admin/${adminUserToken}`),
+            }
+          : null,
+        account_owner: accountOwnerToken
+          ? {
+              path: `/admin/${accountOwnerToken}`,
+              url: buildLink(`/admin/${accountOwnerToken}`),
+            }
+          : null,
       },
     });
-
-  const fallbackAdminToken = "admin-demo-token";
-  const fallbackUserTokens = ["user-demo-token-anna", "user-demo-token-erik"];
 
   try {
     const demoTenant = (await env.DB.prepare(
@@ -1294,7 +1299,7 @@ const handleDemoLinks = async (request: Request, env: Env) => {
        LIMIT 1`
     ).bind().first()) as any;
     if (!demoTenant) {
-      return buildResponse(fallbackAdminToken, fallbackUserTokens);
+      return buildResponse([], null, null);
     }
 
     const tokenRows = await env.DB
@@ -1312,19 +1317,18 @@ const handleDemoLinks = async (request: Request, env: Env) => {
       .bind(demoTenant.id)
       .all();
 
-    const adminToken =
-      (tokenRows.results.find((row: any) => Number(row.is_admin) === 1)?.token as string | undefined) ||
-      (demoTenant.account_owner_token as string | undefined) ||
-      fallbackAdminToken;
     const userTokens = tokenRows.results
       .filter((row: any) => Number(row.is_admin) !== 1)
       .slice(0, 2)
       .map((row: any) => row.token as string)
       .filter(Boolean);
+    const adminUserToken =
+      (tokenRows.results.find((row: any) => Number(row.is_admin) === 1)?.token as string | undefined) || null;
+    const accountOwnerToken = (demoTenant.account_owner_token as string | undefined) || null;
 
-    return buildResponse(adminToken, userTokens.length ? userTokens : fallbackUserTokens);
+    return buildResponse(userTokens, adminUserToken, accountOwnerToken);
   } catch {
-    return buildResponse(fallbackAdminToken, fallbackUserTokens);
+    return buildResponse([], null, null);
   }
 
 };
@@ -2039,7 +2043,7 @@ const handleAdminBookingObjects = async (request: Request, env: Env) => {
        FROM booking_objects bo
        LEFT JOIN booking_object_permissions bop ON bop.booking_object_id = bo.id
        WHERE bo.tenant_id = ?
-       ORDER BY bo.name ASC`
+       ORDER BY bo.name COLLATE NOCASE ASC`
     )
     .bind(auth.tenant.id)
     .all();
