@@ -2120,10 +2120,9 @@ const handleAdminUsers = async (request: Request, env: Env) => {
     rfid_tags: user.rfid_tags
       ? String(user.rfid_tags)
           .split(",")
-          .map((uid) => uid.trim())
-          .filter(Boolean)
+          .filter((uid) => uid.length > 0)
       : [],
-    rfid: user.rfid_tags ? String(user.rfid_tags).split(",").map((uid) => uid.trim()).filter(Boolean)[0] || "" : "",
+    rfid: user.rfid_tags ? String(user.rfid_tags).split(",").filter((uid) => uid.length > 0)[0] || "" : "",
     is_admin: user.is_admin === 1,
     is_active: user.is_active === 1,
   }));

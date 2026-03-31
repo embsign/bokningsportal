@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
     private val emSerialDevice = "/dev/ttyS3"
     private val emDuplicateWindowMs = 2_000L
     private val nfcVsEmWindowMs = 1_500L
+    private val kioskInactivityTimeoutMs = 3 * 60_000L
     private val verifyIntervalMs = 90_000L
     private val pairingPollIntervalMs = 3_000L
     private val pairingAnnounceIntervalMs = 25_000L
@@ -112,6 +113,11 @@ class MainActivity : ComponentActivity() {
                 verifyCurrentBinding()
             }
             verifyHandler.postDelayed(this, verifyIntervalMs)
+        }
+    }
+    private val kioskInactivityRunnable = Runnable {
+        if (uiState is UiState.Showing) {
+            resetToIdle()
         }
     }
 
@@ -196,6 +202,9 @@ class MainActivity : ComponentActivity() {
         if (uiState == UiState.Pairing) {
             startPairingLoop()
         }
+        if (uiState is UiState.Showing) {
+            restartKioskInactivityTimer()
+        }
     }
 
     override fun onPause() {
@@ -204,6 +213,14 @@ class MainActivity : ComponentActivity() {
         verifyHandler.removeCallbacks(verifyRunnable)
         pairingJob?.cancel()
         pairingJob = null
+        stopKioskInactivityTimer()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (uiState is UiState.Showing) {
+            restartKioskInactivityTimer()
+        }
     }
 
     override fun onDestroy() {
@@ -375,6 +392,7 @@ class MainActivity : ComponentActivity() {
             rfidInfoMessage = null
             playSuccessTone()
             uiState = UiState.Showing(withKioskModeQuery(success.fullUrl), success.bookingPath)
+            restartKioskInactivityTimer()
         }
     }
 
@@ -738,12 +756,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resetToIdle() {
+        stopKioskInactivityTimer()
         webViewRef?.apply {
             stopLoading()
             clearHistory()
             loadUrl("about:blank")
         }
         uiState = UiState.Idle
+    }
+
+    private fun restartKioskInactivityTimer() {
+        verifyHandler.removeCallbacks(kioskInactivityRunnable)
+        verifyHandler.postDelayed(kioskInactivityRunnable, kioskInactivityTimeoutMs)
+    }
+
+    private fun stopKioskInactivityTimer() {
+        verifyHandler.removeCallbacks(kioskInactivityRunnable)
     }
 }
 

@@ -1263,6 +1263,7 @@ if (routePath.startsWith("/admin/")) {
   adminStore.subscribe(renderAdmin);
   renderAdmin();
 } else if (routePath.startsWith("/user/")) {
+const isKioskRoute = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
 const today = new Date();
 const initialMonth = { year: today.getFullYear(), monthIndex: today.getMonth() };
@@ -1864,8 +1865,6 @@ const loadWeekAvailability = async (service, weekStart) => {
   let pendingWeekLoad = null;
 
   if (state.step === 1) {
-    const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
-
     screen = ServiceSelection({
       services: state.services,
       selectedService: state.selectedService,
@@ -1926,7 +1925,7 @@ const loadWeekAvailability = async (service, weekStart) => {
         }
       },
       isMobile,
-      isKioskMode,
+      isKioskMode: isKioskRoute,
       state: state.uiStates.service,
     });
 
