@@ -1892,7 +1892,8 @@ const handleCreateBooking = async (request: Request, env: Env) => {
     }
     effectiveUserId = String(targetUser.id);
   }
-  const bypassMaxBookingsLimit = auth.user.is_admin === 1 && !isBlockRequest && Boolean(bookingForUserId);
+  const bypassMaxBookingsLimit =
+    isBlockRequest || (auth.user.is_admin === 1 && !isBlockRequest && Boolean(bookingForUserId));
   const nowIso = new Date().toISOString();
   const bookingObjectGroupId = String(bookingObject.group_id || "").trim();
   const groupLimitsById = bookingObjectGroupId

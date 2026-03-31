@@ -4,6 +4,7 @@ export const CancelBookingModal = ({ booking, onClose, onConfirm }) => {
   if (!booking) {
     return null;
   }
+  const isBlock = booking.cancelType === "block";
 
   return createElement("div", {
     className: "modal-overlay",
@@ -11,10 +12,10 @@ export const CancelBookingModal = ({ booking, onClose, onConfirm }) => {
       createElement("div", {
         className: "modal card",
         children: [
-          createElement("div", { className: "modal-title", text: "Avboka bokning" }),
+          createElement("div", { className: "modal-title", text: isBlock ? "Avblockera tid" : "Avboka bokning" }),
           createElement("div", {
             className: "screen-subtitle",
-            text: "Vill du avboka denna tid?",
+            text: isBlock ? "Vill du avblockera denna tid?" : "Vill du avboka denna tid?",
           }),
           createElement("div", {
             className: "booking-cancel-summary",
@@ -43,7 +44,7 @@ export const CancelBookingModal = ({ booking, onClose, onConfirm }) => {
               }),
               createElement("button", {
                 className: "primary-button",
-                text: "Avboka",
+                text: isBlock ? "Avblockera" : "Avboka",
                 onClick: onConfirm,
               }),
             ],

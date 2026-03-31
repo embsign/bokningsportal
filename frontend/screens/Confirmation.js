@@ -68,6 +68,7 @@ export const Confirmation = ({
   onChangeBookingAction,
   onChangeBookingForUserId,
 }) => {
+  const primaryActionLabel = bookingAction === "block" ? "Blockera" : "Boka";
   let content;
   if (state === "loading") {
     content = createElement("div", { className: "skeleton skeleton-card" });
@@ -124,7 +125,7 @@ export const Confirmation = ({
           !maxBookingsReached
             ? createElement("button", {
                 className: "primary-button",
-                text: "Boka",
+                text: primaryActionLabel,
                 onClick: onConfirm,
                 attrs: { disabled: confirmDisabled },
               })
