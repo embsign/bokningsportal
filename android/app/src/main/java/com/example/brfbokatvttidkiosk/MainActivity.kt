@@ -1,12 +1,11 @@
 package com.example.brfbokatvttidkiosk
 
-import android.app.PendingIntent
-import android.content.Intent
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
 import android.net.Uri
 import android.nfc.NfcAdapter
-import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -56,13 +55,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
-
     private val defaultFrontendBaseUrl = "https://bokningsportal.app"
     private val defaultApiBaseUrl = "https://bokningsportal.app"
     private var frontendBaseUrl = defaultFrontendBaseUrl
@@ -74,7 +73,6 @@ class MainActivity : ComponentActivity() {
     private val screenRfidLoginEndpoint get() = "$apiBaseUrl/api/kiosk/rfid-login"
 
     private var nfcAdapter: NfcAdapter? = null
-    private lateinit var pendingIntent: PendingIntent
     private var webViewRef: WebView? = null
 
     private lateinit var kioskConfigStore: KioskConfigStore
@@ -85,12 +83,23 @@ class MainActivity : ComponentActivity() {
     private var pairingStatusMessage by mutableStateOf("Initierar koppling...")
     private var pairingErrorMessage by mutableStateOf<String?>(null)
     private var isPairingBusy by mutableStateOf(false)
+    private var rfidErrorMessage by mutableStateOf<String?>(null)
+    private var rfidInfoMessage by mutableStateOf<String?>(null)
     private var pairingJob: Job? = null
+    private var emReaderJob: Job? = null
+    private var toneGenerator: ToneGenerator? = null
     private val hidBuffer = StringBuilder()
     private var lastHidKeyTimestamp = 0L
+    private var lastEmUid: String? = null
+    private var lastEmUidAtMs: Long = 0L
+    private var lastNfcUid: String? = null
+    private var lastNfcReadAtMs: Long = 0L
 
     private val hidKeyTimeoutMs = 300L
     private val hidMaxLength = 64
+    private val emSerialDevice = "/dev/ttyS3"
+    private val emDuplicateWindowMs = 2_000L
+    private val nfcVsEmWindowMs = 1_500L
     private val verifyIntervalMs = 90_000L
     private val pairingPollIntervalMs = 3_000L
     private val pairingAnnounceIntervalMs = 25_000L
@@ -118,12 +127,6 @@ class MainActivity : ComponentActivity() {
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         kioskConfigStore = KioskConfigStore(applicationContext)
-        pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-        )
 
         lifecycleScope.launch {
             val config = withContext(Dispatchers.IO) { kioskConfigStore.load() }
@@ -148,7 +151,11 @@ class MainActivity : ComponentActivity() {
                         statusMessage = pairingStatusMessage,
                         errorMessage = pairingErrorMessage,
                     )
-                    UiState.Idle -> IdleScreen(tenantName = kioskConfig?.tenantName)
+                    UiState.Idle -> IdleScreen(
+                        tenantName = kioskConfig?.tenantName,
+                        rfidErrorMessage = rfidErrorMessage,
+                        rfidInfoMessage = rfidInfoMessage,
+                    )
                     UiState.Loading -> LoadingScreen()
                     is UiState.Showing -> WebScreen(
                         url = state.url,
@@ -162,11 +169,29 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        startEmReaderLoop()
     }
 
     override fun onResume() {
         super.onResume()
-        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
+        nfcAdapter?.enableReaderMode(
+            this,
+            { tag ->
+                if (tag == null) return@enableReaderMode
+                val uid = tag.id.joinToString("") { byte -> "%02X".format(byte) }
+                lastNfcReadAtMs = System.currentTimeMillis()
+                lastNfcUid = uid
+                if (uiState == UiState.Idle) {
+                    runOnUiThread { requestBookingUrl(uid) }
+                }
+            },
+            NfcAdapter.FLAG_READER_NFC_A or
+                NfcAdapter.FLAG_READER_NFC_B or
+                NfcAdapter.FLAG_READER_NFC_F or
+                NfcAdapter.FLAG_READER_NFC_V or
+                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+            Bundle()
+        )
         verifyHandler.postDelayed(verifyRunnable, verifyIntervalMs)
         if (uiState == UiState.Pairing) {
             startPairingLoop()
@@ -175,35 +200,122 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        nfcAdapter?.disableForegroundDispatch(this)
+        nfcAdapter?.disableReaderMode(this)
         verifyHandler.removeCallbacks(verifyRunnable)
         pairingJob?.cancel()
         pairingJob = null
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
+    override fun onDestroy() {
+        emReaderJob?.cancel()
+        emReaderJob = null
+        toneGenerator?.release()
+        toneGenerator = null
+        super.onDestroy()
+    }
 
-        if (uiState != UiState.Idle) return
-
-        val tag: Tag? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
-        }
-
-        tag?.let {
-            val uid = it.id.joinToString("") { byte -> "%02X".format(byte) }
-            requestBookingUrl(uid)
+    private fun startEmReaderLoop() {
+        if (emReaderJob?.isActive == true) return
+        emReaderJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    configureEmSerialPort()
+                    FileInputStream(emSerialDevice).use { input ->
+                        val buffer = ByteArray(128)
+                        val frame = ArrayList<Int>(32)
+                        while (isActive) {
+                            val read = input.read(buffer)
+                            if (read <= 0) continue
+                            for (i in 0 until read) {
+                                val value = buffer[i].toInt() and 0xFF
+                                if (value == 0x02) {
+                                    frame.clear()
+                                    frame.add(value)
+                                    continue
+                                }
+                                if (frame.isEmpty()) continue
+                                frame.add(value)
+                                if (value == 0x03) {
+                                    handleEmFrame(frame.toIntArray())
+                                    frame.clear()
+                                } else if (frame.size > 128) {
+                                    frame.clear()
+                                }
+                            }
+                        }
+                    }
+                } catch (ex: Exception) {
+                    delay(1000)
+                }
+            }
         }
     }
 
-    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (uiState != UiState.Idle) {
-            return super.onKeyUp(keyCode, event)
+    private fun configureEmSerialPort() {
+        try {
+            Runtime.getRuntime()
+                .exec(arrayOf("sh", "-c", "stty -F $emSerialDevice 9600 cs8 -cstopb -parenb raw -echo"))
+                .waitFor()
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun handleEmFrame(frame: IntArray) {
+        if (frame.size < 3 || frame.first() != 0x02 || frame.last() != 0x03) return
+        val hexFrame = frame.joinToString(" ") { "%02X".format(it) }
+        val uid = extractEmUid(frame) ?: return
+        val now = System.currentTimeMillis()
+        if (uid == lastEmUid && now - lastEmUidAtMs < emDuplicateWindowMs) {
+            return
+        }
+        lastEmUid = uid
+        lastEmUidAtMs = now
+        withContext(Dispatchers.Main) {
+            // Debug: show raw frame so we can compare EM vs MiFare behavior.
+            rfidInfoMessage = "EM-data: $hexFrame"
+
+            // If NFC just fired, this is likely the same card being picked up by both paths.
+            if (now - lastNfcReadAtMs < nfcVsEmWindowMs) {
+                rfidInfoMessage = "Taggen lästes via både NFC och EM. Använd MiFare-läsaren."
+                return@withContext
+            }
+            if (uiState == UiState.Idle) {
+                requestBookingUrl(uid.uppercase())
+            }
+        }
+    }
+
+    private fun extractEmUid(frame: IntArray): String? {
+        if (frame.size < 3 || frame.first() != 0x02 || frame.last() != 0x03) return null
+
+        // EM frame variant observed:
+        // 02 09 10 <UID4> <CRC1> 03  -> use bytes 3..6
+        if (frame.size >= 9 && frame[1] == 0x09 && frame[2] == 0x10) {
+            return frame.slice(3..6).joinToString("") { "%02X".format(it) }
         }
 
+        // EM frame variant observed:
+        // 02 0A 01 0E/0F 00 <UID4> 03 -> use bytes 5..8
+        if (frame.size >= 10 && frame[1] == 0x0A && frame[2] == 0x01 && frame[4] == 0x00) {
+            return frame.slice(5..8).joinToString("") { "%02X".format(it) }
+        }
+
+        val body = frame.drop(1).dropLast(1)
+        if (body.size >= 4) {
+            // Fallback for unknown variants.
+            return body.takeLast(4).joinToString("") { "%02X".format(it) }
+        }
+        return body.joinToString("") { "%02X".format(it) }.ifBlank { null }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP) {
+            val consumed = handleHidKeyUp(event.keyCode, event)
+            if (consumed) return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleHidKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         val now = System.currentTimeMillis()
         if (now - lastHidKeyTimestamp > hidKeyTimeoutMs) {
             hidBuffer.setLength(0)
@@ -216,7 +328,10 @@ class MainActivity : ComponentActivity() {
                 val uid = hidBuffer.toString().trim()
                 hidBuffer.setLength(0)
                 if (uid.isNotBlank()) {
-                    requestBookingUrl(uid.uppercase())
+                    val normalizedUid = uid.uppercase()
+                    if (uiState == UiState.Idle) {
+                        requestBookingUrl(normalizedUid)
+                    }
                     return true
                 }
             }
@@ -233,24 +348,55 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
-        return super.onKeyUp(keyCode, event)
+        return false
     }
 
     private fun requestBookingUrl(uid: String) {
+        rfidErrorMessage = null
         uiState = UiState.Loading
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 fetchBookingUrl(uid)
             }
             if (result is BookingResult.Failure) {
+                rfidErrorMessage = when {
+                    result.statusCode == 401 && result.responseBody?.contains("invalid_rfid") == true ->
+                        "Taggen finns inte i systemet (UID: $uid)."
+                    result.statusCode == null ->
+                        "Kunde inte kontakta servern (UID: $uid). Kontrollera internetanslutningen."
+                    result.statusCode in 500..599 ->
+                        "Serverfel (UID: $uid). Försök igen om en stund."
+                    else ->
+                        "Inloggning misslyckades (UID: $uid, HTTP ${result.statusCode ?: "okänt"})."
+                }
+                playFailureTone()
                 uiState = UiState.Idle
                 return@launch
             }
 
             val success = result as BookingResult.Success
+            rfidErrorMessage = null
+            rfidInfoMessage = null
+            playSuccessTone()
             uiState = UiState.Showing(success.fullUrl, success.bookingPath)
         }
+    }
+
+    private fun getToneGenerator(): ToneGenerator? {
+        if (toneGenerator != null) return toneGenerator
+        toneGenerator = try {
+            ToneGenerator(AudioManager.STREAM_NOTIFICATION, 90)
+        } catch (_: Exception) { null }
+        return toneGenerator
+    }
+
+    private fun playSuccessTone() {
+        getToneGenerator()?.startTone(ToneGenerator.TONE_PROP_ACK, 180)
+    }
+
+    private fun playFailureTone() {
+        val tg = getToneGenerator() ?: return
+        tg.startTone(ToneGenerator.TONE_PROP_NACK, 250)
     }
 
     private fun fetchBookingUrl(uid: String): BookingResult {
@@ -260,19 +406,20 @@ class MainActivity : ComponentActivity() {
             loginEndpoint
         }
         val token = kioskConfig?.screenToken?.takeIf { it.isNotBlank() }
-        val primaryResult = doRequest(endpoint, uid, token)
+        val tenantId = kioskConfig?.tenantId
+        val primaryResult = doRequest(endpoint, uid, token, tenantId)
         if (primaryResult is BookingResult.Failure && primaryResult.statusCode == 405) {
             val alternateUrl = if (endpoint.endsWith("/")) {
                 endpoint.dropLast(1)
             } else {
                 "$endpoint/"
             }
-            return doRequest(alternateUrl, uid, token)
+            return doRequest(alternateUrl, uid, token, tenantId)
         }
         return primaryResult
     }
 
-    private fun doRequest(requestUrl: String, uid: String, screenToken: String? = null): BookingResult {
+    private fun doRequest(requestUrl: String, uid: String, screenToken: String? = null, tenantId: String? = null): BookingResult {
         return try {
             val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -288,7 +435,11 @@ class MainActivity : ComponentActivity() {
             }
 
             connection.outputStream.use { stream ->
-                stream.write("""{"uid":"$uid"}""".toByteArray(Charsets.UTF_8))
+                val payload = JSONObject().put("uid", uid)
+                if (!tenantId.isNullOrBlank()) {
+                    payload.put("tenant_id", tenantId)
+                }
+                stream.write(payload.toString().toByteArray(Charsets.UTF_8))
             }
 
             val responseCode = connection.responseCode
@@ -610,7 +761,27 @@ private sealed interface BookingResult {
 }
 
 @Composable
-private fun IdleScreen(tenantName: String?) {
+private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?, rfidInfoMessage: String?) {
+    var popupMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(rfidErrorMessage) {
+        if (!rfidErrorMessage.isNullOrBlank()) {
+            popupMessage = rfidErrorMessage
+            delay(5_000)
+            if (popupMessage == rfidErrorMessage) {
+                popupMessage = null
+            }
+        }
+    }
+    LaunchedEffect(rfidInfoMessage) {
+        if (!rfidInfoMessage.isNullOrBlank()) {
+            popupMessage = rfidInfoMessage
+            delay(5_000)
+            if (popupMessage == rfidInfoMessage) {
+                popupMessage = null
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -640,6 +811,32 @@ private fun IdleScreen(tenantName: String?) {
                 color = Color.White,
                 textAlign = TextAlign.Center
             )
+        }
+        if (!popupMessage.isNullOrBlank()) {
+            val isError = popupMessage == rfidErrorMessage
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .background(
+                        if (isError) Color(0xFF7F1D1D) else Color(0xFF1E3A8A),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .border(
+                        1.dp,
+                        if (isError) Color(0xFFFCA5A5) else Color(0xFF93C5FD),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = popupMessage ?: "",
+                    color = if (isError) Color(0xFFFECACA) else Color(0xFFDBEAFE),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
