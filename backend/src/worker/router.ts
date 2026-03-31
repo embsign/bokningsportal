@@ -606,6 +606,31 @@ const requireAdminUser = async (request: Request, env: Env) => {
   return auth;
 };
 
+const isMissingBookingBlocksTableError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.includes("no such table: booking_blocks");
+};
+
+const listBookingBlocksInRange = async (db: D1Database, bookingObjectId: string, startTime: string, endTime: string) => {
+  try {
+    const rows = await db
+      .prepare(
+        `SELECT id, start_time, end_time
+         FROM booking_blocks
+         WHERE booking_object_id = ?
+           AND NOT (end_time <= ? OR start_time >= ?)`
+      )
+      .bind(bookingObjectId, startTime, endTime)
+      .all();
+    return rows.results;
+  } catch (error) {
+    if (isMissingBookingBlocksTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
+};
+
 const listUserGroups = async (db: D1Database, userId: string) => {
   const rows = await db
     .prepare(
@@ -1114,16 +1139,8 @@ const buildMonthAvailability = async (db: D1Database, user: any, bookingObjectId
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
   }));
-  const blocks = await db
-    .prepare(
-      `SELECT id, start_time, end_time
-       FROM booking_blocks
-       WHERE booking_object_id = ?
-         AND NOT (end_time <= ? OR start_time >= ?)`
-    )
-    .bind(bookingObjectId, rangeStart.toISOString(), rangeEnd.toISOString())
-    .all();
-  const blockOverlaps = blocks.results.map((row: any) => ({
+  const blockRows = await listBookingBlocksInRange(db, bookingObjectId, rangeStart.toISOString(), rangeEnd.toISOString());
+  const blockOverlaps = blockRows.map((row: any) => ({
     blockId: row.id as string,
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
@@ -1197,16 +1214,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
   }));
-  const blocksResult = await db
-    .prepare(
-      `SELECT id, start_time, end_time
-       FROM booking_blocks
-       WHERE booking_object_id = ?
-         AND NOT (end_time <= ? OR start_time >= ?)`
-    )
-    .bind(bookingObjectId, startDate.toISOString(), endDate.toISOString())
-    .all();
-  const blockOverlaps = blocksResult.results.map((row: any) => ({
+  const blockRows = await listBookingBlocksInRange(db, bookingObjectId, startDate.toISOString(), endDate.toISOString());
+  const blockOverlaps = blockRows.map((row: any) => ({
     blockId: row.id as string,
     startMs: new Date(row.start_time as string).getTime(),
     endMs: new Date(row.end_time as string).getTime(),
