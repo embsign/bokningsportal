@@ -7,13 +7,12 @@ import { AdminDashboard } from "./screens/AdminDashboard.js";
 import { BookingObjectModal } from "./components/BookingObjectModal.js";
 import { CreateBrfModal } from "./components/CreateBrfModal.js";
 import { ImportUsersModal } from "./components/ImportUsersModal.js";
-import { UserPickerModal } from "./components/UserPickerModal.js";
-import { UserList } from "./components/UserList.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
 import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
+import { buildConfirmModalState, renderConfirmModal } from "./utils/confirmModal.js";
 import { getSession, getBootstrap, rotatePersonalLoginLink, getDemoLinks } from "./api/session.js";
 import { getPublicConfig } from "./api/config.js";
 import { setAccessToken } from "./api/client.js";
@@ -113,6 +112,44 @@ const parseRequiredPositiveInt = (value) => {
 const normalizeRequiredMaxBookings = (value) => {
   const parsed = parseRequiredPositiveInt(value);
   return parsed === null ? null : String(parsed);
+};
+const buildEmptyUserForm = () => ({
+  identity: "",
+  apartmentId: "",
+  house: "",
+  groups: [],
+  rfidTags: [],
+  rfidDraft: "",
+  rfid: "",
+  active: true,
+  admin: false,
+});
+const buildUserFormFromUser = (user) => ({
+  identity: user?.identity || "",
+  apartmentId: user?.apartmentId || "",
+  house: user?.house || "",
+  groups: user?.groups || [],
+  rfidTags: user?.rfidTags || (user?.rfid ? [user.rfid] : []),
+  rfidDraft: "",
+  rfid: user?.rfid || "",
+  active: user?.active !== false,
+  admin: user?.admin === true,
+});
+const toSortedUniqueStrings = (values = []) =>
+  Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, "sv", { numeric: true, sensitivity: "base" }));
+const buildPermissionOptions = ({ users = [], accessGroups = [] } = {}) => {
+  const userGroups = users.flatMap((user) => user.groups || []);
+  return {
+    houses: toSortedUniqueStrings(users.map((user) => user.house)),
+    groups: toSortedUniqueStrings([...(accessGroups || []), ...userGroups]),
+    apartments: toSortedUniqueStrings(users.map((user) => user.apartmentId)),
+  };
 };
 const logout = () => {
   setAccessToken(null);
@@ -338,20 +375,15 @@ if (routePath.startsWith("/admin/")) {
     importFocusEnd: null,
     userPickerOpen: false,
     userQuery: "",
+    userListError: "",
     editUserOpen: false,
     editUserId: null,
-    editUserForm: {
-      identity: "",
-      apartmentId: "",
-      house: "",
-      groups: [],
-      rfidTags: [],
-      rfidDraft: "",
-      rfid: "",
-      active: true,
-      admin: false,
-    },
+    editUserForm: buildEmptyUserForm(),
     userSelectorOpen: false,
+    userRfidModalOpen: false,
+    userGroupModalOpen: false,
+    addRfidDraft: "",
+    confirmModal: buildConfirmModalState(),
     reportOpen: false,
     reportStep: 1,
     reportMonth: "",
@@ -467,6 +499,61 @@ if (routePath.startsWith("/admin/")) {
     admin_groups: (state.adminGroups?.length ? state.adminGroups : state.importRules?.admin_groups?.split("|") || []).join("|"),
   });
 
+  const openAdminUserModal = (user = null) => {
+    adminStore.setState({
+      userPickerOpen: false,
+      userQuery: "",
+      userListError: "",
+      editUserOpen: true,
+      editUserId: user?.id || null,
+      editUserForm: user ? buildUserFormFromUser(user) : buildEmptyUserForm(),
+      userSelectorOpen: false,
+      userRfidModalOpen: false,
+      userGroupModalOpen: false,
+      addRfidDraft: "",
+      groupNameDraft: "",
+    });
+  };
+
+  const openAdminConfirmModal = ({ title, message, confirmLabel = "Bekräfta", onConfirm }) => {
+    adminStore.setState({
+      confirmModal: buildConfirmModalState({
+        open: true,
+        title,
+        message,
+        confirmLabel,
+        onConfirm,
+      }),
+    });
+  };
+
+  const closeAdminConfirmModal = () => {
+    adminStore.setState({ confirmModal: buildConfirmModalState() });
+  };
+
+  const deleteAdminUserEntry = async (user) => {
+    try {
+      await deleteUser(user.id, false);
+      await loadAdminData();
+      adminStore.setState({ userListError: "" });
+    } catch (error) {
+      if (error?.detail === "user_has_bookings") {
+        openAdminConfirmModal({
+          title: "Ta bort användare med bokningar",
+          message: "Användaren har bokningar. Vill du ta bort användaren och alla bokningar?",
+          confirmLabel: "Ta bort allt",
+          onConfirm: async () => {
+            await deleteUser(user.id, true);
+            await loadAdminData();
+            adminStore.setState({ userListError: "" });
+          },
+        });
+        return;
+      }
+      adminStore.setState({ userListError: "Kunde inte ta bort användaren." });
+    }
+  };
+
 
 
   const loadAdminData = async () => {
@@ -536,7 +623,15 @@ if (routePath.startsWith("/admin/")) {
 
   const renderAdmin = () => {
     const state = adminStore.getState();
-    const activeElement = state.modalOpen || state.editUserOpen || state.pairScreenModalOpen || state.editScreenModalOpen ? document.activeElement : null;
+    const activeElement =
+      state.modalOpen ||
+      state.editUserOpen ||
+      state.userRfidModalOpen ||
+      state.userGroupModalOpen ||
+      state.pairScreenModalOpen ||
+      state.editScreenModalOpen
+        ? document.activeElement
+        : null;
     const modalFocusSnapshot =
       activeElement && activeElement.getAttribute?.("data-focus-key")
         ? {
@@ -562,6 +657,10 @@ if (routePath.startsWith("/admin/")) {
       validationError: state.modalValidationError || "",
       groupValidationError: state.modalValidationError || "",
       bookingGroups: state.bookingGroups,
+      permissionOptions: buildPermissionOptions({
+        users: state.users,
+        accessGroups: state.accessGroups,
+      }),
       onChange: (field, value) =>
         adminStore.setState((prev) => ({
           modalValidationError: field === "maxBookings" ? "" : prev.modalValidationError,
@@ -838,49 +937,54 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
-    const userPickerModal = UserPickerModal({
-      open: state.userPickerOpen,
-      users: state.users,
-      query: state.userQuery,
-      onQueryChange: (value) => adminStore.setState({ userQuery: value }),
-      onSelect: (user) =>
-        adminStore.setState({
-          userPickerOpen: false,
-          userQuery: "",
-          editUserOpen: true,
-          editUserId: user.id,
-          editUserForm: {
-            identity: user.identity,
-            apartmentId: user.apartmentId,
-            house: user.house,
-            groups: user.groups || [],
-            rfidTags: user.rfidTags || (user.rfid ? [user.rfid] : []),
-            rfidDraft: "",
-            rfid: user.rfid || "",
-            active: user.active !== false,
-            admin: user.admin === true,
-          },
-        }),
-      onClose: () => adminStore.setState({ userPickerOpen: false, userQuery: "" }),
-    });
-
     const editUserModal = EditUserModal({
       open: state.editUserOpen,
       mode: state.editUserId ? "edit" : "create",
       form: state.editUserForm,
       groupOptions: state.accessGroups || [],
       selectorOpen: state.userSelectorOpen,
+      addRfidOpen: state.userRfidModalOpen,
+      onOpenAddRfid: () => adminStore.setState({ userRfidModalOpen: true }),
+      onCloseAddRfid: () => adminStore.setState({ userRfidModalOpen: false, addRfidDraft: "" }),
+      rfidDraft: state.addRfidDraft || "",
+      onRfidDraftChange: (value) => adminStore.setState({ addRfidDraft: value }),
+      onSubmitAddRfid: () =>
+        adminStore.setState((prev) => {
+          const nextTag = String(prev.addRfidDraft || "").trim();
+          if (!nextTag) {
+            return { userRfidModalOpen: false, addRfidDraft: "" };
+          }
+          if ((prev.editUserForm.rfidTags || []).includes(nextTag)) {
+            return { userRfidModalOpen: false, addRfidDraft: "" };
+          }
+          return {
+            editUserForm: { ...prev.editUserForm, rfidTags: [...(prev.editUserForm.rfidTags || []), nextTag] },
+            userRfidModalOpen: false,
+            addRfidDraft: "",
+          };
+        }),
       onOpenSelector: () => adminStore.setState({ userSelectorOpen: true }),
       onCloseSelector: () => adminStore.setState({ userSelectorOpen: false }),
       onChange: (field, value) =>
         adminStore.setState((prev) => ({ editUserForm: { ...prev.editUserForm, [field]: value } })),
-      onClose: () => adminStore.setState({ editUserOpen: false, userSelectorOpen: false }),
+      onClose: () =>
+        adminStore.setState({
+          editUserOpen: false,
+          userSelectorOpen: false,
+          userRfidModalOpen: false,
+          userGroupModalOpen: false,
+          addRfidDraft: "",
+          groupNameDraft: "",
+        }),
       groupNameDraft: state.groupNameDraft,
+      groupModalOpen: state.userGroupModalOpen,
+      onOpenGroupModal: () => adminStore.setState({ userGroupModalOpen: true, groupNameDraft: "" }),
+      onCloseGroupModal: () => adminStore.setState({ userGroupModalOpen: false, groupNameDraft: "" }),
       onGroupNameChange: (value) => adminStore.setState({ groupNameDraft: value }),
       onCreateGroup: async () => {
         if (!state.groupNameDraft?.trim()) return;
         await createAccessGroup(state.groupNameDraft.trim());
-        adminStore.setState({ groupNameDraft: "" });
+        adminStore.setState({ groupNameDraft: "", userGroupModalOpen: false });
         await loadAdminData();
       },
       onSave: async () => {
@@ -890,8 +994,41 @@ if (routePath.startsWith("/admin/")) {
           await createUser(state.editUserForm);
         }
         await loadAdminData();
-        adminStore.setState({ editUserOpen: false, userSelectorOpen: false });
+        adminStore.setState({
+          editUserOpen: false,
+          userSelectorOpen: false,
+          userRfidModalOpen: false,
+          userGroupModalOpen: false,
+          addRfidDraft: "",
+          groupNameDraft: "",
+        });
       },
+      onConfirmRemoveRfidTag: (value) =>
+        openAdminConfirmModal({
+          title: "Ta bort RFID-tag",
+          message: `Ta bort taggen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const current = adminStore.getState();
+            const next = (current.editUserForm.rfidTags || []).filter((item) => item !== value);
+            adminStore.setState({
+              editUserForm: { ...current.editUserForm, rfidTags: next },
+            });
+          },
+        }),
+      onConfirmRemoveGroup: (value) =>
+        openAdminConfirmModal({
+          title: "Ta bort behörighetsgrupp",
+          message: `Ta bort gruppen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const current = adminStore.getState();
+            const next = (current.editUserForm.groups || []).filter((item) => item !== value);
+            adminStore.setState({
+              editUserForm: { ...current.editUserForm, groups: next },
+            });
+          },
+        }),
     });
 
     const reportModal = ReportModal({
@@ -931,6 +1068,18 @@ if (routePath.startsWith("/admin/")) {
         }),
     });
 
+    const confirmModal = renderConfirmModal({
+      state: state.confirmModal,
+      onCancel: closeAdminConfirmModal,
+      onConfirm: async () => {
+        const callback = adminStore.getState().confirmModal?.onConfirm;
+        closeAdminConfirmModal();
+        if (callback) {
+          await callback();
+        }
+      },
+    });
+
     shell.append(
       Header({
         apartmentId: state.adminUser?.association || "—",
@@ -940,13 +1089,19 @@ if (routePath.startsWith("/admin/")) {
       }),
       AdminDashboard({
         adminUser: state.adminUser,
+        users: state.users,
+        userQuery: state.userQuery,
+        userListError: state.userListError,
         bookingObjects: state.bookingObjects,
         bookingScreens: state.bookingScreens,
         onAdd: () => openModal("add"),
         onCopy: (item) => openModal("copy", item),
         onEdit: (item) => openModal("edit", item),
+        onAddUser: () => openAdminUserModal(null),
         onImportUsers: () => adminStore.setState({ importOpen: true, importStep: 1 }),
-        onEditUsers: () => adminStore.setState({ userPickerOpen: true }),
+        onEditUser: (user) => openAdminUserModal(user),
+        onDeleteUser: (user) => deleteAdminUserEntry(user),
+        onUserQueryChange: (value) => adminStore.setState({ userQuery: value }),
         onCreateReport: () => adminStore.setState({ reportOpen: true, reportStep: 1 }),
         onOpenOrderScreens: () => adminStore.setState({ orderScreensModalOpen: true }),
         onOpenPairScreen: () =>
@@ -992,11 +1147,15 @@ if (routePath.startsWith("/admin/")) {
         onEditScreen: (screen) =>
           adminStore.setState({ editScreenModalOpen: true, editScreenId: screen.id, editScreenName: screen.name }),
         onDeleteScreen: async (screen) => {
-          if (!window.confirm(`Ta bort bokningsskärmen "${screen.name}"?`)) {
-            return;
-          }
-          await deleteBookingScreen(screen.id);
-          await loadAdminData();
+          openAdminConfirmModal({
+            title: "Ta bort bokningsskärm",
+            message: `Ta bort bokningsskärmen "${screen.name}"?`,
+            confirmLabel: "Ta bort",
+            onConfirm: async () => {
+              await deleteBookingScreen(screen.id);
+              await loadAdminData();
+            },
+          });
         },
         onCloseEditScreen: () =>
           adminStore.setState({ editScreenModalOpen: false, editScreenId: null, editScreenName: "" }),
@@ -1020,9 +1179,9 @@ if (routePath.startsWith("/admin/")) {
         editScreenName: state.editScreenName,
         modal,
         importModal,
-        userPickerModal,
         editUserModal,
         reportModal,
+        confirmModal,
       })
     );
     app.append(shell);
@@ -1043,6 +1202,22 @@ if (routePath.startsWith("/admin/")) {
 
     if (state.groupModalOpen) {
       const input = app.querySelector('[data-autofocus="group-name"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+
+    if (state.userRfidModalOpen) {
+      const input = app.querySelector('[data-autofocus="edit-user-rfid"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+
+    if (state.userGroupModalOpen) {
+      const input = app.querySelector('[data-autofocus="edit-user-group"]');
       if (input) {
         input.focus();
         input.setSelectionRange?.(input.value.length, input.value.length);
@@ -2048,6 +2223,10 @@ const loadWeekAvailability = async (service, weekStart) => {
       admin: false,
     },
     userSelectorOpen: false,
+    userRfidModalOpen: false,
+    userGroupModalOpen: false,
+    addRfidDraft: "",
+    confirmModal: buildConfirmModalState(),
     accessGroupDraft: "",
     bookingModalOpen: false,
     bookingModalMode: "add",
@@ -2246,6 +2425,11 @@ const loadWeekAvailability = async (service, weekStart) => {
     setSetupState({
       editUserOpen: true,
       editUserId: user?.id || null,
+      userSelectorOpen: false,
+      userRfidModalOpen: false,
+      userGroupModalOpen: false,
+      addRfidDraft: "",
+      accessGroupDraft: "",
       editUserForm: user
         ? {
             identity: user.identity,
@@ -2272,6 +2456,22 @@ const loadWeekAvailability = async (service, weekStart) => {
     });
   };
 
+  const openSetupConfirmModal = ({ title, message, confirmLabel = "Bekräfta", onConfirm }) => {
+    setSetupState({
+      confirmModal: buildConfirmModalState({
+        open: true,
+        title,
+        message,
+        confirmLabel,
+        onConfirm,
+      }),
+    });
+  };
+
+  const closeSetupConfirmModal = () => {
+    setSetupState({ confirmModal: buildConfirmModalState() });
+  };
+
   const deleteUserEntry = async (user) => {
     try {
       await deleteUser(user.id, false);
@@ -2279,12 +2479,17 @@ const loadWeekAvailability = async (service, weekStart) => {
       setSetupState({ userListError: "" });
     } catch (error) {
       if (error?.detail === "user_has_bookings") {
-        if (window.confirm("Användaren har bokningar. Vill du ta bort användaren och alla bokningar?")) {
-          await deleteUser(user.id, true);
-          await loadSetupLists();
-          setSetupState({ userListError: "" });
-          return;
-        }
+        openSetupConfirmModal({
+          title: "Ta bort användare med bokningar",
+          message: "Användaren har bokningar. Vill du ta bort användaren och alla bokningar?",
+          confirmLabel: "Ta bort allt",
+          onConfirm: async () => {
+            await deleteUser(user.id, true);
+            await loadSetupLists();
+            setSetupState({ userListError: "" });
+          },
+        });
+        return;
       }
       setSetupState({ userListError: "Kunde inte ta bort användaren." });
     }
@@ -2351,16 +2556,17 @@ const loadWeekAvailability = async (service, weekStart) => {
       setSetupState({ bookingListError: "" });
     } catch (error) {
       if (error?.detail === "booking_object_has_future_bookings") {
-        if (
-          window.confirm(
-            "Det finns framtida/pågående bokningar. Vill du ta bort objektet och avboka dessa?"
-          )
-        ) {
-          await deactivateBookingObject(item.id, true);
-          await loadSetupLists();
-          setSetupState({ bookingListError: "" });
-          return;
-        }
+        openSetupConfirmModal({
+          title: "Ta bort bokningsobjekt med bokningar",
+          message: "Det finns framtida/pågående bokningar. Vill du ta bort objektet och avboka dessa?",
+          confirmLabel: "Ta bort och avboka",
+          onConfirm: async () => {
+            await deactivateBookingObject(item.id, true);
+            await loadSetupLists();
+            setSetupState({ bookingListError: "" });
+          },
+        });
+        return;
       }
       setSetupState({ bookingListError: "Kunde inte ta bort bokningsobjektet." });
     }
@@ -2618,6 +2824,10 @@ const loadWeekAvailability = async (service, weekStart) => {
       form: setupState.bookingForm,
       validationError: setupState.bookingModalValidationError || "",
       groupValidationError: setupState.bookingModalValidationError || "",
+      permissionOptions: buildPermissionOptions({
+        users: setupState.users,
+        accessGroups: setupState.accessGroups,
+      }),
       onChange: (field, value) =>
         setSetupState({
           bookingForm: { ...setupState.bookingForm, [field]: value },
@@ -2686,17 +2896,49 @@ const loadWeekAvailability = async (service, weekStart) => {
       form: setupState.editUserForm,
       groupOptions: setupState.accessGroups || [],
       selectorOpen: setupState.userSelectorOpen,
+      addRfidOpen: setupState.userRfidModalOpen,
+      onOpenAddRfid: () => setSetupState({ userRfidModalOpen: true }),
+      onCloseAddRfid: () => setSetupState({ userRfidModalOpen: false, addRfidDraft: "" }),
+      rfidDraft: setupState.addRfidDraft || "",
+      onRfidDraftChange: (value) => setSetupState({ addRfidDraft: value }),
+      onSubmitAddRfid: () => {
+        const nextTag = String(setupState.addRfidDraft || "").trim();
+        if (!nextTag) {
+          setSetupState({ userRfidModalOpen: false, addRfidDraft: "" });
+          return;
+        }
+        if ((setupState.editUserForm.rfidTags || []).includes(nextTag)) {
+          setSetupState({ userRfidModalOpen: false, addRfidDraft: "" });
+          return;
+        }
+        setSetupState({
+          editUserForm: { ...setupState.editUserForm, rfidTags: [...(setupState.editUserForm.rfidTags || []), nextTag] },
+          userRfidModalOpen: false,
+          addRfidDraft: "",
+        });
+      },
       onOpenSelector: () => setSetupState({ userSelectorOpen: true }),
       onCloseSelector: () => setSetupState({ userSelectorOpen: false }),
       onChange: (field, value) =>
         setSetupState({ editUserForm: { ...setupState.editUserForm, [field]: value } }),
-      onClose: () => setSetupState({ editUserOpen: false, userSelectorOpen: false }),
+      onClose: () =>
+        setSetupState({
+          editUserOpen: false,
+          userSelectorOpen: false,
+          userRfidModalOpen: false,
+          userGroupModalOpen: false,
+          addRfidDraft: "",
+          accessGroupDraft: "",
+        }),
       groupNameDraft: setupState.accessGroupDraft,
+      groupModalOpen: setupState.userGroupModalOpen,
+      onOpenGroupModal: () => setSetupState({ userGroupModalOpen: true, accessGroupDraft: "" }),
+      onCloseGroupModal: () => setSetupState({ userGroupModalOpen: false, accessGroupDraft: "" }),
       onGroupNameChange: (value) => setSetupState({ accessGroupDraft: value }),
       onCreateGroup: async () => {
         if (!setupState.accessGroupDraft?.trim()) return;
         await createAccessGroup(setupState.accessGroupDraft.trim());
-        setSetupState({ accessGroupDraft: "" });
+        setSetupState({ accessGroupDraft: "", userGroupModalOpen: false });
         await loadSetupLists();
       },
       onSave: async () => {
@@ -2706,7 +2948,50 @@ const loadWeekAvailability = async (service, weekStart) => {
           await createUser(setupState.editUserForm);
         }
         await loadSetupLists();
-        setSetupState({ editUserOpen: false, userSelectorOpen: false });
+        setSetupState({
+          editUserOpen: false,
+          userSelectorOpen: false,
+          userRfidModalOpen: false,
+          userGroupModalOpen: false,
+          addRfidDraft: "",
+          accessGroupDraft: "",
+        });
+      },
+      onConfirmRemoveRfidTag: (value) =>
+        openSetupConfirmModal({
+          title: "Ta bort RFID-tag",
+          message: `Ta bort taggen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const next = (setupState.editUserForm.rfidTags || []).filter((item) => item !== value);
+            setSetupState({
+              editUserForm: { ...setupState.editUserForm, rfidTags: next },
+            });
+          },
+        }),
+      onConfirmRemoveGroup: (value) =>
+        openSetupConfirmModal({
+          title: "Ta bort behörighetsgrupp",
+          message: `Ta bort gruppen "${value}"?`,
+          confirmLabel: "Ta bort",
+          onConfirm: async () => {
+            const next = (setupState.editUserForm.groups || []).filter((item) => item !== value);
+            setSetupState({
+              editUserForm: { ...setupState.editUserForm, groups: next },
+            });
+          },
+        }),
+    });
+
+    const confirmModal = renderConfirmModal({
+      state: setupState.confirmModal,
+      onCancel: closeSetupConfirmModal,
+      onConfirm: async () => {
+        const callback = setupState.confirmModal?.onConfirm;
+        closeSetupConfirmModal();
+        if (callback) {
+          await callback();
+        }
       },
     });
 
@@ -2914,6 +3199,7 @@ const loadWeekAvailability = async (service, weekStart) => {
     app.append(page);
     if (bookingModal) app.append(bookingModal);
     if (editUserModal) app.append(editUserModal);
+    if (confirmModal) app.append(confirmModal);
     if (importModal) app.append(importModal);
 
     if (setupState.importOpen && setupState.importFocus) {
@@ -2925,6 +3211,22 @@ const loadWeekAvailability = async (service, weekStart) => {
         const end =
           typeof setupState.importFocusEnd === "number" ? setupState.importFocusEnd : input.value.length;
         input.setSelectionRange?.(start, end);
+      }
+    }
+
+    if (setupState.userRfidModalOpen) {
+      const input = app.querySelector('[data-autofocus="edit-user-rfid"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
+      }
+    }
+
+    if (setupState.userGroupModalOpen) {
+      const input = app.querySelector('[data-autofocus="edit-user-group"]');
+      if (input) {
+        input.focus();
+        input.setSelectionRange?.(input.value.length, input.value.length);
       }
     }
 

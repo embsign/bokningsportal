@@ -241,6 +241,21 @@ body {
   background: var(--surface-alt);
 }
 
+.user-list.user-list-table {
+  padding: 0;
+  max-height: min(52vh, 460px);
+}
+
+.user-list.user-list-table .admin-table th,
+.user-list.user-list-table .admin-table td {
+  vertical-align: middle;
+}
+
+.user-list.user-list-table .admin-table th:last-child,
+.user-list.user-list-table .admin-table td:last-child {
+  text-align: right;
+}
+
 .user-row {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -513,6 +528,10 @@ body {
   align-items: center;
 }
 
+.selector-row-table {
+  align-items: start;
+}
+
 .selected-list {
   display: flex;
   flex-wrap: wrap;
@@ -544,7 +563,7 @@ body {
 .selector-list {
   display: grid;
   gap: 10px;
-  max-height: 280px;
+  max-height: min(52vh, 420px);
   overflow: auto;
   padding-right: 6px;
 }
@@ -559,6 +578,39 @@ body {
   background: var(--surface);
   font-size: 13px;
   color: var(--text);
+}
+
+.selected-list-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: auto;
+  max-height: min(42vh, 300px);
+}
+
+.selected-list-table {
+  font-size: 12px;
+}
+
+.selected-list-table th,
+.selected-list-table td {
+  padding: 6px 8px;
+}
+
+.modal-action-stack {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.confirm-modal {
+  width: min(560px, 100%);
+}
+
+.modal-body-text {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.45;
 }
 
 .card {

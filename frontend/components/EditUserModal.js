@@ -9,50 +9,78 @@ const field = ({ label, input }) =>
     ],
   });
 
+const removableItemsTable = ({ values = [], emptyText, onRemove }) =>
+  values.length
+    ? createElement("div", {
+        className: "selected-list-table-wrap",
+        children: [
+          createElement("table", {
+            className: "admin-table selected-list-table",
+            children: [
+              createElement("thead", {
+                children: [
+                  createElement("tr", {
+                    children: [
+                      createElement("th", { text: "Värde" }),
+                      createElement("th", { className: "admin-table-actions", text: "Åtgärd" }),
+                    ],
+                  }),
+                ],
+              }),
+              createElement("tbody", {
+                children: values.map((value) =>
+                  createElement("tr", {
+                    children: [
+                      createElement("td", { text: value }),
+                      createElement("td", {
+                        className: "admin-table-actions",
+                        children: [
+                          createElement("button", {
+                            className: "secondary-button admin-btn-delete admin-btn-compact",
+                            text: "Ta bort",
+                            onClick: () => onRemove(value),
+                          }),
+                        ],
+                      }),
+                    ],
+                  })
+                ),
+              }),
+            ],
+          }),
+        ],
+      })
+    : createElement("div", { className: "selected-empty", text: emptyText || "Inget valt" });
+
 export const EditUserModal = ({
   open,
   mode,
   form,
   groupOptions,
   selectorOpen,
+  addRfidOpen,
+  onOpenAddRfid,
+  onCloseAddRfid,
+  onSubmitAddRfid,
+  rfidDraft,
+  onRfidDraftChange,
   onOpenSelector,
   onCloseSelector,
   onChange,
   onClose,
   onSave,
   groupNameDraft,
+  groupModalOpen,
+  onOpenGroupModal,
+  onCloseGroupModal,
   onGroupNameChange,
   onCreateGroup,
+  onConfirmRemoveRfidTag,
+  onConfirmRemoveGroup,
 }) => {
   if (!open) {
     return null;
   }
-
-  const renderSelectedList = (value, onUpdate) =>
-    value?.length
-      ? createElement("div", {
-          className: "selected-list",
-          children: value.map((option) =>
-            createElement("label", {
-              className: "selected-item",
-              children: [
-                createElement("input", {
-                  attrs: {
-                    type: "checkbox",
-                    value: option,
-                    checked: "checked",
-                  },
-                  onChange: () => {
-                    const next = value.filter((item) => item !== option);
-                    onUpdate(next);
-                  },
-                }),
-                createElement("span", { text: option }),
-              ],
-            })
-          ),
-        })
-      : createElement("div", { className: "selected-empty", text: "Inget valt" });
 
   const renderSelectorModal = () => {
     if (!selectorOpen) {
@@ -107,6 +135,94 @@ export const EditUserModal = ({
     });
   };
 
+  const addRfidModal = addRfidOpen
+    ? createElement("div", {
+        className: "modal-overlay",
+        children: [
+          createElement("div", {
+            className: "modal card",
+            children: [
+              createElement("div", { className: "modal-title", text: "Lägg till RFID-tag" }),
+              createElement("div", {
+                className: "form-field",
+                children: [
+                  createElement("div", { className: "form-label", text: "RFID UID" }),
+                  createElement("input", {
+                    className: "input",
+                    attrs: {
+                      value: rfidDraft || "",
+                      placeholder: "Ny RFID-tag",
+                      "data-autofocus": "edit-user-rfid",
+                    },
+                    onInput: (event) => onRfidDraftChange?.(event.target.value),
+                  }),
+                ],
+              }),
+              createElement("div", {
+                className: "modal-footer",
+                children: [
+                  createElement("button", {
+                    className: "secondary-button",
+                    text: "Avbryt",
+                    onClick: onCloseAddRfid,
+                  }),
+                  createElement("button", {
+                    className: "primary-button",
+                    text: "Lägg till",
+                    onClick: onSubmitAddRfid,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      })
+    : null;
+
+  const groupModal = groupModalOpen
+    ? createElement("div", {
+        className: "modal-overlay",
+        children: [
+          createElement("div", {
+            className: "modal card",
+            children: [
+              createElement("div", { className: "modal-title", text: "Lägg till behörighetsgrupp" }),
+              createElement("div", {
+                className: "form-field",
+                children: [
+                  createElement("div", { className: "form-label", text: "Namn" }),
+                  createElement("input", {
+                    className: "input",
+                    attrs: {
+                      value: groupNameDraft || "",
+                      placeholder: "Ny grupp",
+                      "data-autofocus": "edit-user-group",
+                    },
+                    onInput: (event) => onGroupNameChange?.(event.target.value),
+                  }),
+                ],
+              }),
+              createElement("div", {
+                className: "modal-footer",
+                children: [
+                  createElement("button", {
+                    className: "secondary-button",
+                    text: "Avbryt",
+                    onClick: onCloseGroupModal,
+                  }),
+                  createElement("button", {
+                    className: "primary-button",
+                    text: "Lägg till",
+                    onClick: onCreateGroup,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      })
+    : null;
+
   return createElement("div", {
     className: "modal-overlay",
     children: [
@@ -147,31 +263,19 @@ export const EditUserModal = ({
               field({
                 label: "RFID-taggar",
                 input: createElement("div", {
-                  className: "selector-row",
+                  className: "selector-row selector-row-table",
                   children: [
-                    renderSelectedList(form.rfidTags || [], (next) => onChange("rfidTags", next)),
-                    createElement("input", {
-                      className: "input input-sm",
-                      attrs: {
-                        value: form.rfidDraft || "",
-                        placeholder: "Ny RFID-tag",
-                        "data-focus-key": "editUserRfidDraft",
+                    removableItemsTable({
+                      values: form.rfidTags || [],
+                      emptyText: "Inga RFID-taggar",
+                      onRemove: (value) => {
+                        onConfirmRemoveRfidTag?.(value);
                       },
-                      onInput: (event) => onChange("rfidDraft", event.target.value),
                     }),
                     createElement("button", {
                       className: "secondary-button",
                       text: "Lägg till",
-                      onClick: () => {
-                        const nextTag = (form.rfidDraft || "").trim();
-                        if (!nextTag) return;
-                        if ((form.rfidTags || []).includes(nextTag)) {
-                          onChange("rfidDraft", "");
-                          return;
-                        }
-                        onChange("rfidTags", [...(form.rfidTags || []), nextTag]);
-                        onChange("rfidDraft", "");
-                      },
+                      onClick: onOpenAddRfid,
                     }),
                   ],
                 }),
@@ -179,26 +283,27 @@ export const EditUserModal = ({
               field({
                 label: "Behörighetsgrupper",
                 input: createElement("div", {
-                  className: "selector-row",
+                  className: "selector-row selector-row-table",
                   children: [
-                    renderSelectedList(form.groups || [], (next) => onChange("groups", next)),
-                    createElement("button", {
-                      className: "secondary-button admin-btn-select",
-                      text: "Välj",
-                      onClick: onOpenSelector,
+                    removableItemsTable({
+                      values: form.groups || [],
+                      emptyText: "Inga behörighetsgrupper",
+                      onRemove: (value) => {
+                        onConfirmRemoveGroup?.(value);
+                      },
                     }),
                     createElement("div", {
-                      className: "inline-create-group",
+                      className: "modal-action-stack",
                       children: [
-                        createElement("input", {
-                          className: "input input-sm",
-                          attrs: { value: groupNameDraft || "", placeholder: "Ny grupp", "data-focus-key": "editUserGroupDraft" },
-                          onInput: (event) => onGroupNameChange?.(event.target.value),
+                        createElement("button", {
+                          className: "secondary-button admin-btn-select",
+                          text: "Välj",
+                          onClick: onOpenSelector,
                         }),
                         createElement("button", {
                           className: "secondary-button",
-                          text: "Lägg till",
-                          onClick: onCreateGroup,
+                          text: "Lägg till behörighetsgrupp",
+                          onClick: onOpenGroupModal,
                         }),
                       ],
                     }),
@@ -276,6 +381,8 @@ export const EditUserModal = ({
         ],
       }),
       renderSelectorModal(),
-    ],
+      addRfidModal,
+      groupModal,
+    ].filter(Boolean),
   });
 };
