@@ -1671,6 +1671,15 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
     tenant: { id: auth.screen.tenant_id, name: auth.screen.tenant_name },
   });
 };
+
+const handleHealth = async (_request: Request, env: Env) => {
+  try {
+    await env.DB.prepare("SELECT 1 AS ok").bind().first();
+    return json({ ok: true, db: "ok" });
+  } catch {
+    return json({ ok: false, db: "error" }, { status: 503 });
+  }
+};
 const handleSession = async (request: Request, env: Env) => {
   const auth = await requireAuth(request, env);
   if ("error" in auth) return auth.error;
@@ -2652,6 +2661,7 @@ export const router = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");
 
+  if (request.method === "GET" && path === "/api/health") return handleHealth(request, env);
   if (request.method === "POST" && path === "/api/rfid-login") return handleRfidLogin(request, env);
   if (request.method === "POST" && path === "/api/brf/register") return handleBrfRegister(request, env);
   if (request.method === "POST" && path === "/api/brf/setup/verify") return handleBrfSetupVerify(request, env);
