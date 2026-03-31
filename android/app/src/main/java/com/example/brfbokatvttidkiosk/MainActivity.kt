@@ -1,14 +1,11 @@
 package com.example.brfbokatvttidkiosk
 
-import android.app.PendingIntent
-import android.content.Intent
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
 import android.net.Uri
 import android.nfc.NfcAdapter
-import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -76,7 +73,6 @@ class MainActivity : ComponentActivity() {
     private val screenRfidLoginEndpoint get() = "$apiBaseUrl/api/kiosk/rfid-login"
 
     private var nfcAdapter: NfcAdapter? = null
-    private lateinit var pendingIntent: PendingIntent
     private var webViewRef: WebView? = null
 
     private lateinit var kioskConfigStore: KioskConfigStore
@@ -131,12 +127,6 @@ class MainActivity : ComponentActivity() {
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         kioskConfigStore = KioskConfigStore(applicationContext)
-        pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-        )
 
         lifecycleScope.launch {
             val config = withContext(Dispatchers.IO) { kioskConfigStore.load() }
@@ -184,7 +174,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
+        nfcAdapter?.enableReaderMode(
+            this,
+            { tag ->
+                if (tag == null) return@enableReaderMode
+                val uid = tag.id.joinToString("") { byte -> "%02X".format(byte) }
+                lastNfcReadAtMs = System.currentTimeMillis()
+                lastNfcUid = uid
+                if (uiState == UiState.Idle) {
+                    runOnUiThread { requestBookingUrl(uid) }
+                }
+            },
+            NfcAdapter.FLAG_READER_NFC_A or
+                NfcAdapter.FLAG_READER_NFC_B or
+                NfcAdapter.FLAG_READER_NFC_F or
+                NfcAdapter.FLAG_READER_NFC_V or
+                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+            Bundle()
+        )
         verifyHandler.postDelayed(verifyRunnable, verifyIntervalMs)
         if (uiState == UiState.Pairing) {
             startPairingLoop()
@@ -193,7 +200,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        nfcAdapter?.disableForegroundDispatch(this)
+        nfcAdapter?.disableReaderMode(this)
         verifyHandler.removeCallbacks(verifyRunnable)
         pairingJob?.cancel()
         pairingJob = null
@@ -298,26 +305,6 @@ class MainActivity : ComponentActivity() {
             return body.takeLast(4).joinToString("") { "%02X".format(it) }
         }
         return body.joinToString("") { "%02X".format(it) }.ifBlank { null }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-
-        val tag: Tag? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
-        }
-
-        tag?.let {
-            val uid = it.id.joinToString("") { byte -> "%02X".format(byte) }
-            lastNfcReadAtMs = System.currentTimeMillis()
-            lastNfcUid = uid
-            if (uiState == UiState.Idle) {
-                requestBookingUrl(uid)
-            }
-        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
