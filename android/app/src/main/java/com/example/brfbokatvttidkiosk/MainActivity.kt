@@ -2,6 +2,8 @@ package com.example.brfbokatvttidkiosk
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
 import android.net.Uri
@@ -56,13 +58,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
-
     private val defaultFrontendBaseUrl = "https://bokningsportal.app"
     private val defaultApiBaseUrl = "https://bokningsportal.app"
     private var frontendBaseUrl = defaultFrontendBaseUrl
@@ -85,12 +87,19 @@ class MainActivity : ComponentActivity() {
     private var pairingStatusMessage by mutableStateOf("Initierar koppling...")
     private var pairingErrorMessage by mutableStateOf<String?>(null)
     private var isPairingBusy by mutableStateOf(false)
+    private var rfidErrorMessage by mutableStateOf<String?>(null)
     private var pairingJob: Job? = null
+    private var emReaderJob: Job? = null
+    private var toneGenerator: ToneGenerator? = null
     private val hidBuffer = StringBuilder()
     private var lastHidKeyTimestamp = 0L
+    private var lastEmUid: String? = null
+    private var lastEmUidAtMs: Long = 0L
 
     private val hidKeyTimeoutMs = 300L
     private val hidMaxLength = 64
+    private val emSerialDevice = "/dev/ttyS3"
+    private val emDuplicateWindowMs = 2_000L
     private val verifyIntervalMs = 90_000L
     private val pairingPollIntervalMs = 3_000L
     private val pairingAnnounceIntervalMs = 25_000L
@@ -148,7 +157,10 @@ class MainActivity : ComponentActivity() {
                         statusMessage = pairingStatusMessage,
                         errorMessage = pairingErrorMessage,
                     )
-                    UiState.Idle -> IdleScreen(tenantName = kioskConfig?.tenantName)
+                    UiState.Idle -> IdleScreen(
+                        tenantName = kioskConfig?.tenantName,
+                        rfidErrorMessage = rfidErrorMessage,
+                    )
                     UiState.Loading -> LoadingScreen()
                     is UiState.Showing -> WebScreen(
                         url = state.url,
@@ -162,6 +174,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        startEmReaderLoop()
     }
 
     override fun onResume() {
@@ -181,10 +194,88 @@ class MainActivity : ComponentActivity() {
         pairingJob = null
     }
 
+    override fun onDestroy() {
+        emReaderJob?.cancel()
+        emReaderJob = null
+        toneGenerator?.release()
+        toneGenerator = null
+        super.onDestroy()
+    }
+
+    private fun startEmReaderLoop() {
+        if (emReaderJob?.isActive == true) return
+        emReaderJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    configureEmSerialPort()
+                    FileInputStream(emSerialDevice).use { input ->
+                        val buffer = ByteArray(128)
+                        val frame = ArrayList<Int>(32)
+                        while (isActive) {
+                            val read = input.read(buffer)
+                            if (read <= 0) continue
+                            for (i in 0 until read) {
+                                val value = buffer[i].toInt() and 0xFF
+                                if (value == 0x02) {
+                                    frame.clear()
+                                    frame.add(value)
+                                    continue
+                                }
+                                if (frame.isEmpty()) continue
+                                frame.add(value)
+                                if (value == 0x03) {
+                                    handleEmFrame(frame.toIntArray())
+                                    frame.clear()
+                                } else if (frame.size > 128) {
+                                    frame.clear()
+                                }
+                            }
+                        }
+                    }
+                } catch (ex: Exception) {
+                    delay(1000)
+                }
+            }
+        }
+    }
+
+    private fun configureEmSerialPort() {
+        try {
+            Runtime.getRuntime()
+                .exec(arrayOf("sh", "-c", "stty -F $emSerialDevice 9600 cs8 -cstopb -parenb raw -echo"))
+                .waitFor()
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun handleEmFrame(frame: IntArray) {
+        if (frame.size < 3 || frame.first() != 0x02 || frame.last() != 0x03) return
+        val uid = extractEmUid(frame) ?: return
+        val now = System.currentTimeMillis()
+        if (uid == lastEmUid && now - lastEmUidAtMs < emDuplicateWindowMs) {
+            return
+        }
+        lastEmUid = uid
+        lastEmUidAtMs = now
+        withContext(Dispatchers.Main) {
+            if (uiState == UiState.Idle) {
+                requestBookingUrl(uid.uppercase())
+            }
+        }
+    }
+
+    private fun extractEmUid(frame: IntArray): String? {
+        val body = frame.drop(1).dropLast(1)
+        if (body.isEmpty()) return null
+        // Device frames look like: 02 <len> <type...> <uid bytes> 03.
+        // Use the last 4 bytes as UID to avoid truncating binary IDs to one printable char.
+        if (body.size >= 4) {
+            return body.takeLast(4).joinToString("") { "%02X".format(it) }
+        }
+        return body.joinToString("") { "%02X".format(it) }.ifBlank { null }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-
-        if (uiState != UiState.Idle) return
 
         val tag: Tag? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
@@ -195,15 +286,21 @@ class MainActivity : ComponentActivity() {
 
         tag?.let {
             val uid = it.id.joinToString("") { byte -> "%02X".format(byte) }
-            requestBookingUrl(uid)
+            if (uiState == UiState.Idle) {
+                requestBookingUrl(uid)
+            }
         }
     }
 
-    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (uiState != UiState.Idle) {
-            return super.onKeyUp(keyCode, event)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP) {
+            val consumed = handleHidKeyUp(event.keyCode, event)
+            if (consumed) return true
         }
+        return super.dispatchKeyEvent(event)
+    }
 
+    private fun handleHidKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         val now = System.currentTimeMillis()
         if (now - lastHidKeyTimestamp > hidKeyTimeoutMs) {
             hidBuffer.setLength(0)
@@ -216,7 +313,10 @@ class MainActivity : ComponentActivity() {
                 val uid = hidBuffer.toString().trim()
                 hidBuffer.setLength(0)
                 if (uid.isNotBlank()) {
-                    requestBookingUrl(uid.uppercase())
+                    val normalizedUid = uid.uppercase()
+                    if (uiState == UiState.Idle) {
+                        requestBookingUrl(normalizedUid)
+                    }
                     return true
                 }
             }
@@ -233,24 +333,47 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
-        return super.onKeyUp(keyCode, event)
+        return false
     }
 
     private fun requestBookingUrl(uid: String) {
+        rfidErrorMessage = null
         uiState = UiState.Loading
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 fetchBookingUrl(uid)
             }
             if (result is BookingResult.Failure) {
+                if (result.statusCode == 401 && result.responseBody?.contains("invalid_rfid") == true) {
+                    rfidErrorMessage = "Taggen finns inte i systemet."
+                }
+                playFailureTone()
                 uiState = UiState.Idle
                 return@launch
             }
 
             val success = result as BookingResult.Success
+            rfidErrorMessage = null
+            playSuccessTone()
             uiState = UiState.Showing(success.fullUrl, success.bookingPath)
         }
+    }
+
+    private fun getToneGenerator(): ToneGenerator? {
+        if (toneGenerator != null) return toneGenerator
+        toneGenerator = try {
+            ToneGenerator(AudioManager.STREAM_NOTIFICATION, 90)
+        } catch (_: Exception) { null }
+        return toneGenerator
+    }
+
+    private fun playSuccessTone() {
+        getToneGenerator()?.startTone(ToneGenerator.TONE_PROP_ACK, 180)
+    }
+
+    private fun playFailureTone() {
+        val tg = getToneGenerator() ?: return
+        tg.startTone(ToneGenerator.TONE_PROP_NACK, 250)
     }
 
     private fun fetchBookingUrl(uid: String): BookingResult {
@@ -260,19 +383,20 @@ class MainActivity : ComponentActivity() {
             loginEndpoint
         }
         val token = kioskConfig?.screenToken?.takeIf { it.isNotBlank() }
-        val primaryResult = doRequest(endpoint, uid, token)
+        val tenantId = kioskConfig?.tenantId
+        val primaryResult = doRequest(endpoint, uid, token, tenantId)
         if (primaryResult is BookingResult.Failure && primaryResult.statusCode == 405) {
             val alternateUrl = if (endpoint.endsWith("/")) {
                 endpoint.dropLast(1)
             } else {
                 "$endpoint/"
             }
-            return doRequest(alternateUrl, uid, token)
+            return doRequest(alternateUrl, uid, token, tenantId)
         }
         return primaryResult
     }
 
-    private fun doRequest(requestUrl: String, uid: String, screenToken: String? = null): BookingResult {
+    private fun doRequest(requestUrl: String, uid: String, screenToken: String? = null, tenantId: String? = null): BookingResult {
         return try {
             val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -288,7 +412,11 @@ class MainActivity : ComponentActivity() {
             }
 
             connection.outputStream.use { stream ->
-                stream.write("""{"uid":"$uid"}""".toByteArray(Charsets.UTF_8))
+                val payload = JSONObject().put("uid", uid)
+                if (!tenantId.isNullOrBlank()) {
+                    payload.put("tenant_id", tenantId)
+                }
+                stream.write(payload.toString().toByteArray(Charsets.UTF_8))
             }
 
             val responseCode = connection.responseCode
@@ -610,7 +738,7 @@ private sealed interface BookingResult {
 }
 
 @Composable
-private fun IdleScreen(tenantName: String?) {
+private fun IdleScreen(tenantName: String?, rfidErrorMessage: String?) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -640,6 +768,22 @@ private fun IdleScreen(tenantName: String?) {
                 color = Color.White,
                 textAlign = TextAlign.Center
             )
+            if (!rfidErrorMessage.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF7F1D1D), RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFFFCA5A5), RoundedCornerShape(10.dp))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = rfidErrorMessage,
+                        color = Color(0xFFFECACA),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     }
 }

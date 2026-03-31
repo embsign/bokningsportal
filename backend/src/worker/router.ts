@@ -1117,7 +1117,8 @@ const buildWeekAvailability = async (db: D1Database, user: any, bookingObjectId:
 
 const handleRfidLogin = async (request: Request, env: Env) => {
   const body = await getJsonBody(request);
-  const uid = body?.uid;
+  const uid = String(body?.uid || "").trim();
+  const tenantIdFromBody = String(body?.tenant_id || "").trim();
   const screenToken = parseBearerToken(request.headers.get("authorization"));
   if (!uid) {
     return errorResponse(401, "invalid_rfid");
@@ -1132,6 +1133,8 @@ const handleRfidLogin = async (request: Request, env: Env) => {
     }
     tenantIdFilter = String(screen.tenant_id);
     screenContext = screen;
+  } else if (tenantIdFromBody) {
+    tenantIdFilter = tenantIdFromBody;
   }
 
   const rfidContext = (await env.DB
@@ -1145,9 +1148,10 @@ const handleRfidLogin = async (request: Request, env: Env) => {
        JOIN users u ON u.id = rt.user_id
        WHERE rt.uid = ?
          AND rt.is_active = 1
+         AND (? IS NULL OR rt.tenant_id = ?)
        LIMIT 1`
     )
-    .bind(uid)
+    .bind(uid, tenantIdFilter, tenantIdFilter)
     .first()) as any;
   if (!rfidContext) {
     return errorResponse(401, "invalid_rfid");
@@ -1547,8 +1551,12 @@ const handleKioskRfidLogin = async (request: Request, env: Env) => {
 
   const body = await getJsonBody(request);
   const uid = String(body?.uid || "").trim();
+  const tenantIdFromBody = String(body?.tenant_id || "").trim();
   if (!uid) {
     return errorResponse(401, "invalid_rfid");
+  }
+  if (tenantIdFromBody && tenantIdFromBody !== String(auth.screen.tenant_id)) {
+    return errorResponse(403, "rfid_not_allowed_for_screen");
   }
 
   const rfidContext = (await env.DB
