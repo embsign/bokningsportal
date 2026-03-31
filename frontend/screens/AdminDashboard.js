@@ -1,6 +1,7 @@
 import { createElement } from "../hooks/dom.js";
 import { BookingObjectsTable } from "../components/BookingObjectsTable.js";
 import { BookingScreensSection } from "../components/BookingScreensSection.js";
+import { UserList } from "../components/UserList.js";
 
 const sectionCard = ({ title, description, actions, content }) =>
   createElement("div", {
@@ -29,13 +30,19 @@ const sectionCard = ({ title, description, actions, content }) =>
 
 export const AdminDashboard = ({
   adminUser,
+  users,
+  userQuery,
+  userListError,
   bookingObjects,
   bookingScreens,
   onAdd,
   onCopy,
   onEdit,
+  onAddUser,
   onImportUsers,
-  onEditUsers,
+  onEditUser,
+  onDeleteUser,
+  onUserQueryChange,
   onCreateReport,
   onOpenOrderScreens,
   onOpenPairScreen,
@@ -58,7 +65,6 @@ export const AdminDashboard = ({
   editScreenName,
   modal,
   importModal,
-  userPickerModal,
   editUserModal,
   reportModal,
 }) => {
@@ -67,9 +73,9 @@ export const AdminDashboard = ({
     description: "Hantera boende och behörigheter.",
     actions: [
       createElement("button", {
-        className: "secondary-button admin-btn-edit",
-        text: "Redigera",
-        onClick: onEditUsers,
+        className: "secondary-button admin-btn-add",
+        text: "Lägg till",
+        onClick: onAddUser,
       }),
       createElement("button", {
         className: "secondary-button admin-btn-add",
@@ -77,6 +83,21 @@ export const AdminDashboard = ({
         onClick: onImportUsers,
       }),
     ],
+    content: createElement("div", {
+      className: "admin-section-content",
+      children: [
+        userListError ? createElement("div", { className: "form-error", text: userListError }) : null,
+        UserList({
+          users: users || [],
+          query: userQuery || "",
+          onQueryChange: onUserQueryChange,
+          onPrimaryAction: onEditUser,
+          primaryLabel: "Redigera",
+          onDelete: onDeleteUser,
+          emptyText: "Inga användare ännu.",
+        }),
+      ].filter(Boolean),
+    }),
   });
 
   const bookingTable = BookingObjectsTable({
@@ -152,7 +173,6 @@ export const AdminDashboard = ({
       }),
       modal,
       importModal,
-      userPickerModal,
       editUserModal,
       reportModal,
     ],

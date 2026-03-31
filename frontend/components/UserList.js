@@ -35,51 +35,72 @@ export const UserList = ({
           }),
         ],
       }),
-      createElement("div", {
-        className: "user-list",
-        children: filtered.length
-          ? filtered.map((user) =>
-              createElement("div", {
-                className: "user-row",
+      filtered.length
+        ? createElement("div", {
+            className: "user-list user-list-table",
+            children: [
+              createElement("table", {
+                className: "admin-table",
                 children: [
-                  createElement("div", {
-                    className: "user-row-main",
+                  createElement("thead", {
                     children: [
-                      createElement("div", { className: "user-row-title", text: user.identity }),
-                      createElement("div", {
-                        className: "user-row-meta",
-                        text: `Lgh ${user.apartmentId} • Hus ${user.house || "-"} • ${
-                          user.groups?.join(", ") || "Inga grupper"
-                        }`,
+                      createElement("tr", {
+                        children: [
+                          createElement("th", { text: "Användare" }),
+                          createElement("th", { text: "Lägenhet" }),
+                          createElement("th", { text: "Hus / Trapphus" }),
+                          createElement("th", { text: "Behörighetsgrupper" }),
+                          createElement("th", { text: "Status" }),
+                          createElement("th", {
+                            className: "admin-table-actions",
+                            text: "Åtgärder",
+                          }),
+                        ],
                       }),
                     ],
                   }),
-                  createElement("div", {
-                    className: "user-row-actions",
-                    children: [
-                      createElement("span", {
-                        className: `status-pill ${user.active ? "active" : "inactive"}`,
-                        text: user.active ? "Aktiv" : "Inaktiv",
-                      }),
-                      createElement("button", {
-                        className: "secondary-button admin-btn-edit admin-btn-compact",
-                        text: primaryLabel || "Redigera",
-                        onClick: () => onPrimaryAction(user),
-                      }),
-                      onDelete
-                        ? createElement("button", {
-                            className: "secondary-button admin-btn-delete admin-btn-compact",
-                            text: "Ta bort",
-                            onClick: () => onDelete(user),
-                          })
-                        : null,
-                    ].filter(Boolean),
+                  createElement("tbody", {
+                    children: filtered.map((user) =>
+                      createElement("tr", {
+                        children: [
+                          createElement("td", { text: user.identity || "-" }),
+                          createElement("td", { text: user.apartmentId || "-" }),
+                          createElement("td", { text: user.house || "-" }),
+                          createElement("td", { text: user.groups?.join(", ") || "Inga grupper" }),
+                          createElement("td", {
+                            children: [
+                              createElement("span", {
+                                className: `status-pill ${user.active ? "active" : "inactive"}`,
+                                text: user.active ? "Aktiv" : "Inaktiv",
+                              }),
+                            ],
+                          }),
+                          createElement("td", {
+                            className: "admin-table-actions",
+                            children: [
+                              createElement("button", {
+                                className: "secondary-button admin-btn-edit admin-btn-compact",
+                                text: primaryLabel || "Redigera",
+                                onClick: () => onPrimaryAction(user),
+                              }),
+                              onDelete
+                                ? createElement("button", {
+                                    className: "secondary-button admin-btn-delete admin-btn-compact",
+                                    text: "Ta bort",
+                                    onClick: () => onDelete(user),
+                                  })
+                                : null,
+                            ].filter(Boolean),
+                          }),
+                        ],
+                      })
+                    ),
                   }),
                 ],
-              })
-            )
-          : [createElement("div", { className: "empty-state", text: emptyText || "Inga träffar." })],
-      }),
+              }),
+            ],
+          })
+        : createElement("div", { className: "empty-state", text: emptyText || "Inga träffar." }),
     ],
   });
 };

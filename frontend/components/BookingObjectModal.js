@@ -59,6 +59,7 @@ export const BookingObjectModal = ({
   groupModalOpen,
   groupNameDraft,
   groupValidationError,
+  permissionOptions,
   onGroupNameChange,
   onOpenGroupModal,
   onCloseGroupModal,
@@ -79,13 +80,16 @@ export const BookingObjectModal = ({
       : mode === "copy"
         ? "Kopiera bokningsobjekt"
         : "Nytt bokningsobjekt";
+  const houses = permissionOptions?.houses || [];
+  const groups = permissionOptions?.groups || [];
+  const apartments = permissionOptions?.apartments || [];
   const selectorOptions = {
-    allowHouses: { label: "Hus / Trappuppgång", options: ["A", "B", "C"] },
-    allowGroups: { label: "Behörighetsgrupp", options: ["Styrelse", "Gym", "Bastu"] },
-    allowApartments: { label: "Enskilda lägenheter", options: ["1001", "1002", "1003"] },
-    denyHouses: { label: "Hus / Trappuppgång", options: ["A", "B", "C"] },
-    denyGroups: { label: "Behörighetsgrupp", options: ["Styrelse", "Gym", "Bastu"] },
-    denyApartments: { label: "Enskilda lägenheter", options: ["1001", "1002", "1003"] },
+    allowHouses: { label: "Hus / Trappuppgång", options: houses },
+    allowGroups: { label: "Behörighetsgrupp", options: groups },
+    allowApartments: { label: "Enskilda lägenheter", options: apartments },
+    denyHouses: { label: "Hus / Trappuppgång", options: houses },
+    denyGroups: { label: "Behörighetsgrupp", options: groups },
+    denyApartments: { label: "Enskilda lägenheter", options: apartments },
   };
 
   const renderSelectedList = (value, onUpdate) =>

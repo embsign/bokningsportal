@@ -241,6 +241,20 @@ body {
   background: var(--surface-alt);
 }
 
+.user-list.user-list-table {
+  padding: 0;
+}
+
+.user-list.user-list-table .admin-table th,
+.user-list.user-list-table .admin-table td {
+  vertical-align: middle;
+}
+
+.user-list.user-list-table .admin-table th:last-child,
+.user-list.user-list-table .admin-table td:last-child {
+  text-align: right;
+}
+
 .user-row {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -513,6 +527,10 @@ body {
   align-items: center;
 }
 
+.selector-row-table {
+  align-items: start;
+}
+
 .selected-list {
   display: flex;
   flex-wrap: wrap;
@@ -559,6 +577,28 @@ body {
   background: var(--surface);
   font-size: 13px;
   color: var(--text);
+}
+
+.selected-list-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: auto;
+  max-height: 220px;
+}
+
+.selected-list-table {
+  font-size: 12px;
+}
+
+.selected-list-table th,
+.selected-list-table td {
+  padding: 6px 8px;
+}
+
+.modal-action-stack {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
 }
 
 .card {
