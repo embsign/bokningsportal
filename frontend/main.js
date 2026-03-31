@@ -3476,7 +3476,7 @@ const loadWeekAvailability = async (service, weekStart) => {
             createElement("h3", { className: "landing-card-title", text: "Administratör" }),
             createElement("p", {
               className: "landing-card-text",
-              text: "Hantera bokningsobjekt och översikt med admin-behörighet.",
+              text: "En styrelsemedlem eller annan administratör kan boka åt andra eller blockera dagar och tider.",
             }),
             createLandingButton("Logga in som Administratör", adminUserPath, "secondary"),
           ],
@@ -3491,7 +3491,7 @@ const loadWeekAvailability = async (service, weekStart) => {
             createElement("h3", { className: "landing-card-title", text: "Kontoägare" }),
             createElement("p", {
               className: "landing-card-text",
-              text: "Full behörighet för setup och administration av föreningen.",
+              text: "Kontoägaren lägger till eller tar bort användare och bokningsobjekt.",
             }),
             createLandingButton("Logga in som Kontoägare", accountOwnerPath, "secondary"),
           ],
