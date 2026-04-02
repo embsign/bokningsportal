@@ -1,8 +1,10 @@
-import migration001 from "../../../../db/migrations/001_initial_schema.sql";
-import migration002 from "../../../../db/migrations/002_indexes.sql";
-import migration005 from "../../../../db/migrations/005_app_config.sql";
-import migration007 from "../../../../db/migrations/007_booking_screens.sql";
-import seedSql from "../../../../db/seed.sql";
+import {
+  migration001,
+  migration002,
+  migration005,
+  migration007,
+  seedSql,
+} from "./sqlBundles.generated.js";
 import { D1Database } from "../types.js";
 
 let initialized = false;

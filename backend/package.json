@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787",
-    "dev:remote": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787"
+    "dev:remote": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787",
+    "generate:sql": "node ../scripts/bundle_sql_for_worker.mjs"
   },
   "dependencies": {},
   "devDependencies": {
