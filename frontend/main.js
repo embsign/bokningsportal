@@ -55,8 +55,15 @@ import { createElement, clearElement } from "./hooks/dom.js";
 
 const app = document.getElementById("app");
 const path = window.location.pathname;
-const hashPath = window.location.hash.replace(/^#/, "");
-const routePath = hashPath || path;
+const rawHash = window.location.hash.replace(/^#/, "");
+const hashPath = rawHash
+  ? rawHash.startsWith("/")
+    ? rawHash
+    : `/${rawHash}`
+  : "";
+// Direktlänkar (/admin/, /user/, /setup/) måste vinna över hash — annars kan en gammal #‑route
+// från tidigare besök skicka fel token till API (t.ex. ogiltig setup‑signatur).
+const routePath = /^\/(admin|user|setup)\//.test(path) ? path : hashPath || path;
 const buildQrImageUrl = (targetUrl, size = 320) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(targetUrl)}`;
 const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
@@ -2417,7 +2424,8 @@ const loadWeekAvailability = async (service, weekStart) => {
     importFocusEnd: null,
     importRules: null,
   };
-  const setupToken = routePath.split("/")[2] || "";
+  const setupToken =
+    routePath.startsWith("/setup/") ? routePath.slice("/setup/".length).replace(/\/+$/, "") : "";
 
   const setSetupState = (next) => {
     const update = typeof next === "function" ? next({ ...setupState }) : next;

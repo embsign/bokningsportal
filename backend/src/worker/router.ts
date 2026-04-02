@@ -19,6 +19,59 @@ const json = (data: unknown, init: ResponseInit = {}) => {
 
 const errorResponse = (status: number, detail: string) => json({ detail }, { status });
 
+const escapeHtml = (value: string) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+/** HTML-mejl i samma palett som frontend/styles.css (Inter, #101c33, #45d3e4). */
+const buildBrfSetupInviteHtml = (setupUrl: string, associationName: string) => {
+  const safeUrl = escapeHtml(setupUrl);
+  const safeName = escapeHtml(associationName);
+  return `<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Slutför er bokningssida</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f8fb;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f8fb;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border-radius:18px;box-shadow:0 16px 40px rgba(16,28,51,0.12);border:1px solid #45d3e4;">
+          <tr>
+            <td style="padding:28px 28px 8px 28px;">
+              <p style="margin:0 0 4px 0;font-size:13px;font-weight:600;letter-spacing:0.02em;color:#45d3e4;text-transform:uppercase;">BRF Bokningsportal</p>
+              <h1 style="margin:0;font-size:22px;line-height:1.3;font-weight:700;color:#101c33;">Slutför er bokningssida</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 24px 28px;">
+              <p style="margin:0 0 16px 0;font-size:16px;line-height:1.55;color:#1c3154;">Hej!</p>
+              <p style="margin:0 0 20px 0;font-size:16px;line-height:1.55;color:#1c3154;">Ni har påbörjat registrering för <strong style="color:#101c33;">${safeName}</strong>. Klicka på knappen nedan för att fortsätta setup och aktivera ert bokningssystem.</p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px 0;">
+                <tr>
+                  <td style="border-radius:12px;background:#45d3e4;">
+                    <a href="${safeUrl}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#101c33;text-decoration:none;border-radius:12px;">Slutför setup</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 8px 0;font-size:14px;line-height:1.5;color:#1c3154;">Fungerar inte knappen? Kopiera länken nedan och klistra in i webbläsaren.</p>
+              <p style="margin:0;padding:14px 16px;background:#f4f8fb;border-radius:10px;border:1px solid rgba(69,211,228,0.45);font-size:13px;line-height:1.45;color:#101c33;word-break:break-all;font-family:ui-monospace,monospace;">${safeUrl}</p>
+              <p style="margin:20px 0 0 0;font-size:13px;line-height:1.5;color:#1c3154;">Med vänliga hälsningar<br /><span style="color:#101c33;font-weight:600;">BRF Bokningsportal</span></p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+};
+
 const addDays = (date: Date, days: number) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -496,7 +549,7 @@ const handleBrfRegister = async (request: Request, env: Env) => {
     env,
     email,
     "Slutför er bokningssida",
-    `<p>Hej!</p><p>Klicka på länken för att slutföra setup:</p><p><a href="${setupUrl}">${setupUrl}</a></p>`
+    buildBrfSetupInviteHtml(setupUrl, associationName)
   );
   if (!mailResult.ok) {
     const detail =
