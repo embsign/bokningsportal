@@ -15,7 +15,6 @@ export const UserList = ({
       return true;
     }
     return (
-      user.identity?.toLowerCase().includes(needle) ||
       user.apartmentId?.toLowerCase().includes(needle) ||
       user.house?.toLowerCase().includes(needle) ||
       user.groups?.join(" ").toLowerCase().includes(needle)
@@ -30,14 +29,14 @@ export const UserList = ({
         children: [
           createElement("input", {
             className: "input",
-            attrs: { value: query || "", placeholder: "Sök på identitet, lägenhet eller grupp" },
+            attrs: { value: query || "", placeholder: "Sök på lägenhet, hus eller grupp" },
             onInput: (event) => onQueryChange(event.target.value),
           }),
         ],
       }),
       filtered.length
         ? createElement("div", {
-            className: "user-list user-list-table",
+            className: "admin-table-scroll",
             children: [
               createElement("table", {
                 className: "admin-table",
@@ -46,15 +45,12 @@ export const UserList = ({
                     children: [
                       createElement("tr", {
                         children: [
-                          createElement("th", { text: "Användare" }),
                           createElement("th", { text: "Lägenhet" }),
                           createElement("th", { text: "Hus / Trapphus" }),
+                          createElement("th", { text: "RFID-taggar" }),
                           createElement("th", { text: "Behörighetsgrupper" }),
                           createElement("th", { text: "Status" }),
-                          createElement("th", {
-                            className: "admin-table-actions",
-                            text: "Åtgärder",
-                          }),
+                          createElement("th", { text: "" }),
                         ],
                       }),
                     ],
@@ -63,9 +59,9 @@ export const UserList = ({
                     children: filtered.map((user) =>
                       createElement("tr", {
                         children: [
-                          createElement("td", { text: user.identity || "-" }),
                           createElement("td", { text: user.apartmentId || "-" }),
                           createElement("td", { text: user.house || "-" }),
+                          createElement("td", { text: String((user.rfidTags || []).length) }),
                           createElement("td", { text: user.groups?.join(", ") || "Inga grupper" }),
                           createElement("td", {
                             children: [
@@ -78,19 +74,24 @@ export const UserList = ({
                           createElement("td", {
                             className: "admin-table-actions",
                             children: [
-                              createElement("button", {
-                                className: "secondary-button admin-btn-edit admin-btn-compact",
-                                text: primaryLabel || "Redigera",
-                                onClick: () => onPrimaryAction(user),
+                              createElement("div", {
+                                className: "admin-action-group",
+                                children: [
+                                  createElement("button", {
+                                    className: "secondary-button admin-btn-edit",
+                                    text: primaryLabel || "Redigera",
+                                    onClick: () => onPrimaryAction(user),
+                                  }),
+                                  onDelete
+                                    ? createElement("button", {
+                                        className: "secondary-button admin-btn-delete",
+                                        text: "Ta bort",
+                                        onClick: () => onDelete(user),
+                                      })
+                                    : null,
+                                ].filter(Boolean),
                               }),
-                              onDelete
-                                ? createElement("button", {
-                                    className: "secondary-button admin-btn-delete admin-btn-compact",
-                                    text: "Ta bort",
-                                    onClick: () => onDelete(user),
-                                  })
-                                : null,
-                            ].filter(Boolean),
+                            ],
                           }),
                         ],
                       })

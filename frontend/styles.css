@@ -230,30 +230,14 @@ body {
   margin: 12px 0 6px;
 }
 
-.user-list {
-  display: grid;
-  gap: 8px;
-  max-height: 320px;
+.admin-table-scroll {
   overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 8px;
-  background: var(--surface-alt);
-}
-
-.user-list.user-list-table {
-  padding: 0;
   max-height: min(52vh, 460px);
 }
 
-.user-list.user-list-table .admin-table th,
-.user-list.user-list-table .admin-table td {
+.admin-table-scroll .admin-table th,
+.admin-table-scroll .admin-table td {
   vertical-align: middle;
-}
-
-.user-list.user-list-table .admin-table th:last-child,
-.user-list.user-list-table .admin-table td:last-child {
-  text-align: right;
 }
 
 .user-row {
@@ -419,6 +403,37 @@ body {
   gap: 8px;
 }
 
+.form-field-hint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.form-inline-section-title {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.form-inline-section-hint {
+  margin-top: -2px;
+  margin-bottom: 6px;
+}
+
+.form-inline-divider {
+  border-top: 1px solid var(--border);
+  margin: 6px 0 2px;
+}
+
+.form-inline-section-content {
+  margin-top: -2px;
+}
+
 .form-label {
   display: flex;
   align-items: center;
@@ -558,6 +573,30 @@ body {
 .admin-btn-select {
   padding: 8px 12px;
   font-size: 13px;
+}
+
+.admin-btn-add {
+  background: #22c55e;
+  border-color: #16a34a;
+  color: #08351c;
+}
+
+.admin-btn-add:hover {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #f0fdf4;
+}
+
+.secondary-button.admin-btn-pick {
+  background: #67e8f9;
+  border-color: #06b6d4;
+  color: #083344;
+}
+
+.secondary-button.admin-btn-pick:hover {
+  background: #22d3ee;
+  border-color: #0891b2;
+  color: #042f2e;
 }
 
 .selector-list {

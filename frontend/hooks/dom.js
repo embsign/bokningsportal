@@ -7,6 +7,7 @@ export const createElement = (tag, options = {}, children = []) => {
     onClick,
     onInput,
     onChange,
+    onScroll,
     children: optionChildren,
   } = options;
 
@@ -46,6 +47,9 @@ export const createElement = (tag, options = {}, children = []) => {
   }
   if (onChange) {
     element.addEventListener("change", onChange);
+  }
+  if (onScroll) {
+    element.addEventListener("scroll", onScroll);
   }
 
   const mergedChildren = [...(optionChildren || []), ...children];

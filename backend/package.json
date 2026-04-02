@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787",
-    "dev:remote": "wrangler --cwd .. pages dev frontend --d1 DB=booking-prod --port 8787"
+    "dev": "wrangler --cwd .. pages dev frontend --port 8787 --persist-to ./.wrangler/state",
+    "dev:remote": "wrangler --cwd .. pages dev frontend --port 8787 --persist-to ./.wrangler/state",
+    "db:local": "wrangler d1 execute booking-prod --local --persist-to ../.wrangler/state --config ../wrangler.toml --file ../db/migrations/001_initial_schema.sql && wrangler d1 execute booking-prod --local --persist-to ../.wrangler/state --config ../wrangler.toml --file ../db/seed.sql",
+    "db:local:reset": "rm -rf ../.wrangler/state/v3/d1 && npm run db:local"
   },
   "dependencies": {},
   "devDependencies": {

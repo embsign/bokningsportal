@@ -114,7 +114,6 @@ export const getUsers = async () => {
   const { users } = await apiRequest("/admin/users");
   return users.map((user) => ({
     id: user.id,
-    identity: user.identity,
     apartmentId: user.apartment_id,
     house: user.house,
     groups: user.groups || [],
@@ -129,7 +128,7 @@ export const updateUser = (id, payload) =>
   apiRequest(`/admin/users/${id}`, {
     method: "PUT",
     body: JSON.stringify({
-      apartment_id: payload.identity || payload.apartmentId,
+      apartment_id: payload.apartmentId,
       house: payload.house,
       groups: payload.groups,
       rfid: payload.rfid,
@@ -143,7 +142,7 @@ export const createUser = (payload) =>
   apiRequest("/admin/users", {
     method: "POST",
     body: JSON.stringify({
-      apartment_id: payload.identity || payload.apartmentId,
+      apartment_id: payload.apartmentId,
       house: payload.house,
       groups: payload.groups,
       rfid: payload.rfid,

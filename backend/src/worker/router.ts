@@ -241,6 +241,33 @@ const getTimeSlotWindowConfig = (bookingObject: any) => {
   };
 };
 
+const validateAdminBookingObjectBody = (body: any): string | null => {
+  const name = String(body?.name ?? "").trim();
+  if (!name) {
+    return "invalid_booking_object_name";
+  }
+  const windowMin = Number(body?.window_min_days ?? 0);
+  const windowMax = Number(body?.window_max_days ?? 0);
+  if (Number.isFinite(windowMin) && Number.isFinite(windowMax) && windowMin > windowMax) {
+    return "invalid_booking_window";
+  }
+  if (body?.booking_type === "time-slot") {
+    const startTime = normalizeClockTime(body?.time_slot_start_time, "08:00");
+    const endTime = normalizeClockTime(body?.time_slot_end_time, "20:00");
+    const sm = getMinutesFromClockTime(startTime);
+    const em = getMinutesFromClockTime(endTime);
+    if (em <= sm) {
+      return "invalid_time_slot_window";
+    }
+    const parsedSlot = Number(body?.slot_duration_minutes);
+    const slotM = Number.isFinite(parsedSlot) && parsedSlot > 0 ? parsedSlot : 60;
+    if (em - sm < slotM) {
+      return "invalid_time_slot_duration";
+    }
+  }
+  return null;
+};
+
 const buildFullDayRange = (date: Date, bookingObject: any) => {
   const config = getFullDayTimeConfig(bookingObject);
   const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0));
@@ -2175,7 +2202,6 @@ const handleAdminUsers = async (request: Request, env: Env) => {
     .all();
   const result = users.results.map((user: any) => ({
     id: user.id,
-    identity: user.apartment_id,
     apartment_id: user.apartment_id,
     house: user.house || "",
     groups: user.group_names
@@ -2363,6 +2389,8 @@ const handleAdminCreateBookingObject = async (request: Request, env: Env) => {
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body) return errorResponse(400, "invalid_payload");
+  const bookingObjectValidation = validateAdminBookingObjectBody(body);
+  if (bookingObjectValidation) return errorResponse(400, bookingObjectValidation);
   const maxBookingsOverride = parseRequiredPositiveInt(body.max_bookings_override);
   if (maxBookingsOverride === null) return errorResponse(400, "invalid_max_bookings");
   const id = `obj-${crypto.randomUUID()}`;
@@ -2402,6 +2430,8 @@ const handleAdminUpdateBookingObject = async (request: Request, env: Env, object
   if ("error" in auth) return auth.error;
   const body = await getJsonBody(request);
   if (!body) return errorResponse(400, "invalid_payload");
+  const bookingObjectUpdateValidation = validateAdminBookingObjectBody(body);
+  if (bookingObjectUpdateValidation) return errorResponse(400, bookingObjectUpdateValidation);
   const maxBookingsOverride = parseRequiredPositiveInt(body.max_bookings_override);
   if (maxBookingsOverride === null) return errorResponse(400, "invalid_max_bookings");
   await env.DB.prepare(

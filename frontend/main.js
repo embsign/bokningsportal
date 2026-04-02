@@ -122,8 +122,50 @@ const normalizeRequiredMaxBookings = (value) => {
   const parsed = parseRequiredPositiveInt(value);
   return parsed === null ? null : String(parsed);
 };
+
+const getMinutesFromClock = (value, fallback = "00:00") => {
+  const raw = String(value || "").trim();
+  const t = /^\d{2}:\d{2}$/.test(raw) ? raw : fallback;
+  const [h, m] = t.split(":").map((part) => Number(part));
+  return h * 60 + m;
+};
+
+const validateBookingObjectForm = (form) => {
+  const errors = {};
+  const name = String(form?.name || "").trim();
+  if (!name) errors.name = "Ange ett namn för bokningsobjektet.";
+  const windowMin = Number(form?.windowMin ?? 0);
+  const windowMax = Number(form?.windowMax ?? 0);
+  if (Number.isFinite(windowMin) && Number.isFinite(windowMax) && windowMin > windowMax) {
+    errors.windowMax = "Minsta tid innan bokning får inte vara större än maximal framförhållning.";
+  }
+  if (form?.type === "Tidspass") {
+    const sm = getMinutesFromClock(form.slotStartTime, "08:00");
+    const em = getMinutesFromClock(form.slotEndTime, "20:00");
+    if (em <= sm) {
+      errors.slotEndTime = "Senaste tid måste vara efter tidigaste tid för tidspass.";
+    }
+    const slotDur = Number(form.slotDuration);
+    if (Number.isFinite(slotDur) && slotDur > 0 && em - sm < slotDur) {
+      errors.slotDuration = "Bokningslängden får inte vara längre än tidsfönstret.";
+    }
+  }
+  return errors;
+};
+
+const BOOKING_MODAL_VALIDATION_RESET_FIELDS = new Set([
+  "name",
+  "type",
+  "slotStartTime",
+  "slotEndTime",
+  "fullDayStartTime",
+  "fullDayEndTime",
+  "slotDuration",
+  "windowMin",
+  "windowMax",
+  "maxBookings",
+]);
 const buildEmptyUserForm = () => ({
-  identity: "",
   apartmentId: "",
   house: "",
   groups: [],
@@ -134,7 +176,6 @@ const buildEmptyUserForm = () => ({
   admin: false,
 });
 const buildUserFormFromUser = (user) => ({
-  identity: user?.identity || "",
   apartmentId: user?.apartmentId || "",
   house: user?.house || "",
   groups: user?.groups || [],
@@ -144,6 +185,40 @@ const buildUserFormFromUser = (user) => ({
   active: user?.active !== false,
   admin: user?.admin === true,
 });
+const validateUserForm = (form) => {
+  const errors = {};
+  const apartmentId = String(form?.apartmentId || "").trim();
+  if (!apartmentId) {
+    errors.apartmentId = "Lägenhets ID krävs.";
+  }
+  return errors;
+};
+const clearUserValidationErrorsForField = (errors = {}, field) => {
+  const next = { ...(errors || {}) };
+  delete next.general;
+  if (field === "apartmentId") {
+    delete next.apartmentId;
+  }
+  if (field === "rfid" || field === "rfidTags") {
+    delete next.rfidTags;
+  }
+  return next;
+};
+const getUserSaveValidationErrors = (error) => {
+  const detail = String(error?.detail || error?.message || "");
+  if (detail.startsWith("invalid_rfid_format:")) {
+    const sample = detail.split(":").slice(1).join(":").trim();
+    return {
+      rfidTags: sample
+        ? `Ogiltigt RFID-format: ${sample}. Ange UID i giltigt format.`
+        : "Ett eller flera RFID-värden har ogiltigt format.",
+    };
+  }
+  if (detail === "invalid_payload") {
+    return { apartmentId: "Ange Lägenhets ID." };
+  }
+  return { general: "Kunde inte spara användaren. Kontrollera fälten och försök igen." };
+};
 const toSortedUniqueStrings = (values = []) =>
   Array.from(
     new Set(
@@ -366,6 +441,8 @@ if (routePath.startsWith("/admin/")) {
     modalOpen: false,
     modalMode: "add",
     selectorOpenKey: null,
+    bookingSelectorScrollTop: 0,
+    bookingModalOverlayScrollTop: 0,
     groupModalOpen: false,
     groupNameDraft: "",
     importOpen: false,
@@ -388,6 +465,7 @@ if (routePath.startsWith("/admin/")) {
     editUserOpen: false,
     editUserId: null,
     editUserForm: buildEmptyUserForm(),
+    editUserValidationErrors: {},
     userSelectorOpen: false,
     userRfidModalOpen: false,
     userGroupModalOpen: false,
@@ -406,6 +484,7 @@ if (routePath.startsWith("/admin/")) {
     editScreenId: null,
     editScreenName: "",
     modalValidationError: "",
+    modalValidationErrors: {},
     modalForm: {
       name: "",
       type: "Tidspass",
@@ -436,7 +515,11 @@ if (routePath.startsWith("/admin/")) {
       modalOpen: true,
       modalMode: mode,
       editId: item?.id || null,
+      selectorOpenKey: null,
+      bookingSelectorScrollTop: 0,
+      bookingModalOverlayScrollTop: 0,
       modalValidationError: "",
+      modalValidationErrors: {},
       modalForm: item
         ? {
             name: item.name,
@@ -516,6 +599,7 @@ if (routePath.startsWith("/admin/")) {
       editUserOpen: true,
       editUserId: user?.id || null,
       editUserForm: user ? buildUserFormFromUser(user) : buildEmptyUserForm(),
+      editUserValidationErrors: {},
       userSelectorOpen: false,
       userRfidModalOpen: false,
       userGroupModalOpen: false,
@@ -632,6 +716,8 @@ if (routePath.startsWith("/admin/")) {
 
   const renderAdmin = () => {
     const state = adminStore.getState();
+    const docScrollX = window.scrollX;
+    const docScrollY = window.scrollY;
     const activeElement =
       state.modalOpen ||
       state.editUserOpen ||
@@ -663,6 +749,7 @@ if (routePath.startsWith("/admin/")) {
       open: state.modalOpen,
       mode: state.modalMode,
       form: state.modalForm,
+      validationErrors: state.modalValidationErrors || {},
       validationError: state.modalValidationError || "",
       groupValidationError: state.modalValidationError || "",
       bookingGroups: state.bookingGroups,
@@ -672,7 +759,8 @@ if (routePath.startsWith("/admin/")) {
       }),
       onChange: (field, value) =>
         adminStore.setState((prev) => ({
-          modalValidationError: field === "maxBookings" ? "" : prev.modalValidationError,
+          modalValidationError: BOOKING_MODAL_VALIDATION_RESET_FIELDS.has(field) ? "" : prev.modalValidationError,
+          modalValidationErrors: BOOKING_MODAL_VALIDATION_RESET_FIELDS.has(field) ? {} : prev.modalValidationErrors,
           modalForm: { ...prev.modalForm, [field]: value },
         })),
       onSelectGroup: (groupId) =>
@@ -714,33 +802,97 @@ if (routePath.startsWith("/admin/")) {
         }
         const maxBookings = parseRequiredPositiveInt(adminStore.getState().modalForm.maxBookings);
         if (maxBookings === null) {
-          adminStore.setState({ modalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          adminStore.setState({
+            modalValidationError: "",
+            modalValidationErrors: { maxBookings: "Max bokningar måste vara ett heltal större än 0." },
+          });
           return;
         }
         await createBookingGroup({ name, max_bookings: maxBookings });
         await loadAdminData();
         adminStore.setState({ groupModalOpen: false, groupNameDraft: "", modalValidationError: "" });
       },
-      onClose: () => adminStore.setState({ modalOpen: false, modalValidationError: "" }),
+      onClose: () =>
+        adminStore.setState({
+          modalOpen: false,
+          modalValidationError: "",
+          modalValidationErrors: {},
+          bookingModalOverlayScrollTop: 0,
+        }),
       selectorOpenKey: state.selectorOpenKey,
-      onOpenSelector: (key) => adminStore.setState({ selectorOpenKey: key }),
-      onCloseSelector: () => adminStore.setState({ selectorOpenKey: null }),
+      selectorScrollTop: state.bookingSelectorScrollTop || 0,
+      onSelectorScroll: (value) => adminStore.setState({ bookingSelectorScrollTop: value }),
+      onBookingModalOverlayScroll: (value) => adminStore.setState({ bookingModalOverlayScrollTop: value }),
+      onOpenSelector: (key) => {
+        const overlay = document.querySelector(".booking-object-modal")?.parentElement;
+        const top =
+          overlay && overlay.classList.contains("modal-overlay-scrollable")
+            ? overlay.scrollTop
+            : adminStore.getState().bookingModalOverlayScrollTop;
+        adminStore.setState({
+          selectorOpenKey: key,
+          bookingSelectorScrollTop: 0,
+          bookingModalOverlayScrollTop: top,
+        });
+      },
+      onCloseSelector: () => adminStore.setState({ selectorOpenKey: null, bookingSelectorScrollTop: 0 }),
       onSave: async () => {
         const form = adminStore.getState().modalForm;
         const normalizedMaxBookings = normalizeRequiredMaxBookings(form.maxBookings);
         if (!normalizedMaxBookings) {
-          adminStore.setState({ modalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          adminStore.setState({
+            modalValidationError: "",
+            modalValidationErrors: { maxBookings: "Max bokningar måste vara ett heltal större än 0." },
+          });
           return;
         }
-        adminStore.setState({ modalValidationError: "" });
-        const payload = { ...form, maxBookings: normalizedMaxBookings };
-        if (adminStore.getState().modalMode === "edit") {
-          await updateBookingObject(adminStore.getState().editId, payload);
-        } else {
-          await createBookingObject(payload);
+        const formErrors = validateBookingObjectForm({ ...form, maxBookings: normalizedMaxBookings });
+        if (Object.keys(formErrors).length > 0) {
+          adminStore.setState({ modalValidationErrors: formErrors, modalValidationError: "" });
+          return;
         }
-        await loadAdminData();
-        adminStore.setState({ modalOpen: false, modalValidationError: "" });
+        adminStore.setState({ modalValidationError: "", modalValidationErrors: {} });
+        const payload = { ...form, maxBookings: normalizedMaxBookings };
+        try {
+          if (adminStore.getState().modalMode === "edit") {
+            await updateBookingObject(adminStore.getState().editId, payload);
+          } else {
+            await createBookingObject(payload);
+          }
+          await loadAdminData();
+          adminStore.setState({
+            modalOpen: false,
+            modalValidationError: "",
+            modalValidationErrors: {},
+            bookingModalOverlayScrollTop: 0,
+            selectorOpenKey: null,
+            bookingSelectorScrollTop: 0,
+          });
+        } catch (error) {
+          const detail = String(error?.detail || "");
+          if (detail === "invalid_booking_object_name") {
+            adminStore.setState({ modalValidationErrors: { name: "Ange ett namn för bokningsobjektet." }, modalValidationError: "" });
+          } else if (detail === "invalid_booking_window") {
+            adminStore.setState({
+              modalValidationErrors: {
+                windowMax: "Minsta tid innan bokning får inte vara större än maximal framförhållning.",
+              },
+              modalValidationError: "",
+            });
+          } else if (detail === "invalid_time_slot_window") {
+            adminStore.setState({
+              modalValidationErrors: { slotEndTime: "Senaste tid måste vara efter tidigaste tid för tidspass." },
+              modalValidationError: "",
+            });
+          } else if (detail === "invalid_time_slot_duration") {
+            adminStore.setState({
+              modalValidationErrors: { slotDuration: "Bokningslängden får inte vara längre än tidsfönstret." },
+              modalValidationError: "",
+            });
+          } else {
+            adminStore.setState({ modalValidationError: "Kunde inte spara bokningsobjektet.", modalValidationErrors: {} });
+          }
+        }
       },
     });
 
@@ -950,6 +1102,7 @@ if (routePath.startsWith("/admin/")) {
       open: state.editUserOpen,
       mode: state.editUserId ? "edit" : "create",
       form: state.editUserForm,
+      validationErrors: state.editUserValidationErrors || {},
       groupOptions: state.accessGroups || [],
       selectorOpen: state.userSelectorOpen,
       addRfidOpen: state.userRfidModalOpen,
@@ -975,7 +1128,10 @@ if (routePath.startsWith("/admin/")) {
       onOpenSelector: () => adminStore.setState({ userSelectorOpen: true }),
       onCloseSelector: () => adminStore.setState({ userSelectorOpen: false }),
       onChange: (field, value) =>
-        adminStore.setState((prev) => ({ editUserForm: { ...prev.editUserForm, [field]: value } })),
+        adminStore.setState((prev) => ({
+          editUserForm: { ...prev.editUserForm, [field]: value },
+          editUserValidationErrors: clearUserValidationErrorsForField(prev.editUserValidationErrors, field),
+        })),
       onClose: () =>
         adminStore.setState({
           editUserOpen: false,
@@ -984,6 +1140,7 @@ if (routePath.startsWith("/admin/")) {
           userGroupModalOpen: false,
           addRfidDraft: "",
           groupNameDraft: "",
+          editUserValidationErrors: {},
         }),
       groupNameDraft: state.groupNameDraft,
       groupModalOpen: state.userGroupModalOpen,
@@ -991,26 +1148,44 @@ if (routePath.startsWith("/admin/")) {
       onCloseGroupModal: () => adminStore.setState({ userGroupModalOpen: false, groupNameDraft: "" }),
       onGroupNameChange: (value) => adminStore.setState({ groupNameDraft: value }),
       onCreateGroup: async () => {
-        if (!state.groupNameDraft?.trim()) return;
-        await createAccessGroup(state.groupNameDraft.trim());
-        adminStore.setState({ groupNameDraft: "", userGroupModalOpen: false });
+        const newGroupName = state.groupNameDraft?.trim();
+        if (!newGroupName) return;
+        await createAccessGroup(newGroupName);
+        adminStore.setState((prev) => ({
+          groupNameDraft: "",
+          userGroupModalOpen: false,
+          editUserForm: {
+            ...prev.editUserForm,
+            groups: toSortedUniqueStrings([...(prev.editUserForm.groups || []), newGroupName]),
+          },
+        }));
         await loadAdminData();
       },
       onSave: async () => {
-        if (state.editUserId) {
-          await updateUser(state.editUserId, state.editUserForm);
-        } else {
-          await createUser(state.editUserForm);
+        const preflightErrors = validateUserForm(state.editUserForm);
+        if (Object.keys(preflightErrors).length) {
+          adminStore.setState({ editUserValidationErrors: preflightErrors });
+          return;
         }
-        await loadAdminData();
-        adminStore.setState({
-          editUserOpen: false,
-          userSelectorOpen: false,
-          userRfidModalOpen: false,
-          userGroupModalOpen: false,
-          addRfidDraft: "",
-          groupNameDraft: "",
-        });
+        try {
+          if (state.editUserId) {
+            await updateUser(state.editUserId, state.editUserForm);
+          } else {
+            await createUser(state.editUserForm);
+          }
+          await loadAdminData();
+          adminStore.setState({
+            editUserOpen: false,
+            userSelectorOpen: false,
+            userRfidModalOpen: false,
+            userGroupModalOpen: false,
+            addRfidDraft: "",
+            groupNameDraft: "",
+            editUserValidationErrors: {},
+          });
+        } catch (error) {
+          adminStore.setState({ editUserValidationErrors: getUserSaveValidationErrors(error) });
+        }
       },
       onConfirmRemoveRfidTag: (value) =>
         openAdminConfirmModal({
@@ -1195,6 +1370,14 @@ if (routePath.startsWith("/admin/")) {
     );
     app.append(shell);
 
+    if (state.modalOpen) {
+      const bookingCard = app.querySelector(".booking-object-modal");
+      const bookingOverlay = bookingCard?.parentElement;
+      if (bookingOverlay?.classList.contains("modal-overlay-scrollable")) {
+        bookingOverlay.scrollTop = state.bookingModalOverlayScrollTop || 0;
+      }
+    }
+
     if (modalFocusSnapshot && !state.groupModalOpen && !state.orderScreensModalOpen) {
       const target = app.querySelector(`[data-focus-key="${modalFocusSnapshot.key}"]`);
       if (target) {
@@ -1266,6 +1449,15 @@ if (routePath.startsWith("/admin/")) {
         list.scrollTop = state.adminSelectorScrollTop || 0;
       }
     }
+
+    if (state.modalOpen && state.selectorOpenKey) {
+      const list = app.querySelector(".booking-object-modal + .modal-overlay .selector-list");
+      if (list) {
+        list.scrollTop = state.bookingSelectorScrollTop || 0;
+      }
+    }
+
+    window.scrollTo(docScrollX, docScrollY);
   };
 
   adminStore.subscribe(renderAdmin);
@@ -2339,7 +2531,6 @@ const loadWeekAvailability = async (service, weekStart) => {
     editUserOpen: false,
     editUserId: null,
     editUserForm: {
-      identity: "",
       apartmentId: "",
       house: "",
       groups: [],
@@ -2349,6 +2540,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       active: true,
       admin: false,
     },
+    editUserValidationErrors: {},
     userSelectorOpen: false,
     userRfidModalOpen: false,
     userGroupModalOpen: false,
@@ -2381,9 +2573,12 @@ const loadWeekAvailability = async (service, weekStart) => {
       denyApartments: [],
     },
     selectorOpenKey: null,
+    bookingSelectorScrollTop: 0,
+    bookingModalOverlayScrollTop: 0,
     groupModalOpen: false,
     bookingGroupDraft: "",
     bookingModalValidationError: "",
+    bookingModalValidationErrors: {},
     importOpen: false,
     importStep: 1,
     importFileName: "",
@@ -2569,7 +2764,6 @@ const loadWeekAvailability = async (service, weekStart) => {
       accessGroupDraft: "",
       editUserForm: user
         ? {
-            identity: user.identity,
             apartmentId: user.apartmentId,
             house: user.house,
             groups: user.groups || [],
@@ -2580,7 +2774,6 @@ const loadWeekAvailability = async (service, weekStart) => {
             admin: user.admin === true,
           }
         : {
-            identity: "",
             apartmentId: "",
             house: "",
             groups: [],
@@ -2590,6 +2783,7 @@ const loadWeekAvailability = async (service, weekStart) => {
             active: true,
             admin: false,
           },
+      editUserValidationErrors: {},
     });
   };
 
@@ -2637,7 +2831,11 @@ const loadWeekAvailability = async (service, weekStart) => {
       bookingModalOpen: true,
       bookingModalMode: mode,
       editBookingId: item?.id || null,
+      selectorOpenKey: null,
+      bookingSelectorScrollTop: 0,
+      bookingModalOverlayScrollTop: 0,
       bookingModalValidationError: "",
+      bookingModalValidationErrors: {},
       bookingForm: item
         ? {
             name: item.name,
@@ -2710,6 +2908,8 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   const renderSetup = () => {
+    const docScrollX = window.scrollX;
+    const docScrollY = window.scrollY;
     clearElement(app);
     const step = setupState.step || 1;
 
@@ -2959,6 +3159,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       open: setupState.bookingModalOpen,
       mode: setupState.bookingModalMode,
       form: setupState.bookingForm,
+      validationErrors: setupState.bookingModalValidationErrors || {},
       validationError: setupState.bookingModalValidationError || "",
       groupValidationError: setupState.bookingModalValidationError || "",
       permissionOptions: buildPermissionOptions({
@@ -2968,12 +3169,37 @@ const loadWeekAvailability = async (service, weekStart) => {
       onChange: (field, value) =>
         setSetupState({
           bookingForm: { ...setupState.bookingForm, [field]: value },
-          bookingModalValidationError: field === "maxBookings" ? "" : setupState.bookingModalValidationError,
+          bookingModalValidationErrors: BOOKING_MODAL_VALIDATION_RESET_FIELDS.has(field)
+            ? {}
+            : setupState.bookingModalValidationErrors,
+          bookingModalValidationError: BOOKING_MODAL_VALIDATION_RESET_FIELDS.has(field)
+            ? ""
+            : setupState.bookingModalValidationError,
         }),
-      onClose: () => setSetupState({ bookingModalOpen: false, bookingModalValidationError: "" }),
+      onClose: () =>
+        setSetupState({
+          bookingModalOpen: false,
+          bookingModalValidationError: "",
+          bookingModalValidationErrors: {},
+          bookingModalOverlayScrollTop: 0,
+        }),
       selectorOpenKey: setupState.selectorOpenKey,
-      onOpenSelector: (key) => setSetupState({ selectorOpenKey: key }),
-      onCloseSelector: () => setSetupState({ selectorOpenKey: null }),
+      selectorScrollTop: setupState.bookingSelectorScrollTop || 0,
+      onSelectorScroll: (value) => setSetupState({ bookingSelectorScrollTop: value }),
+      onBookingModalOverlayScroll: (value) => setSetupState({ bookingModalOverlayScrollTop: value }),
+      onOpenSelector: (key) => {
+        const overlay = document.querySelector(".booking-object-modal")?.parentElement;
+        const top =
+          overlay && overlay.classList.contains("modal-overlay-scrollable")
+            ? overlay.scrollTop
+            : setupState.bookingModalOverlayScrollTop;
+        setSetupState({
+          selectorOpenKey: key,
+          bookingSelectorScrollTop: 0,
+          bookingModalOverlayScrollTop: top,
+        });
+      },
+      onCloseSelector: () => setSetupState({ selectorOpenKey: null, bookingSelectorScrollTop: 0 }),
       bookingGroups: setupState.bookingGroups,
       onSelectGroup: (value) => {
         if (!value) {
@@ -2999,7 +3225,10 @@ const loadWeekAvailability = async (service, weekStart) => {
         if (!setupState.bookingGroupDraft?.trim()) return;
         const maxBookings = parseRequiredPositiveInt(setupState.bookingForm.maxBookings);
         if (maxBookings === null) {
-          setSetupState({ bookingModalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          setSetupState({
+            bookingModalValidationError: "",
+            bookingModalValidationErrors: { maxBookings: "Max bokningar måste vara ett heltal större än 0." },
+          });
           return;
         }
         await createBookingGroup({
@@ -3012,18 +3241,68 @@ const loadWeekAvailability = async (service, weekStart) => {
       onSave: async () => {
         const normalizedMaxBookings = normalizeRequiredMaxBookings(setupState.bookingForm.maxBookings);
         if (!normalizedMaxBookings) {
-          setSetupState({ bookingModalValidationError: "Max bokningar måste vara ett heltal större än 0." });
+          setSetupState({
+            bookingModalValidationError: "",
+            bookingModalValidationErrors: { maxBookings: "Max bokningar måste vara ett heltal större än 0." },
+          });
           return;
         }
-        setSetupState({ bookingModalValidationError: "" });
-        const payload = { ...setupState.bookingForm, maxBookings: normalizedMaxBookings };
-        if (setupState.bookingModalMode === "edit") {
-          await updateBookingObject(setupState.editBookingId, payload);
-        } else {
-          await createBookingObject(payload);
+        const formErrors = validateBookingObjectForm({
+          ...setupState.bookingForm,
+          maxBookings: normalizedMaxBookings,
+        });
+        if (Object.keys(formErrors).length > 0) {
+          setSetupState({ bookingModalValidationErrors: formErrors, bookingModalValidationError: "" });
+          return;
         }
-        await loadSetupLists();
-        setSetupState({ bookingModalOpen: false, bookingModalValidationError: "" });
+        setSetupState({ bookingModalValidationError: "", bookingModalValidationErrors: {} });
+        const payload = { ...setupState.bookingForm, maxBookings: normalizedMaxBookings };
+        try {
+          if (setupState.bookingModalMode === "edit") {
+            await updateBookingObject(setupState.editBookingId, payload);
+          } else {
+            await createBookingObject(payload);
+          }
+          await loadSetupLists();
+          setSetupState({
+            bookingModalOpen: false,
+            bookingModalValidationError: "",
+            bookingModalValidationErrors: {},
+            bookingModalOverlayScrollTop: 0,
+            selectorOpenKey: null,
+            bookingSelectorScrollTop: 0,
+          });
+        } catch (error) {
+          const detail = String(error?.detail || "");
+          if (detail === "invalid_booking_object_name") {
+            setSetupState({
+              bookingModalValidationErrors: { name: "Ange ett namn för bokningsobjektet." },
+              bookingModalValidationError: "",
+            });
+          } else if (detail === "invalid_booking_window") {
+            setSetupState({
+              bookingModalValidationErrors: {
+                windowMax: "Minsta tid innan bokning får inte vara större än maximal framförhållning.",
+              },
+              bookingModalValidationError: "",
+            });
+          } else if (detail === "invalid_time_slot_window") {
+            setSetupState({
+              bookingModalValidationErrors: { slotEndTime: "Senaste tid måste vara efter tidigaste tid för tidspass." },
+              bookingModalValidationError: "",
+            });
+          } else if (detail === "invalid_time_slot_duration") {
+            setSetupState({
+              bookingModalValidationErrors: { slotDuration: "Bokningslängden får inte vara längre än tidsfönstret." },
+              bookingModalValidationError: "",
+            });
+          } else {
+            setSetupState({
+              bookingModalValidationError: "Kunde inte spara bokningsobjektet.",
+              bookingModalValidationErrors: {},
+            });
+          }
+        }
       },
     });
 
@@ -3031,6 +3310,7 @@ const loadWeekAvailability = async (service, weekStart) => {
       open: setupState.editUserOpen,
       mode: setupState.editUserId ? "edit" : "create",
       form: setupState.editUserForm,
+      validationErrors: setupState.editUserValidationErrors || {},
       groupOptions: setupState.accessGroups || [],
       selectorOpen: setupState.userSelectorOpen,
       addRfidOpen: setupState.userRfidModalOpen,
@@ -3057,7 +3337,10 @@ const loadWeekAvailability = async (service, weekStart) => {
       onOpenSelector: () => setSetupState({ userSelectorOpen: true }),
       onCloseSelector: () => setSetupState({ userSelectorOpen: false }),
       onChange: (field, value) =>
-        setSetupState({ editUserForm: { ...setupState.editUserForm, [field]: value } }),
+        setSetupState({
+          editUserForm: { ...setupState.editUserForm, [field]: value },
+          editUserValidationErrors: clearUserValidationErrorsForField(setupState.editUserValidationErrors, field),
+        }),
       onClose: () =>
         setSetupState({
           editUserOpen: false,
@@ -3066,6 +3349,7 @@ const loadWeekAvailability = async (service, weekStart) => {
           userGroupModalOpen: false,
           addRfidDraft: "",
           accessGroupDraft: "",
+          editUserValidationErrors: {},
         }),
       groupNameDraft: setupState.accessGroupDraft,
       groupModalOpen: setupState.userGroupModalOpen,
@@ -3073,26 +3357,44 @@ const loadWeekAvailability = async (service, weekStart) => {
       onCloseGroupModal: () => setSetupState({ userGroupModalOpen: false, accessGroupDraft: "" }),
       onGroupNameChange: (value) => setSetupState({ accessGroupDraft: value }),
       onCreateGroup: async () => {
-        if (!setupState.accessGroupDraft?.trim()) return;
-        await createAccessGroup(setupState.accessGroupDraft.trim());
-        setSetupState({ accessGroupDraft: "", userGroupModalOpen: false });
+        const newGroupName = setupState.accessGroupDraft?.trim();
+        if (!newGroupName) return;
+        await createAccessGroup(newGroupName);
+        setSetupState((prev) => ({
+          accessGroupDraft: "",
+          userGroupModalOpen: false,
+          editUserForm: {
+            ...prev.editUserForm,
+            groups: toSortedUniqueStrings([...(prev.editUserForm.groups || []), newGroupName]),
+          },
+        }));
         await loadSetupLists();
       },
       onSave: async () => {
-        if (setupState.editUserId) {
-          await updateUser(setupState.editUserId, setupState.editUserForm);
-        } else {
-          await createUser(setupState.editUserForm);
+        const preflightErrors = validateUserForm(setupState.editUserForm);
+        if (Object.keys(preflightErrors).length) {
+          setSetupState({ editUserValidationErrors: preflightErrors });
+          return;
         }
-        await loadSetupLists();
-        setSetupState({
-          editUserOpen: false,
-          userSelectorOpen: false,
-          userRfidModalOpen: false,
-          userGroupModalOpen: false,
-          addRfidDraft: "",
-          accessGroupDraft: "",
-        });
+        try {
+          if (setupState.editUserId) {
+            await updateUser(setupState.editUserId, setupState.editUserForm);
+          } else {
+            await createUser(setupState.editUserForm);
+          }
+          await loadSetupLists();
+          setSetupState({
+            editUserOpen: false,
+            userSelectorOpen: false,
+            userRfidModalOpen: false,
+            userGroupModalOpen: false,
+            addRfidDraft: "",
+            accessGroupDraft: "",
+            editUserValidationErrors: {},
+          });
+        } catch (error) {
+          setSetupState({ editUserValidationErrors: getUserSaveValidationErrors(error) });
+        }
       },
       onConfirmRemoveRfidTag: (value) =>
         openSetupConfirmModal({
@@ -3339,6 +3641,14 @@ const loadWeekAvailability = async (service, weekStart) => {
     if (confirmModal) app.append(confirmModal);
     if (importModal) app.append(importModal);
 
+    if (setupState.bookingModalOpen) {
+      const bookingCard = app.querySelector(".booking-object-modal");
+      const bookingOverlay = bookingCard?.parentElement;
+      if (bookingOverlay?.classList.contains("modal-overlay-scrollable")) {
+        bookingOverlay.scrollTop = setupState.bookingModalOverlayScrollTop || 0;
+      }
+    }
+
     if (setupState.importOpen && setupState.importFocus) {
       const input = app.querySelector(`[data-autofocus="${setupState.importFocus}"]`);
       if (input) {
@@ -3373,6 +3683,15 @@ const loadWeekAvailability = async (service, weekStart) => {
         list.scrollTop = setupState.adminSelectorScrollTop || 0;
       }
     }
+
+    if (setupState.bookingModalOpen && setupState.selectorOpenKey) {
+      const list = app.querySelector(".booking-object-modal + .modal-overlay .selector-list");
+      if (list) {
+        list.scrollTop = setupState.bookingSelectorScrollTop || 0;
+      }
+    }
+
+    window.scrollTo(docScrollX, docScrollY);
   };
 
   renderSetup();

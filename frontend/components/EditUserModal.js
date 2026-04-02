@@ -1,11 +1,18 @@
 import { createElement } from "../hooks/dom.js";
 
-const field = ({ label, input }) =>
+const field = ({ label, input, helpText, errorText }) =>
   createElement("label", {
     className: "form-field form-row-inline",
     children: [
       createElement("div", { className: "form-label form-label-inline", text: label }),
-      createElement("div", { className: "form-input-inline", children: [input] }),
+      createElement("div", {
+        className: "form-input-inline",
+        children: [
+          input,
+          helpText ? createElement("div", { className: "form-field-hint", text: helpText }) : null,
+          errorText ? createElement("div", { className: "form-error", text: errorText }) : null,
+        ].filter(Boolean),
+      }),
     ],
   });
 
@@ -17,16 +24,6 @@ const removableItemsTable = ({ values = [], emptyText, onRemove }) =>
           createElement("table", {
             className: "admin-table selected-list-table",
             children: [
-              createElement("thead", {
-                children: [
-                  createElement("tr", {
-                    children: [
-                      createElement("th", { text: "Värde" }),
-                      createElement("th", { className: "admin-table-actions", text: "Åtgärd" }),
-                    ],
-                  }),
-                ],
-              }),
               createElement("tbody", {
                 children: values.map((value) =>
                   createElement("tr", {
@@ -77,6 +74,7 @@ export const EditUserModal = ({
   onCreateGroup,
   onConfirmRemoveRfidTag,
   onConfirmRemoveGroup,
+  validationErrors = {},
 }) => {
   if (!open) {
     return null;
@@ -144,6 +142,10 @@ export const EditUserModal = ({
             children: [
               createElement("div", { className: "modal-title", text: "Lägg till RFID-tag" }),
               createElement("div", {
+                className: "form-field-hint",
+                text: "Ange taggens UID i hex (ofta skrivs det ut som 8-14 tecken). Samma tagg kan inte delas mellan två konton i samma förening.",
+              }),
+              createElement("div", {
                 className: "form-field",
                 children: [
                   createElement("div", { className: "form-label", text: "RFID UID" }),
@@ -167,7 +169,7 @@ export const EditUserModal = ({
                     onClick: onCloseAddRfid,
                   }),
                   createElement("button", {
-                    className: "primary-button",
+                    className: "primary-button admin-btn-add",
                     text: "Lägg till",
                     onClick: onSubmitAddRfid,
                   }),
@@ -187,6 +189,10 @@ export const EditUserModal = ({
             className: "modal card",
             children: [
               createElement("div", { className: "modal-title", text: "Lägg till behörighetsgrupp" }),
+              createElement("div", {
+                className: "form-field-hint",
+                text: "Gruppnamnet måste vara unikt inom föreningen. Du kopplar sedan bokningsobjekt till grupper för att styra vem som får boka vad.",
+              }),
               createElement("div", {
                 className: "form-field",
                 children: [
@@ -211,7 +217,7 @@ export const EditUserModal = ({
                     onClick: onCloseGroupModal,
                   }),
                   createElement("button", {
-                    className: "primary-button",
+                    className: "primary-button admin-btn-add",
                     text: "Lägg till",
                     onClick: onCreateGroup,
                   }),
@@ -237,79 +243,98 @@ export const EditUserModal = ({
             className: "admin-form-grid",
             children: [
               field({
-                label: "Identitet",
-                input: createElement("input", {
-                  className: "input",
-                  attrs: { value: form.identity || "", "data-focus-key": "editUserIdentity" },
-                  onInput: (event) => onChange("identity", event.target.value),
-                }),
-              }),
-              field({
                 label: "Lägenhets ID",
                 input: createElement("input", {
                   className: "input",
                   attrs: { value: form.apartmentId || "", "data-focus-key": "editUserApartmentId" },
                   onInput: (event) => onChange("apartmentId", event.target.value),
                 }),
+                helpText:
+                  "Det interna ID:t för lägenheten - förslagsvis samma som ni använder i era interna system. Måste vara unikt.",
+                errorText: validationErrors.apartmentId,
               }),
               field({
-                label: "Hus/Trapphus",
+                label: "Hus/Trapphus (valfritt)",
                 input: createElement("input", {
                   className: "input",
                   attrs: { value: form.house || "", "data-focus-key": "editUserHouse" },
                   onInput: (event) => onChange("house", event.target.value),
                 }),
+                helpText:
+                  'Kan användas för att styra tillgång till olika bokningsobjekt. T.ex. "3B".',
               }),
-              field({
-                label: "RFID-taggar",
-                input: createElement("div", {
-                  className: "selector-row selector-row-table",
-                  children: [
-                    removableItemsTable({
-                      values: form.rfidTags || [],
-                      emptyText: "Inga RFID-taggar",
-                      onRemove: (value) => {
-                        onConfirmRemoveRfidTag?.(value);
-                      },
-                    }),
-                    createElement("button", {
-                      className: "secondary-button",
-                      text: "Lägg till",
-                      onClick: onOpenAddRfid,
-                    }),
-                  ],
-                }),
+              createElement("div", {
+                className: "form-inline-section-title",
+                text: "RFID-taggar (valfritt)",
               }),
-              field({
-                label: "Behörighetsgrupper",
-                input: createElement("div", {
-                  className: "selector-row selector-row-table",
-                  children: [
-                    removableItemsTable({
-                      values: form.groups || [],
-                      emptyText: "Inga behörighetsgrupper",
-                      onRemove: (value) => {
-                        onConfirmRemoveGroup?.(value);
-                      },
-                    }),
-                    createElement("div", {
-                      className: "modal-action-stack",
-                      children: [
-                        createElement("button", {
-                          className: "secondary-button admin-btn-select",
-                          text: "Välj",
-                          onClick: onOpenSelector,
-                        }),
-                        createElement("button", {
-                          className: "secondary-button",
-                          text: "Lägg till behörighetsgrupp",
-                          onClick: onOpenGroupModal,
-                        }),
-                      ],
-                    }),
-                  ],
-                }),
+              createElement("div", {
+                className: "form-field-hint form-inline-section-hint",
+                text: "Lägg till UID på de taggar som lägenheten ska kunna logga in med på en bokningstavla.",
               }),
+              createElement("div", {
+                className: "form-field form-inline-section-content",
+                children: [
+                  validationErrors.rfidTags ? createElement("div", { className: "form-error", text: validationErrors.rfidTags }) : null,
+                  createElement("div", {
+                    className: "selector-row selector-row-table",
+                    children: [
+                      removableItemsTable({
+                        values: form.rfidTags || [],
+                        emptyText: "Inga RFID-taggar",
+                        onRemove: (value) => {
+                          onConfirmRemoveRfidTag?.(value);
+                        },
+                      }),
+                      createElement("button", {
+                        className: "secondary-button admin-btn-add",
+                        text: "Lägg till",
+                        onClick: onOpenAddRfid,
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              createElement("div", {
+                className: "form-inline-section-title",
+                text: "Behörighetsgrupper (valfritt)",
+              }),
+              createElement("div", {
+                className: "form-field-hint form-inline-section-hint",
+                text: "Skapa nya eller välj existerande behörighetsgrupper för att styra tillgång till olika bokningsobjekt.",
+              }),
+              createElement("div", {
+                className: "form-field form-inline-section-content",
+                children: [
+                  createElement("div", {
+                    className: "selector-row selector-row-table",
+                    children: [
+                      removableItemsTable({
+                        values: form.groups || [],
+                        emptyText: "Inga behörighetsgrupper",
+                        onRemove: (value) => {
+                          onConfirmRemoveGroup?.(value);
+                        },
+                      }),
+                      createElement("div", {
+                        className: "modal-action-stack",
+                        children: [
+                          createElement("button", {
+                            className: "secondary-button admin-btn-select admin-btn-pick",
+                            text: "Välj",
+                            onClick: onOpenSelector,
+                          }),
+                          createElement("button", {
+                            className: "secondary-button admin-btn-add",
+                            text: "Lägg till behörighetsgrupp",
+                            onClick: onOpenGroupModal,
+                          }),
+                        ],
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              createElement("div", { className: "form-inline-divider" }),
               field({
                 label: "Admin",
                 input: createElement("label", {
@@ -322,6 +347,8 @@ export const EditUserModal = ({
                     createElement("span", { text: "Kan administrera bokningar åt andra" }),
                   ],
                 }),
+                helpText:
+                  "Gör det möjligt för användaren att boka och boka av åt andra, samt blockera tider/dagar. Lämpligt för styrelse och fastighetsskötare.",
               }),
               field({
                 label: "Status",
@@ -360,6 +387,8 @@ export const EditUserModal = ({
                     }),
                   ],
                 }),
+                helpText:
+                  "Används för att inaktivera konton. Inaktiv användare kan inte logga in - en administratör kan dock fortfarande skapa bokningar.",
               }),
             ],
           }),
@@ -378,6 +407,7 @@ export const EditUserModal = ({
               }),
             ],
           }),
+          validationErrors.general ? createElement("div", { className: "form-error", text: validationErrors.general }) : null,
         ],
       }),
       renderSelectorModal(),
