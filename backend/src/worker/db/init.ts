@@ -9,6 +9,10 @@ import { D1Database } from "../types.js";
 
 let initialized = false;
 let initializationPromise: Promise<void> | null = null;
+const stripUnsupportedPragmas = (sql: string) =>
+  sql
+    .replace(/^\s*PRAGMA\s+foreign_keys\s*=\s*ON\s*;\s*/gim, "")
+    .trim();
 
 export const initDb = async (db: D1Database) => {
   if (initialized) {
@@ -26,7 +30,7 @@ export const initDb = async (db: D1Database) => {
       .first();
 
     if (!schemaExists) {
-      await db.exec(migration001);
+      await db.exec(stripUnsupportedPragmas(migration001));
       await db.exec(migration002);
     }
 
