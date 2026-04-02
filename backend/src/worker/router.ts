@@ -283,6 +283,26 @@ const sha1Hex = async (value: string) => {
 const getAppConfig = async (db: D1Database, key: string) =>
   (await db.prepare("SELECT value FROM app_config WHERE key = ?").bind(key).first()) as any;
 
+const getOrCreateSetupSalt = async (db: D1Database) => {
+  const existing = await getAppConfig(db, "setup_link_salt");
+  if (existing?.value) {
+    return String(existing.value);
+  }
+
+  const salt = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO app_config (key, value)
+       VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = COALESCE(NULLIF(app_config.value, ''), excluded.value)`
+    )
+    .bind("setup_link_salt", salt)
+    .run();
+
+  const created = await getAppConfig(db, "setup_link_salt");
+  return created?.value ? String(created.value) : "";
+};
+
 const verifyTurnstileToken = async (request: Request, env: Env, token: string) => {
   const secret = env.TURNSTILE_SECRET?.trim();
   if (!secret) {
@@ -441,13 +461,13 @@ const handleBrfRegister = async (request: Request, env: Env) => {
     return errorResponse(502, details);
   }
 
-  const saltRow = await getAppConfig(env.DB, "setup_link_salt");
-  if (!saltRow?.value) {
+  const setupSalt = await getOrCreateSetupSalt(env.DB);
+  if (!setupSalt) {
     return errorResponse(500, "missing_setup_salt");
   }
 
   const uuid = crypto.randomUUID();
-  const hash = await sha1Hex(`${associationName}|${email}|${uuid}|${saltRow.value}`);
+  const hash = await sha1Hex(`${associationName}|${email}|${uuid}|${setupSalt}`);
   const payload = base64UrlEncode(
     JSON.stringify({
       association_name: associationName,
@@ -506,12 +526,12 @@ const handleBrfSetupVerify = async (request: Request, env: Env) => {
     return errorResponse(400, "invalid_payload");
   }
 
-  const saltRow = await getAppConfig(env.DB, "setup_link_salt");
-  if (!saltRow?.value) {
+  const setupSalt = await getOrCreateSetupSalt(env.DB);
+  if (!setupSalt) {
     return errorResponse(500, "missing_setup_salt");
   }
 
-  const expected = await sha1Hex(`${associationName}|${email}|${uuid}|${saltRow.value}`);
+  const expected = await sha1Hex(`${associationName}|${email}|${uuid}|${setupSalt}`);
   if (expected !== sha1) {
     return errorResponse(401, "invalid_signature");
   }

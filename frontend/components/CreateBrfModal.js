@@ -49,7 +49,11 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
           createElement("div", { className: "form-label", text: "Föreningens namn" }),
           createElement("input", {
             className: "input",
-            attrs: { value: form.name || "", placeholder: "BRF Exempel" },
+            attrs: {
+              value: form.name || "",
+              placeholder: "BRF Exempel",
+              "data-focus-key": "create-brf-name",
+            },
             onInput: (event) => onChange("name", event.target.value),
           }),
           form.errors?.name
@@ -95,7 +99,12 @@ export const CreateBrfModal = ({ open, step, form, onClose, onNext, onPrev, onSu
           createElement("div", { className: "form-label", text: "E‑post till föreningen" }),
           createElement("input", {
             className: "input",
-            attrs: { value: form.email || "", placeholder: "styrelsen@brf.se", type: "email" },
+            attrs: {
+              value: form.email || "",
+              placeholder: "styrelsen@brf.se",
+              type: "email",
+              "data-focus-key": "create-brf-email",
+            },
             onInput: (event) => onChange("email", event.target.value),
           }),
           form.errors?.email

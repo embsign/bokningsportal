@@ -3387,13 +3387,14 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   const updateCreateBrfField = (field, value) => {
+    const hadFieldError = Boolean(createBrfState.errors?.[field]);
     createBrfState[field] = value;
-    if (createBrfState.errors?.[field]) {
+    if (hadFieldError) {
       const nextErrors = { ...createBrfState.errors };
       delete nextErrors[field];
       createBrfState.errors = nextErrors;
+      renderLanding();
     }
-    renderLanding();
   };
 
   const openCreateBrf = () =>
@@ -3549,6 +3550,21 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   const renderLanding = () => {
+    const activeElement = createBrfState.open ? document.activeElement : null;
+    const createBrfFocusSnapshot =
+      activeElement && activeElement.getAttribute?.("data-focus-key")
+        ? {
+            key: activeElement.getAttribute("data-focus-key"),
+            start:
+              typeof activeElement.selectionStart === "number"
+                ? activeElement.selectionStart
+                : null,
+            end:
+              typeof activeElement.selectionEnd === "number"
+                ? activeElement.selectionEnd
+                : null,
+          }
+        : null;
     clearElement(app);
     const userOnePath = landingState.demoLinks.userPaths[0] || "";
     const userTwoPath = landingState.demoLinks.userPaths[1] || "";
@@ -3871,6 +3887,19 @@ const loadWeekAvailability = async (service, weekStart) => {
     });
     if (modal) {
       app.append(modal);
+    }
+    if (createBrfFocusSnapshot && createBrfState.open) {
+      const target = app.querySelector(`[data-focus-key="${createBrfFocusSnapshot.key}"]`);
+      if (target) {
+        target.focus();
+        if (
+          typeof createBrfFocusSnapshot.start === "number" &&
+          typeof createBrfFocusSnapshot.end === "number" &&
+          typeof target.setSelectionRange === "function"
+        ) {
+          target.setSelectionRange(createBrfFocusSnapshot.start, createBrfFocusSnapshot.end);
+        }
+      }
     }
 
     if (
