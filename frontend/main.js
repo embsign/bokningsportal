@@ -2535,18 +2535,29 @@ const loadWeekAvailability = async (service, weekStart) => {
   };
 
   const loadSetupData = async () => {
+    let data;
     try {
-      const data = await verifyBrfSetup(setupToken);
-      if (data?.is_setup_complete) {
-        window.location.href = `/admin/${data.account_owner_token || data.uuid}`;
-        return;
-      }
-      setAccessToken(data.account_owner_token || data.uuid);
-      setSetupState({ status: "ready", data, error: "" });
-      await loadSetupLists();
+      data = await verifyBrfSetup(setupToken);
     } catch (error) {
       const message = error?.detail || "Länken är ogiltig eller har gått ut.";
       setSetupState({ status: "error", error: message });
+      return;
+    }
+
+    if (data?.is_setup_complete) {
+      window.location.href = `/admin/${data.account_owner_token || data.uuid}`;
+      return;
+    }
+
+    setAccessToken(data.account_owner_token || data.uuid);
+    setSetupState({ status: "ready", data, error: "", stepError: "" });
+    try {
+      await loadSetupLists();
+    } catch (error) {
+      const detail = error?.detail || "internal_error";
+      setSetupState({
+        stepError: `Länken verifierades, men kunde inte ladda setup-data (${detail}). Ladda om sidan.`,
+      });
     }
   };
 
