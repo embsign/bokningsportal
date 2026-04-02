@@ -1,4 +1,3 @@
-import { initDb } from "../../backend/src/worker/db/init.js";
 import { router } from "../../backend/src/worker/router.js";
 import { Env } from "../../backend/src/worker/types.js";
 
@@ -43,7 +42,6 @@ export const onRequest = async (context: { request: Request; env: Env }) => {
   }
 
   try {
-    await initDb(env.DB);
     const response =
       (await router(request, env)) ||
       new Response(JSON.stringify({ detail: "internal_error" }), {

@@ -10,6 +10,7 @@ import { ImportUsersModal } from "./components/ImportUsersModal.js";
 import { EditUserModal } from "./components/EditUserModal.js";
 import { ReportModal } from "./components/ReportModal.js";
 import { BookingObjectsTable } from "./components/BookingObjectsTable.js";
+import { UserList } from "./components/UserList.js";
 import { createBookingSummary } from "./utils/bookingSummary.js";
 import { buildCalendarDownloadPageUrl, buildCalendarQrImageUrl } from "./utils/calendarExport.js";
 import { buildConfirmModalState, renderConfirmModal } from "./utils/confirmModal.js";

@@ -1,18 +1,12 @@
-import {
-  migration001,
-  migration002,
-  migration005,
-  migration007,
-  seedSql,
-} from "./sqlBundles.generated.js";
+import migration001 from "../../../../db/migrations/001_initial_schema.sql";
+import migration002 from "../../../../db/migrations/002_indexes.sql";
+import migration005 from "../../../../db/migrations/005_app_config.sql";
+import migration007 from "../../../../db/migrations/007_booking_screens.sql";
+import seedSql from "../../../../db/seed.sql";
 import { D1Database } from "../types.js";
 
 let initialized = false;
 let initializationPromise: Promise<void> | null = null;
-const stripUnsupportedPragmas = (sql: string) =>
-  sql
-    .replace(/^\s*PRAGMA\s+foreign_keys\s*=\s*ON\s*;\s*/gim, "")
-    .trim();
 
 export const initDb = async (db: D1Database) => {
   if (initialized) {
@@ -30,7 +24,7 @@ export const initDb = async (db: D1Database) => {
       .first();
 
     if (!schemaExists) {
-      await db.exec(stripUnsupportedPragmas(migration001));
+      await db.exec(migration001);
       await db.exec(migration002);
     }
 

@@ -26,9 +26,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: backend/package-lock.json
 
-      - name: Bundle SQL for Worker (Pages Functions)
-        run: node scripts/bundle_sql_for_worker.mjs
-
       - name: Install backend dependencies
         run: npm ci
         working-directory: backend
@@ -76,9 +73,6 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: backend/package-lock.json
-
-      - name: Bundle SQL for Worker (Pages Functions)
-        run: node scripts/bundle_sql_for_worker.mjs
 
       - name: Install backend dependencies
         run: npm ci
