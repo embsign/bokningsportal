@@ -350,23 +350,28 @@ const sendResendEmail = async (env: Env, to: string, subject: string, html: stri
     if (!env.MAIL_FROM) missing.push("MAIL_FROM");
     return { ok: false, error: "missing_email_config", missing };
   }
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.MAIL_FROM,
-      to: [to],
-      subject,
-      html,
-    }),
-  });
-  if (!response.ok) {
-    return { ok: false, error: "resend_failed" };
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      signal: AbortSignal.timeout(12_000),
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: env.MAIL_FROM,
+        to: [to],
+        subject,
+        html,
+      }),
+    });
+    if (!response.ok) {
+      return { ok: false, error: "resend_failed", status: response.status };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "resend_unavailable" };
   }
-  return { ok: true };
 };
 
 const getAuthContext = async (db: D1Database, token: string) =>
@@ -458,7 +463,7 @@ const handleBrfRegister = async (request: Request, env: Env) => {
     if (turnstile.error === "missing_turnstile_secret") {
       return errorResponse(500, details);
     }
-    return errorResponse(502, details);
+    return errorResponse(503, details);
   }
 
   const setupSalt = await getOrCreateSetupSalt(env.DB);
@@ -497,8 +502,10 @@ const handleBrfRegister = async (request: Request, env: Env) => {
     const detail =
       mailResult.error === "missing_email_config" && (mailResult as any).missing
         ? `missing_email_config:${(mailResult as any).missing.join(",")}`
-        : mailResult.error || "resend_failed";
-    return errorResponse(502, detail);
+        : mailResult.error === "resend_failed" && typeof (mailResult as any).status === "number"
+          ? `resend_failed:${(mailResult as any).status}`
+          : mailResult.error || "resend_failed";
+    return errorResponse(503, detail);
   }
 
   return json({ setup_url: setupUrl });
@@ -1541,8 +1548,10 @@ const handleAdminOrderBookingScreens = async (request: Request, env: Env) => {
     const detail =
       mailResult.error === "missing_email_config" && (mailResult as any).missing
         ? `missing_email_config:${(mailResult as any).missing.join(",")}`
-        : mailResult.error || "resend_failed";
-    return errorResponse(502, detail);
+        : mailResult.error === "resend_failed" && typeof (mailResult as any).status === "number"
+          ? `resend_failed:${(mailResult as any).status}`
+          : mailResult.error || "resend_failed";
+    return errorResponse(503, detail);
   }
   return json({ ok: true, sent_to: ORDER_EMAIL_TO });
 };
