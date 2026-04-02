@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   last_accessed_at TEXT,
   account_owner_token TEXT,
   organization_number TEXT,
-  admin_email TEXT
+  admin_email TEXT,
+  is_setup_complete INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -145,3 +146,50 @@ CREATE TABLE IF NOT EXISTS user_import_rules (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
+
+CREATE TABLE IF NOT EXISTS app_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS booking_screens (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  pairing_code TEXT NOT NULL UNIQUE,
+  screen_token TEXT NOT NULL UNIQUE,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  paired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT,
+  last_verified_at TEXT,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS kiosk_pairing_codes (
+  code TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'pending',
+  paired_screen_id TEXT,
+  first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,
+  paired_at TEXT,
+  FOREIGN KEY (paired_screen_id) REFERENCES booking_screens(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_tenant_active ON users(tenant_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_bookings_object_time ON bookings(booking_object_id, start_time);
+CREATE INDEX IF NOT EXISTS idx_bookings_user_time ON bookings(user_id, start_time);
+CREATE INDEX IF NOT EXISTS idx_blocks_object_time ON booking_blocks(booking_object_id, start_time);
+CREATE INDEX IF NOT EXISTS idx_rfid_tags_tenant_uid ON rfid_tags(tenant_id, uid);
+CREATE INDEX IF NOT EXISTS idx_booking_object_permissions ON booking_object_permissions(booking_object_id, mode, scope);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_access_groups_unique ON access_groups(tenant_id, name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_access_tokens_user_unique ON access_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_tenants_setup_complete ON tenants(is_setup_complete);
+CREATE INDEX IF NOT EXISTS idx_booking_screens_tenant_active ON booking_screens(tenant_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_booking_screens_tenant_name ON booking_screens(tenant_id, name);
+CREATE INDEX IF NOT EXISTS idx_kiosk_pairing_codes_status_expires ON kiosk_pairing_codes(status, expires_at);
+
+INSERT OR IGNORE INTO app_config (key, value)
+VALUES ('setup_link_salt', lower(hex(randomblob(16))));

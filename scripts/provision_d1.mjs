@@ -148,35 +148,6 @@ database_id = "${databaseId}"
 
 fs.writeFileSync("wrangler.generated.toml", config.trim() + "\n");
 
-const ensureFullDayColumns = () => {
-  const schemaRowsRaw = runWrangler(
-    `npx wrangler d1 execute ${dbName} --config wrangler.generated.toml --remote --json --command "PRAGMA table_info(booking_objects);"`
-  );
-  let schemaRows;
-  try {
-    const parsed = JSON.parse(schemaRowsRaw);
-    schemaRows = Array.isArray(parsed) && parsed[0]?.results ? parsed[0].results : [];
-  } catch {
-    throw new Error("Could not parse schema response when validating booking_objects columns.");
-  }
-
-  const hasStart = schemaRows.some((row) => row?.name === "full_day_start_time");
-  const hasEnd = schemaRows.some((row) => row?.name === "full_day_end_time");
-
-  if (!hasStart) {
-    execSync(
-      `npx wrangler d1 execute ${dbName} --config wrangler.generated.toml --remote --command "ALTER TABLE booking_objects ADD COLUMN full_day_start_time TEXT NOT NULL DEFAULT '12:00';"`,
-      { stdio: "inherit" }
-    );
-  }
-  if (!hasEnd) {
-    execSync(
-      `npx wrangler d1 execute ${dbName} --config wrangler.generated.toml --remote --command "ALTER TABLE booking_objects ADD COLUMN full_day_end_time TEXT NOT NULL DEFAULT '12:00';"`,
-      { stdio: "inherit" }
-    );
-  }
-};
-
 const migrationsSource = "db/migrations";
 const migrationsTarget = "migrations";
 if (!fs.existsSync(migrationsTarget)) {
@@ -191,7 +162,6 @@ for (const file of fs.readdirSync(migrationsSource)) {
 execSync(`npx wrangler d1 migrations apply ${dbName} --config wrangler.generated.toml --remote`, {
   stdio: "inherit",
 });
-ensureFullDayColumns();
 
 for (const file of fs.readdirSync(migrationsTarget)) {
   if (file.endsWith(".sql")) {

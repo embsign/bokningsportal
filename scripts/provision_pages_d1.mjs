@@ -79,21 +79,6 @@ database_id = "${databaseId}"
   fs.writeFileSync(generatedConfigPath, content);
 };
 
-const ensureColumnExists = (dbName, columnName, alterSql) => {
-  const schemaRowsRaw = runWrangler(
-    `npx wrangler d1 execute ${dbName} --config ${generatedConfigPath} --remote --json --command "PRAGMA table_info(booking_objects);"`
-  );
-  const parsed = JSON.parse(schemaRowsRaw);
-  const schemaRows = Array.isArray(parsed) && parsed[0]?.results ? parsed[0].results : [];
-  const hasColumn = schemaRows.some((row) => row?.name === columnName);
-  if (!hasColumn) {
-    execSync(
-      `npx wrangler d1 execute ${dbName} --config ${generatedConfigPath} --remote --command "${alterSql}"`,
-      { stdio: "inherit" }
-    );
-  }
-};
-
 const applyMigrations = (dbName) => {
   const migrationsSource = "db/migrations";
   const migrationsTarget = "migrations";
@@ -109,27 +94,6 @@ const applyMigrations = (dbName) => {
   execSync(`npx wrangler d1 migrations apply ${dbName} --config ${generatedConfigPath} --remote`, {
     stdio: "inherit",
   });
-
-  ensureColumnExists(
-    dbName,
-    "full_day_start_time",
-    "ALTER TABLE booking_objects ADD COLUMN full_day_start_time TEXT NOT NULL DEFAULT '12:00';"
-  );
-  ensureColumnExists(
-    dbName,
-    "full_day_end_time",
-    "ALTER TABLE booking_objects ADD COLUMN full_day_end_time TEXT NOT NULL DEFAULT '12:00';"
-  );
-  ensureColumnExists(
-    dbName,
-    "time_slot_start_time",
-    "ALTER TABLE booking_objects ADD COLUMN time_slot_start_time TEXT NOT NULL DEFAULT '08:00';"
-  );
-  ensureColumnExists(
-    dbName,
-    "time_slot_end_time",
-    "ALTER TABLE booking_objects ADD COLUMN time_slot_end_time TEXT NOT NULL DEFAULT '20:00';"
-  );
 
   for (const file of fs.readdirSync(migrationsTarget)) {
     if (file.endsWith(".sql")) {

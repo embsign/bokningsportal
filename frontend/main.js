@@ -1664,8 +1664,6 @@ const applyBootstrapData = (bootstrap) => {
           dateLabel: `${date.getDate()}/${date.getMonth() + 1}`,
           timeLabel: booking.time_label,
           status: booking.status,
-          startTime: booking.start_time,
-          endTime: booking.end_time,
         };
       })
     : [];
@@ -2399,8 +2397,6 @@ const loadWeekAvailability = async (service, weekStart) => {
     houseSamples: [],
     apartmentSamples: [],
     groupSamples: [],
-    importEncoding: "",
-    importEncodingWarning: "",
     importEncoding: "",
     importEncodingWarning: "",
     addNew: true,

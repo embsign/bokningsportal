@@ -1,7 +1,4 @@
 import migration001 from "../../../../db/migrations/001_initial_schema.sql";
-import migration002 from "../../../../db/migrations/002_indexes.sql";
-import migration005 from "../../../../db/migrations/005_app_config.sql";
-import migration007 from "../../../../db/migrations/007_booking_screens.sql";
 import seedSql from "../../../../db/seed.sql";
 import { D1Database } from "../types.js";
 
@@ -25,23 +22,6 @@ export const initDb = async (db: D1Database) => {
 
     if (!schemaExists) {
       await db.exec(migration001);
-      await db.exec(migration002);
-    }
-
-    const appConfigExists = await db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_config'")
-      .bind()
-      .first();
-    if (!appConfigExists) {
-      await db.exec(migration005);
-    }
-
-    const bookingScreensExists = await db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'booking_screens'")
-      .bind()
-      .first();
-    if (!bookingScreensExists) {
-      await db.exec(migration007);
     }
 
     const setupSaltRow = await db

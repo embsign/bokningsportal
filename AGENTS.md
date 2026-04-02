@@ -51,7 +51,6 @@ Then open `http://localhost:5173` in the browser.
    ```sh
    cd backend
    npx wrangler d1 execute booking-prod --local --config ../wrangler.toml --file ../db/migrations/001_initial_schema.sql
-   npx wrangler d1 execute booking-prod --local --config ../wrangler.toml --file ../db/migrations/002_indexes.sql
    npx wrangler d1 execute booking-prod --local --config ../wrangler.toml --file ../db/seed.sql
    ```
    The first HTTP request to the backend will fail (PRAGMA error), but it sets `initialized = true` in the worker. All subsequent requests work because the tables already exist from pre-population.

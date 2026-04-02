@@ -23,8 +23,6 @@ export const getCurrentBookings = async () => {
       dateLabel: formatDateLabel(date),
       timeLabel: booking.time_label,
       status: booking.status,
-      startTime: booking.start_time,
-      endTime: booking.end_time,
     };
   });
 };
